@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.Text;
 using Verifier = TUnit.Analyzers.Tests.Verifiers.CSharpAnalyzerVerifier<TUnit.Analyzers.PsvmAnalyzer>;
 
 namespace TUnit.Analyzers.Tests;
@@ -69,5 +70,31 @@ public class PsvmAnalyzerTests
                 }
                 """
             );
+    }
+
+    [Test]
+    [Arguments("build_property.TUnitSourceGenerationMode = ClosedWorldCatalog")]
+    [Arguments("build_property.EnableTUnitSourceGeneration = false")]
+    public async Task Main_Method_Is_Allowed_Without_The_Desktop_Generated_Entry_Point(string setting)
+    {
+        var test = new Verifier.Test
+        {
+            TestCode =
+                """
+                using System.Threading.Tasks;
+
+                public static class Program
+                {
+                    public static Task<int> Main(string[] args) => Task.FromResult(0);
+                }
+                """
+        };
+
+        test.TestState.AnalyzerConfigFiles.Add(("/.globalconfig", SourceText.From($$"""
+            is_global = true
+            {{setting}}
+            """)));
+
+        await test.RunAsync();
     }
 }

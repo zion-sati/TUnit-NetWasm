@@ -26,11 +26,14 @@
     <PropertyGroup>
         <!-- Enable TUnit source generation (defaults to true). Set to false when using reflection mode to skip source generation and improve build performance. -->
         <EnableTUnitSourceGeneration Condition="'$(EnableTUnitSourceGeneration)' == ''">true</EnableTUnitSourceGeneration>
+        <!-- ClosedWorldCatalog emits only the generated case root; desktop registration remains the default. -->
+        <TUnitSourceGenerationMode Condition="'$(TUnitSourceGenerationMode)' == ''">Desktop</TUnitSourceGenerationMode>
     </PropertyGroup>
 
     <ItemGroup>
         <CompilerVisibleProperty Include="EnableTUnitPolyfills" />
         <CompilerVisibleProperty Include="EnableTUnitSourceGeneration" />
+        <CompilerVisibleProperty Include="TUnitSourceGenerationMode" />
     </ItemGroup>
 
 </Project>

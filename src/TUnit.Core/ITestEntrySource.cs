@@ -25,6 +25,9 @@ public interface ITestEntrySource
 
     /// <summary>Materialize a TestMetadata for the entry at the given index.</summary>
     IReadOnlyList<TestMetadata> Materialize(int index, string testSessionId);
+
+    /// <summary>Returns the generated direct-delegate cases without discovery or reflection.</summary>
+    IReadOnlyList<GeneratedTestCase> GetGeneratedCases();
 }
 
 /// <summary>

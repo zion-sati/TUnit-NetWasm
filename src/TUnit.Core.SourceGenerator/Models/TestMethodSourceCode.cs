@@ -14,6 +14,9 @@ public sealed record TestMethodSourceCode
     /// <summary>Switch case body for the class-level __Invoke method.</summary>
     public required string InvokeSwitchCaseCode { get; init; }
 
+    /// <summary>Closed-world cases with row-specific typed delegates.</summary>
+    public required string CatalogGeneratedCaseDataCode { get; init; }
+
     /// <summary>TestEntry data fields (MethodName, FilePath, etc.).</summary>
     public required string TestEntryDataFieldsCode { get; init; }
 

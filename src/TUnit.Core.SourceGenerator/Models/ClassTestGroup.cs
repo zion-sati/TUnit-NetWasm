@@ -24,4 +24,7 @@ public sealed record ClassTestGroup
     /// Used to inline MethodMetadata construction into field initializers.
     /// </summary>
     public required string SharedFieldsCode { get; init; }
+
+    /// <summary>Pre-generated setup/teardown actions shared by this class's entries.</summary>
+    public required string LifecycleCode { get; init; }
 }

@@ -22,6 +22,8 @@ internal static class TUnit_TestProject_BasicTests__TestSource
     private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("SynchronousTest", __classType, typeof(void), __classMetadata);
     private static readonly global::TUnit.Core.MethodMetadata __mm_1 = global::TUnit.Core.MethodMetadataFactory.Create("AsynchronousTest", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata);
     private static readonly global::TUnit.Core.MethodMetadata __mm_2 = global::TUnit.Core.MethodMetadataFactory.Create("ValueTaskAsynchronousTest", __classType, typeof(global::System.Threading.Tasks.ValueTask), __classMetadata);
+    private static readonly global::TUnit.Core.MethodMetadata __mm_3 = global::TUnit.Core.MethodMetadataFactory.Create("GenericTaskAsynchronousTest", __classType, typeof(global::System.Threading.Tasks.Task<int>), __classMetadata);
+    private static readonly global::TUnit.Core.MethodMetadata __mm_4 = global::TUnit.Core.MethodMetadataFactory.Create("GenericValueTaskAsynchronousTest", __classType, typeof(global::System.Threading.Tasks.ValueTask<int>), __classMetadata);
     private static global::TUnit.TestProject.BasicTests __CreateInstance(global::System.Type[] typeArgs, object?[] args)
     {
         return new global::TUnit.TestProject.BasicTests();
@@ -58,6 +60,28 @@ internal static class TUnit_TestProject_BasicTests__TestSource
                 try
                 {
                     return instance.ValueTaskAsynchronousTest();
+                }
+                catch (global::System.Exception ex)
+                {
+                    return new global::System.Threading.Tasks.ValueTask(global::System.Threading.Tasks.Task.FromException(ex));
+                }
+            }
+            case 3:
+            {
+                try
+                {
+                    return new global::System.Threading.Tasks.ValueTask(instance.GenericTaskAsynchronousTest());
+                }
+                catch (global::System.Exception ex)
+                {
+                    return new global::System.Threading.Tasks.ValueTask(global::System.Threading.Tasks.Task.FromException(ex));
+                }
+            }
+            case 4:
+            {
+                try
+                {
+                    return new global::System.Threading.Tasks.ValueTask(instance.GenericValueTaskAsynchronousTest().AsTask());
                 }
                 catch (global::System.Exception ex)
                 {
@@ -116,6 +140,28 @@ internal static class TUnit_TestProject_BasicTests__TestSource
             createInstance: __CreateInstance,
             invokeBody: __Invoke,
             methodIndex: 2,
+            createAttributes: __Attributes,
+            attributeGroupIndex: 0),
+        global::TUnit.Core.TestEntryFactory.Create<global::TUnit.TestProject.BasicTests>(
+            methodName: "GenericTaskAsynchronousTest",
+            fullyQualifiedName: "TUnit.TestProject.BasicTests.GenericTaskAsynchronousTest",
+            filePath: "",
+            lineNumber: 23,
+            methodMetadata: __mm_3,
+            createInstance: __CreateInstance,
+            invokeBody: __Invoke,
+            methodIndex: 3,
+            createAttributes: __Attributes,
+            attributeGroupIndex: 0),
+        global::TUnit.Core.TestEntryFactory.Create<global::TUnit.TestProject.BasicTests>(
+            methodName: "GenericValueTaskAsynchronousTest",
+            fullyQualifiedName: "TUnit.TestProject.BasicTests.GenericValueTaskAsynchronousTest",
+            filePath: "",
+            lineNumber: 26,
+            methodMetadata: __mm_4,
+            createInstance: __CreateInstance,
+            invokeBody: __Invoke,
+            methodIndex: 4,
             createAttributes: __Attributes,
             attributeGroupIndex: 0),
     };

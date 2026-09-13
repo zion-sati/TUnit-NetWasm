@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TUnit.Core.SourceGenerator.Extensions;
 using TUnit.Core.SourceGenerator.Models;
+using TUnit.Core.SourceGenerator.Utilities;
 
 namespace TUnit.Core.SourceGenerator.Generators;
 
@@ -15,11 +16,7 @@ public class AotConverterGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select((options, _) =>
-            {
-                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
-                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
-            });
+            .Select(static (options, _) => SourceGenerationMode.Read(options).IsDesktop);
 
         var allTypes = context.CompilationProvider
             .Select((compilation, ct) =>
@@ -115,11 +112,11 @@ public class AotConverterGenerator : IIncrementalGenerator
             var semanticModel = compilation.GetSemanticModel(tree);
             var root = tree.GetRoot();
 
-            foreach(var nodes in root.DescendantNodes())
+            foreach (var nodes in root.DescendantNodes())
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if(nodes is MethodDeclarationSyntax method)
+                if (nodes is MethodDeclarationSyntax method)
                 {
                     var methodSymbol = semanticModel.GetDeclaredSymbol(method);
                     if (methodSymbol == null)

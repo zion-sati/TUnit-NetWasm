@@ -19,4 +19,10 @@ public class BasicTests
     {
         await new ValueTask();
     }
+
+    [Test]
+    public Task<int> GenericTaskAsynchronousTest() => Task.FromResult(42);
+
+    [Test]
+    public ValueTask<int> GenericValueTaskAsynchronousTest() => ValueTask.FromResult(43);
 }

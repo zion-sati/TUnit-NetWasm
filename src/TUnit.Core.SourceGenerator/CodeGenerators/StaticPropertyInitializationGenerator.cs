@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using TUnit.Core.SourceGenerator.Extensions;
 using TUnit.Core.SourceGenerator.Helpers;
+using TUnit.Core.SourceGenerator.Utilities;
 using TUnit.Core.SourceGenerator.CodeGenerators.Helpers;
 using TUnit.Core.SourceGenerator.Models;
 using TUnit.Core.SourceGenerator.CodeGenerators.Formatting;
@@ -19,11 +20,7 @@ public class StaticPropertyInitializationGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select((options, _) =>
-            {
-                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
-                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
-            });
+            .Select(static (options, _) => SourceGenerationMode.Read(options).IsDesktop);
 
         var testClasses = context.SyntaxProvider
             .CreateSyntaxProvider(
@@ -158,7 +155,7 @@ public class StaticPropertyInitializationGenerator : IIncrementalGenerator
         // Generate data source logic based on attribute type
         if (attributeClassName == "ArgumentsAttribute")
         {
-            sourceAttribute = ParseArgumentsDataSourceWithAssignment(attr);;
+            sourceAttribute = ParseArgumentsDataSourceWithAssignment(attr); ;
         }
         else if (attributeClassName == "MethodDataSourceAttribute")
         {
@@ -407,7 +404,7 @@ public class StaticPropertyInitializationGenerator : IIncrementalGenerator
 
         if (attr.ConstructorArguments is
             [
-                { Value: ITypeSymbol type } _, _
+            { Value: ITypeSymbol type } _, _
             ])
         {
             targetType = type;

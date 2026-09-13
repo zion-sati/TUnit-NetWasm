@@ -19,11 +19,7 @@ public class HookMetadataGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select((options, _) =>
-            {
-                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
-                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
-            });
+            .Select(static (options, _) => SourceGenerationMode.Read(options).IsDesktop);
 
         var beforeHooks = context.SyntaxProvider
             .ForAttributeWithMetadataName(

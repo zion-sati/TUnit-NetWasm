@@ -750,6 +750,89 @@ namespace
         public GenerateGenericTestAttribute(params [] typeArguments) { }
         public [] TypeArguments { get; }
     }
+    public enum GeneratedCompletionPolicy
+    {
+        Await = 0,
+    }
+    public enum GeneratedInvocationKind
+    {
+        Sync = 0,
+        Task = 1,
+        ValueTask = 2,
+        Unsupported = 3,
+    }
+    public sealed class GeneratedLifecycle
+    {
+        public GeneratedLifecycle(.<.GeneratedLifecycleAction> actions) { }
+        public .<.GeneratedLifecycleAction> Actions { get; }
+        public bool IsEmpty { get; }
+        public static .GeneratedLifecycle Empty { get; }
+    }
+    public sealed class GeneratedLifecycleAction
+    {
+        public GeneratedLifecycleAction(.GeneratedLifecycleStage stage, int order, <object?, .CancellationToken, .> invoke) { }
+        public <object?, .CancellationToken, .> Invoke { get; }
+        public int Order { get; }
+        public .GeneratedLifecycleStage Stage { get; }
+    }
+    public enum GeneratedLifecycleStage
+    {
+        ClassSetup = 0,
+        TestSetup = 1,
+        TestTeardown = 2,
+        ClassTeardown = 3,
+    }
+    public abstract class GeneratedTestCase
+    {
+        protected GeneratedTestCase(string methodName, string fullyQualifiedName, string groupIdentity, string filePath, int lineNumber, .GeneratedInvocationKind invocationKind, .<string> categories, .<string> properties, .<string> dependencies, .GeneratedTestCaseRow row, .GeneratedLifecycle? lifecycle, .GeneratedCompletionPolicy completionPolicy, string? catalogProvenance) { }
+        public .<object?> Arguments { get; }
+        public string CatalogProvenance { get; }
+        public .<string> Categories { get; }
+        public .GeneratedCompletionPolicy CompletionPolicy { get; }
+        public .<object?> ConstructorArguments { get; }
+        public .<string> Dependencies { get; }
+        public string DisplayName { get; }
+        public string FilePath { get; }
+        public string FullyQualifiedName { get; }
+        public string GroupIdentity { get; }
+        public .GeneratedInvocationKind InvocationKind { get; }
+        public .GeneratedLifecycle Lifecycle { get; }
+        public int LineNumber { get; }
+        public string MethodName { get; }
+        public .<string> Properties { get; }
+        public .GeneratedTestCaseRow Row { get; }
+        public string StableId { get; }
+        public abstract . ExecuteAsync(.CancellationToken cancellationToken = default);
+    }
+    public sealed class GeneratedTestCaseRow
+    {
+        public GeneratedTestCaseRow(string stableId, string? displayName, .<object?>? arguments = null, .<object?>? constructorArguments = null) { }
+        public .<object?> Arguments { get; }
+        public .<object?> ConstructorArguments { get; }
+        public string? DisplayName { get; }
+        public string StableId { get; }
+    }
+    public sealed class GeneratedTestCase<T> : .GeneratedTestCase
+        where T :  class
+    {
+        public GeneratedTestCase(
+                    string methodName,
+                    string fullyQualifiedName,
+                    string groupIdentity,
+                    string filePath,
+                    int lineNumber,
+                    .GeneratedInvocationKind invocationKind,
+                    <T> createInstance,
+                    <T, .CancellationToken, .> invoke,
+                    .<string> categories,
+                    .<string> properties,
+                    .<string> dependencies,
+                    .GeneratedTestCaseRow row,
+                    .GeneratedLifecycle? lifecycle = null,
+                    .GeneratedCompletionPolicy completionPolicy = 0,
+                    string? catalogProvenance = null) { }
+        public override . ExecuteAsync(.CancellationToken cancellationToken = default) { }
+    }
     public abstract class GenericAbstractExecutor : ., .
     {
         protected GenericAbstractExecutor() { }
@@ -892,12 +975,17 @@ namespace
          ScopeType { get; }
     }
     public interface ITestDefinition { }
+    public interface ITestEntryCatalog
+    {
+        .<.GeneratedTestCase> GetGeneratedCases();
+    }
     public interface ITestEntrySource
     {
         string ClassName { get; }
          ClassType { get; }
         int Count { get; }
         .TestEntryFilterData GetFilterData(int index);
+        .<.GeneratedTestCase> GetGeneratedCases();
         .<.TestMetadata> Materialize(int index, string testSessionId);
     }
     public interface ITypedDataSourceAttribute<T> : .IDataSourceAttribute
@@ -1252,13 +1340,22 @@ namespace
         public . OnTestRegistered(.TestRegisteredContext context) { }
         public virtual .<bool> ShouldSkip(.TestRegisteredContext context) { }
     }
+    public sealed class SourceGeneratedTestCatalog : .ITestEntryCatalog
+    {
+        public SourceGeneratedTestCatalog(.<.GeneratedTestCase> cases, string? provenance = null) { }
+        public string Provenance { get; }
+        public .<.GeneratedTestCase> GetGeneratedCases() { }
+    }
     public class SourceRegistrar
     {
         public SourceRegistrar() { }
         public static bool IsEnabled { get; set; }
+        public static .<.ITestEntrySource> GetRegisteredTestSources() { }
         public static void RegisterAssembly(<.Assembly> assemblyLoader) { }
         public static int RegisterDynamic(.IDynamicTestSource testSource) { }
         public static int RegisterEntries<T>(<.TestEntry<T>[]> factory)
+            where T :  class { }
+        public static int RegisterEntries<T>(<.TestEntry<T>[]> factory, <.GeneratedTestCase[]> generatedCasesFactory)
             where T :  class { }
         public static void RegisterGlobalInitializer(<.> initializer) { }
         public static int RegisterHook<T>(.<.<T>> bag, int registrationIndex, <int, T> factory)
@@ -1538,6 +1635,7 @@ namespace
         public  ClassType { get; }
         public int Count { get; }
         public .TestEntryFilterData GetFilterData(int index) { }
+        public .<.GeneratedTestCase> GetGeneratedCases() { }
         public .<.TestMetadata> Materialize(int index, string testSessionId) { }
     }
     public sealed class TestEntry<T>

@@ -145,6 +145,44 @@ public sealed class TestEntry<
         };
     }
 
+    internal GeneratedTestCase ToGeneratedCase(int index)
+    {
+        return new GeneratedTestCase<T>(
+            MethodName,
+            FullyQualifiedName,
+            FullyQualifiedName,
+            FilePath,
+            LineNumber,
+            GetInvocationKind(MethodMetadata.ReturnType),
+            constructorArguments => CreateInstance(Array.Empty<Type>(), constructorArguments),
+            (instance, arguments, cancellationToken) => InvokeBody(instance, MethodIndex, arguments, cancellationToken),
+            Categories,
+            Properties,
+            DependsOn,
+            new GeneratedTestCaseRow($"{FullyQualifiedName}#{index}", MethodName),
+            GeneratedLifecycle.Empty,
+            GeneratedCompletionPolicy.Await,
+            "TUnit.Core.SourceGenerator");
+    }
+
+    private static GeneratedInvocationKind GetInvocationKind(Type? returnType)
+    {
+        if (returnType == typeof(ValueTask) || IsGeneric(returnType, typeof(ValueTask<>)))
+        {
+            return GeneratedInvocationKind.ValueTask;
+        }
+
+        if (returnType == typeof(Task) || IsGeneric(returnType, typeof(Task<>)))
+        {
+            return GeneratedInvocationKind.Task;
+        }
+
+        return GeneratedInvocationKind.Sync;
+    }
+
+    private static bool IsGeneric(Type? type, Type genericTypeDefinition) =>
+        type is not null && type.IsGenericType && type.GetGenericTypeDefinition() == genericTypeDefinition;
+
     private PropertyDataSource[] BuildPropertyDataSources()
     {
         if (InjectableProperties.Length == 0) return [];

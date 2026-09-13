@@ -6,6 +6,7 @@ using TUnit.Core.SourceGenerator.Extensions;
 using TUnit.Core.SourceGenerator.Helpers;
 using TUnit.Core.SourceGenerator.Models.Extracted;
 using TUnit.Core.SourceGenerator.Models;
+using TUnit.Core.SourceGenerator.Utilities;
 
 namespace TUnit.Core.SourceGenerator.Generators;
 
@@ -19,11 +20,7 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select((options, _) =>
-            {
-                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
-                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
-            });
+            .Select(static (options, _) => SourceGenerationMode.Read(options).IsDesktop);
 
         // Pipeline 1: Find properties with IDataSourceAttribute and group by containing class
         var propertyDataSources = context.SyntaxProvider

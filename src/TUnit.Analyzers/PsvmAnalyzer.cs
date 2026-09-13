@@ -7,6 +7,10 @@ namespace TUnit.Analyzers;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class PsvmAnalyzer : ConcurrentDiagnosticAnalyzer
 {
+    private const string EnabledProperty = "build_property.EnableTUnitSourceGeneration";
+    private const string ModeProperty = "build_property.TUnitSourceGenerationMode";
+    private const string ClosedWorldCatalog = "ClosedWorldCatalog";
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
         ImmutableArray.Create(Rules.NoMainMethod);
 
@@ -17,6 +21,11 @@ public class PsvmAnalyzer : ConcurrentDiagnosticAnalyzer
 
     private void AnalyzeSymbol(SymbolAnalysisContext context)
     {
+        if (!UsesDesktopGeneratedEntryPoint(context.Options.AnalyzerConfigOptionsProvider.GlobalOptions))
+        {
+            return;
+        }
+
         if (context.Symbol is not IMethodSymbol methodSymbol)
         {
             return;
@@ -45,6 +54,18 @@ public class PsvmAnalyzer : ConcurrentDiagnosticAnalyzer
         context.ReportDiagnostic(Diagnostic.Create(Rules.NoMainMethod,
                 methodSymbol.Locations.FirstOrDefault())
             );
+    }
+
+    private static bool UsesDesktopGeneratedEntryPoint(AnalyzerConfigOptions options)
+    {
+        if (options.TryGetValue(EnabledProperty, out var enabled) &&
+            string.Equals(enabled, "false", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return !options.TryGetValue(ModeProperty, out var mode) ||
+               !string.Equals(mode, ClosedWorldCatalog, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasKnownReturnType(SymbolAnalysisContext context, IMethodSymbol methodSymbol)

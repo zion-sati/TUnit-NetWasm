@@ -21,6 +21,10 @@
     
     <!-- Caching -->
     <TUnitEnableCaching Condition="'$(TUnitEnableCaching)' == ''">true</TUnitEnableCaching>
+
+    <!-- Source generation mode is visible to the analyzer so catalog-only output
+         can be selected explicitly by the consuming project. -->
+    <TUnitSourceGenerationMode Condition="'$(TUnitSourceGenerationMode)' == ''">Desktop</TUnitSourceGenerationMode>
   </PropertyGroup>
 
   <!-- Make properties visible to source generator -->
@@ -33,6 +37,7 @@
     <CompilerVisibleProperty Include="TUnitMaxErrors" />
     <CompilerVisibleProperty Include="TUnitLogErrors" />
     <CompilerVisibleProperty Include="TUnitEnableCaching" />
+    <CompilerVisibleProperty Include="TUnitSourceGenerationMode" />
   </ItemGroup>
 
   <!-- Analyzer configuration -->
