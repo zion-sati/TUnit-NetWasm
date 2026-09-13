@@ -1,0 +1,56 @@
+<Project>
+  <!-- Keep the upstream shared defaults without changing ordinary source
+       projects outside this explicit packaging directory. -->
+  <Import Project="..\Directory.Build.targets" Condition="Exists('..\Directory.Build.targets')" />
+
+  <ItemDefinitionGroup>
+    <None>
+      <NuGetRecursiveDir></NuGetRecursiveDir>
+      <TargetFramework></TargetFramework>
+      <BuildAction>None</BuildAction>
+    </None>
+  </ItemDefinitionGroup>
+
+  <!-- The stock root props use package-root paths for these files. The
+       SDK-owned canonical writer accepts package-relative file paths, so
+       preserve the same root payload with explicit safe names. -->
+  <ItemGroup>
+    <None Update="$(MSBuildThisFileDirectory)..\README.md"
+          PackagePath="README.md"
+          Condition="'$(NetWasmTUnitUseRepositoryReadme)' != 'false'" />
+    <None Update="$(MSBuildThisFileDirectory)..\assets\logo.jpg" PackagePath="logo.jpg" />
+  </ItemGroup>
+
+  <!-- This boundary opts out of repository-wide CPM. The private Polyfill
+       edge therefore gets its ordinary explicit version; the NetWasm SDK's
+       injected NetWasm.Ref edge remains SDK-owned and untouched. -->
+  <ItemGroup>
+    <PackageReference Update="Polyfill" Version="11.2.0" />
+  </ItemGroup>
+
+  <!-- Polyfill.targets adds this compatibility package for non-.NETCoreApp
+       TFMs. The registered SDK owns the NetWasm reference contract instead;
+       remove only this upstream compatibility edge for its custom build. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <PackageReference Remove="System.Threading.Tasks.Extensions" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <NetWasmTUnitPackTaskAssembly>$([System.IO.Path]::Combine('$(NuGetPackageRoot)', 'netwasm.sdk', '$(NetWasmSdkPackageVersion)', 'tools', 'net10.0', 'any', 'NetWasm.Sdk.Pack.dll'))</NetWasmTUnitPackTaskAssembly>
+  </PropertyGroup>
+
+  <UsingTask TaskName="NetWasm.Sdk.Pack.DeterministicPackageArchiveTask"
+             AssemblyFile="$(NetWasmTUnitPackTaskAssembly)" />
+
+  <Target Name="CanonicalizeNetWasmTUnitPackage"
+          AfterTargets="GenerateNuspec"
+          Condition="'$(IsPackable)' == 'true'">
+    <PropertyGroup>
+      <NetWasmTUnitPackagePath>$([System.IO.Path]::Combine('$(PackageOutputPath)', '$(PackageId).$(PackageVersion).nupkg'))</NetWasmTUnitPackagePath>
+    </PropertyGroup>
+    <DeterministicPackageArchiveTask PackagePath="$(NetWasmTUnitPackagePath)"
+                                     PackageId="$(PackageId)"
+                                     PackageVersion="$(PackageVersion)"
+                                     SourceDateEpoch="$(SOURCE_DATE_EPOCH)" />
+  </Target>
+</Project>

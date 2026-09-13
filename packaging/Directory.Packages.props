@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    Packaging is intentionally an opt-in boundary. Do not import the fork's
+    repository-wide central package graph here: these independently versioned
+    public packages use ordinary explicit PackageReference versions, while the
+    upstream source projects retain stock CPM.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

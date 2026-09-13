@@ -1,0 +1,70 @@
+<Project Sdk="NetWasm.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Directory.Build.props supplies the upstream multi-target default when
+         no framework is known during props evaluation. This opt-in wrapper is
+         deliberately single-target and must clear that inherited list. -->
+    <TargetFrameworks></TargetFrameworks>
+    <AssemblyName>TUnit.Engine</AssemblyName>
+    <RootNamespace>TUnit.Engine</RootNamespace>
+    <PackageId>NetWasm.TUnit.Engine</PackageId>
+    <Version>1.66.27-preview.4</Version>
+    <PackageVersion>1.66.27-preview.4</PackageVersion>
+    <Authors>Zion Sati</Authors>
+    <PackageOwners>Zion Sati</PackageOwners>
+    <PackageProjectUrl>https://github.com/zion-sati/TUnit-NetWasm</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/zion-sati/TUnit-NetWasm</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <Copyright>Copyright (c) Tom Longhurst $(CurrentYear); Copyright (c) 2026 Zion Sati (NetWasm modifications)</Copyright>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NetWasmTUnitUseRepositoryReadme>false</NetWasmTUnitUseRepositoryReadme>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);NU5129</NoWarn>
+    <SetLinkMetadataAutomatically>false</SetLinkMetadataAutomatically>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="..\README.md" Pack="false" />
+    <None Update="NetWasm.TUnit.Engine\README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetWasm.TUnit.Core" Version="[1.66.27-preview.1]" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.4.0]">
+      <ExcludeAssets>Build;Analyzers</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Testing.Platform" Version="[2.4.0]">
+      <ExcludeAssets>Build;Analyzers</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="[2.4.0]">
+      <ExcludeAssets>Build;Analyzers</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != ''">
+    <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
+          PackagePath="build/NetWasm.TUnit.Engine.props" Visible="false" />
+    <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
+          PackagePath="buildTransitive/NetWasm.TUnit.Engine.props" Visible="false" />
+    <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
+          PackagePath="build/net10.0/NetWasm.TUnit.Engine.props" Visible="false" />
+    <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
+          PackagePath="buildTransitive/net10.0/NetWasm.TUnit.Engine.props" Visible="false" />
+    <None Include="$(MSBuildProjectDirectory)\..\src\TUnit.Engine\bin\$(Configuration)\net10.0\TUnit.Engine.dll"
+          Pack="true" PackagePath="lib/net10.0/TUnit.Engine.dll" Visible="false" />
+    <None Include="$(MSBuildProjectDirectory)\..\src\TUnit.Engine\bin\$(Configuration)\net10.0\TUnit.Engine.xml"
+          Pack="true" PackagePath="lib/net10.0/TUnit.Engine.xml" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="BuildForkEngine" BeforeTargets="GenerateNuspec" Condition="'$(NoBuild)' != 'true'">
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\src\TUnit.Engine\TUnit.Engine.csproj"
+             Targets="Rebuild"
+             Properties="TargetFramework=net10.0;Configuration=$(Configuration);BuildProjectReferences=true;GenerateDocumentationFile=true;IsPacking=true" />
+  </Target>
+</Project>

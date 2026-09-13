@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <TUnitImplicitUsings Condition="'$(TUnitImplicitUsings)' == ''">true</TUnitImplicitUsings>
+    <EnableTUnitSourceGeneration Condition="'$(EnableTUnitSourceGeneration)' == ''">true</EnableTUnitSourceGeneration>
+    <TUnitSourceGenerationMode Condition="'$(TUnitSourceGenerationMode)' == ''">ClosedWorldCatalog</TUnitSourceGenerationMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="EnableTUnitSourceGeneration" />
+    <CompilerVisibleProperty Include="TUnitSourceGenerationMode" />
+  </ItemGroup>
+</Project>

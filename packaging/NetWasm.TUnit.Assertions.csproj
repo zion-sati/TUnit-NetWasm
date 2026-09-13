@@ -1,0 +1,111 @@
+<Project Sdk="NetWasm.Sdk">
+  <Import Project="..\eng\Library.props" />
+  <Import Project="..\eng\SourceGenerationDebug.props" />
+  <Import Project="..\src\TUnit.Assertions\TUnit.Assertions.props" />
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;netwasm0.1</TargetFrameworks>
+    <NetWasmTUnitPackageTargetFolder Condition="'$(TargetFramework)' == 'net10.0'">net10.0</NetWasmTUnitPackageTargetFolder>
+    <NetWasmTUnitPackageTargetFolder Condition="'$(TargetFramework)' == 'netwasm0.1'">NetWasm,Version=v0.1</NetWasmTUnitPackageTargetFolder>
+    <AssemblyName>TUnit.Assertions</AssemblyName>
+    <RootNamespace>TUnit.Assertions</RootNamespace>
+    <PackageId>NetWasm.TUnit.Assertions</PackageId>
+    <Version>1.66.27-preview.1</Version>
+    <PackageVersion>1.66.27-preview.1</PackageVersion>
+    <Authors>Zion Sati</Authors>
+    <PackageOwners>Zion Sati</PackageOwners>
+    <PackageProjectUrl>https://github.com/zion-sati/TUnit-NetWasm</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/zion-sati/TUnit-NetWasm</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <Copyright>Copyright (c) Tom Longhurst $(CurrentYear); Copyright (c) 2026 Zion Sati (NetWasm modifications)</Copyright>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NetWasmTUnitUseRepositoryReadme>false</NetWasmTUnitUseRepositoryReadme>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);NU5129</NoWarn>
+    <SetLinkMetadataAutomatically>false</SetLinkMetadataAutomatically>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="..\README.md" Pack="false" />
+    <None Include="NetWasm.TUnit.Assertions\README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="" Condition="'$(NetWasmSdkCustomProfileEnabled)' != 'true'" Visible="false" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="LICENSE" Condition="'$(NetWasmSdkCustomProfileEnabled)' == 'true'" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'netwasm0.1'">
+    <Compile Include="..\src\TUnit.Assertions\**\*.cs"
+             Exclude="..\src\TUnit.Assertions\AssertConditions\Generic\EquatableAssertCondition.cs;..\src\TUnit.Assertions\obj\**\*;..\src\TUnit.Assertions\bin\**\*" />
+    <Compile Include="..\src\TUnit.Engine\PolyfillExtensions.cs" Link="PolyfillExtensions.cs" />
+    <Compile Include="..\src\TUnit.Engine\Verify.cs" Link="Verify.cs" />
+    <!-- The source project uses a project-to-analyzer edge. Keep the fork
+         source graph untouched and consume the already-built host analyzer
+         as an ordinary file input in this opt-in packaging project. -->
+    <Analyzer Include="..\src\TUnit.Assertions.Analyzers\bin\$(Configuration)\netstandard2.0\TUnit.Assertions.Analyzers.dll" />
+    <Analyzer Include="..\src\TUnit.Assertions.Analyzers.CodeFixers\bin\$(Configuration)\netstandard2.0\TUnit.Assertions.Analyzers.CodeFixers.dll" />
+    <Analyzer Include="..\src\TUnit.Assertions.SourceGenerator\bin\$(Configuration)\netstandard2.0\TUnit.Assertions.SourceGenerator.dll" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <Compile Include="NetWasmTarget\GlobalUsings.cs" />
+    <Compile Include="NetWasmTarget\TUnit\Assertions\Assert.cs" />
+    <Compile Include="NetWasmTarget\TUnit\Assertions\BooleanAssertionExtensions.cs" />
+    <Compile Include="NetWasmTarget\TUnit\Assertions\ValueAssertion.cs" />
+    <Compile Include="NetWasmTarget\TUnit\Assertions\ValueAssertionResult.cs" />
+    <Compile Include="..\src\TUnit.Assertions\Exceptions\BaseAssertionException.cs" />
+    <Compile Include="..\src\TUnit.Assertions\Exceptions\AssertionException.cs" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <SignAssembly>false</SignAssembly>
+  </PropertyGroup>
+
+  <!-- Explicit target folders are package-owned boundary files. Restrict
+       them to the outer evaluation so they are emitted once per archive. -->
+  <ItemGroup Condition="'$(TargetFramework)' == ''">
+    <None Include="NetWasmTarget\BuildDispatch\TUnit.Assertions.props" Pack="true"
+          PackagePath="build/NetWasm.TUnit.Assertions.props" Visible="false" />
+    <None Include="NetWasmTarget\BuildDispatch\TUnit.Assertions.targets" Pack="true"
+          PackagePath="build/NetWasm.TUnit.Assertions.targets" Visible="false" />
+    <None Include="NetWasmTarget\BuildDispatch\TUnit.Assertions.props" Pack="true"
+          PackagePath="buildTransitive/NetWasm.TUnit.Assertions.props" Visible="false" />
+    <None Include="NetWasmTarget\BuildDispatch\TUnit.Assertions.targets" Pack="true"
+          PackagePath="buildTransitive/NetWasm.TUnit.Assertions.targets" Visible="false" />
+    <None Include="..\src\TUnit.Assertions\TUnit.Assertions.props" Pack="true"
+          PackagePath="build/net10.0/NetWasm.TUnit.Assertions.props" Visible="false" />
+    <None Include="..\src\TUnit.Assertions\TUnit.Assertions.targets" Pack="true"
+          PackagePath="build/net10.0/NetWasm.TUnit.Assertions.targets" Visible="false" />
+    <None Include="..\src\TUnit.Assertions\TUnit.Assertions.props" Pack="true"
+          PackagePath="buildTransitive/net10.0/NetWasm.TUnit.Assertions.props" Visible="false" />
+    <None Include="..\src\TUnit.Assertions\TUnit.Assertions.targets" Pack="true"
+          PackagePath="buildTransitive/net10.0/NetWasm.TUnit.Assertions.targets" Visible="false" />
+    <None Include="NetWasmTarget\Build\TUnit.Assertions.props" Pack="true"
+          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Assertions.props" Visible="false"
+          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+    <None Include="NetWasmTarget\Build\TUnit.Assertions.targets" Pack="true"
+          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Assertions.targets" Visible="false"
+          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+    <None Include="NetWasmTarget\Build\TUnit.Assertions.props" Pack="true"
+          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.Assertions.props" Visible="false"
+          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+    <None Include="NetWasmTarget\Build\TUnit.Assertions.targets" Pack="true"
+          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.Assertions.targets" Visible="false"
+          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\src\TUnit.Assertions.Analyzers\bin\$(Configuration)\netstandard2.0\TUnit.Assertions.Analyzers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs/TUnit.Assertions.Analyzers.dll" Visible="false" />
+    <None Include="..\src\TUnit.Assertions.Analyzers.CodeFixers\bin\$(Configuration)\netstandard2.0\TUnit.Assertions.Analyzers.CodeFixers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs/TUnit.Assertions.Analyzers.CodeFixers.dll" Visible="false" />
+    <None Include="..\src\TUnit.Assertions.SourceGenerator\bin\$(Configuration)\netstandard2.0\TUnit.Assertions.SourceGenerator.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs/TUnit.Assertions.SourceGenerator.dll" Visible="false" />
+  </ItemGroup>
+
+  <Import Project="..\eng\Library.targets" />
+</Project>

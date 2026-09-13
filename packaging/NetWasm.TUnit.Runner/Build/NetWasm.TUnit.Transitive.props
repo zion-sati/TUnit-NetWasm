@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <OutputType>Exe</OutputType>
+    <NetWasmComponentContract Condition="'$(NetWasmComponentContract)' == ''">async-command</NetWasmComponentContract>
+    <NetWasmTUnitGenerateProgram Condition="'$(NetWasmTUnitGenerateProgram)' == ''">true</NetWasmTUnitGenerateProgram>
+    <NetWasmTUnitProgramSource>$(MSBuildThisFileDirectory)..\..\build\NetWasm,Version=v0.1\NetWasm.TUnit.Program.cs</NetWasmTUnitProgramSource>
+    <StartupObject Condition="'$(NetWasmTUnitGenerateProgram)' == 'true'">NetWasm.TUnit.Generated.NetWasmTestProgram</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(NetWasmTUnitGenerateProgram)' == 'true'">
+    <Compile Remove="$(NetWasmTUnitProgramSource)" />
+    <Compile Include="$(NetWasmTUnitProgramSource)"
+             Link="NetWasm.TUnit.Program.cs" />
+  </ItemGroup>
+</Project>

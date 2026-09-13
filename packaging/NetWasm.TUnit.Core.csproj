@@ -1,0 +1,125 @@
+<Project Sdk="NetWasm.Sdk">
+  <Import Project="..\eng\Library.props" />
+  <Import Project="..\src\TUnit.Core\TUnit.Core.props" />
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;netwasm0.1</TargetFrameworks>
+    <NetWasmTUnitPackageTargetFolder Condition="'$(TargetFramework)' == 'net10.0'">net10.0</NetWasmTUnitPackageTargetFolder>
+    <NetWasmTUnitPackageTargetFolder Condition="'$(TargetFramework)' == 'netwasm0.1'">NetWasm,Version=v0.1</NetWasmTUnitPackageTargetFolder>
+    <AssemblyName>TUnit.Core</AssemblyName>
+    <RootNamespace>TUnit.Core</RootNamespace>
+    <PackageId>NetWasm.TUnit.Core</PackageId>
+    <Version>1.66.27-preview.1</Version>
+    <PackageVersion>1.66.27-preview.1</PackageVersion>
+    <Authors>Zion Sati</Authors>
+    <PackageOwners>Zion Sati</PackageOwners>
+    <PackageProjectUrl>https://github.com/zion-sati/TUnit-NetWasm</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/zion-sati/TUnit-NetWasm</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <Copyright>Copyright (c) Tom Longhurst $(CurrentYear); Copyright (c) 2026 Zion Sati (NetWasm modifications)</Copyright>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NetWasmTUnitUseRepositoryReadme>false</NetWasmTUnitUseRepositoryReadme>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);NU5129</NoWarn>
+    <SetLinkMetadataAutomatically>false</SetLinkMetadataAutomatically>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="..\README.md" Pack="false" />
+    <None Include="NetWasm.TUnit.Core\README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="" Condition="'$(NetWasmSdkCustomProfileEnabled)' != 'true'" Visible="false" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="LICENSE" Condition="'$(NetWasmSdkCustomProfileEnabled)' == 'true'" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'netwasm0.1'">
+    <Compile Include="..\src\TUnit.Core\**\*.cs"
+             Exclude="..\src\TUnit.Core\IClassDataSourceAttribute.cs;..\src\TUnit.Core\Interfaces\INestedClassDataSourceInitializer.cs;..\src\TUnit.Core\obj\**\*;..\src\TUnit.Core\bin\**\*" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <Compile Include="NetWasmTarget\GlobalUsings.cs" />
+    <Compile Include="NetWasmTarget\TUnitCoreAuthoringContracts.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedCompletionPolicy.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedInvocationKind.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedLifecycle.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedTestCase.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedTestCaseRow.cs" />
+    <Compile Include="..\src\TUnit.Core\ITestEntryCatalog.cs" />
+    <Compile Include="..\src\TUnit.Core\SourceGeneratedTestCatalog.cs" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <SignAssembly>false</SignAssembly>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TUnit.Engine" />
+    <InternalsVisibleTo Include="TUnit.UnitTests" />
+    <InternalsVisibleTo Include="TUnit.AspNetCore.Core" />
+    <InternalsVisibleTo Include="TUnit.Logging.Microsoft" />
+    <InternalsVisibleTo Include="TUnit.Aspire" />
+    <InternalsVisibleTo Include="TUnit.Aspire.Tests" />
+    <InternalsVisibleTo Include="TUnit.OpenTelemetry" />
+    <InternalsVisibleTo Include="TUnit.OpenTelemetry.Tests" />
+    <InternalsVisibleTo Include="TUnit.Engine.Tests" />
+    <InternalsVisibleTo Include="TUnit.Playwright" />
+  </ItemGroup>
+
+  <!-- Explicit target folders are package-owned boundary files. Restrict
+       them to the outer evaluation so they are emitted once per archive. -->
+  <ItemGroup Condition="'$(TargetFramework)' == ''">
+    <None Include="NetWasmTarget\BuildDispatch\TUnit.Core.props" Pack="true"
+          PackagePath="build/NetWasm.TUnit.Core.props" Visible="false" />
+    <None Include="NetWasmTarget\BuildDispatch\TUnit.Core.targets" Pack="true"
+          PackagePath="build/NetWasm.TUnit.Core.targets" Visible="false" />
+    <None Include="NetWasmTarget\BuildDispatch\TUnit.Core.props" Pack="true"
+          PackagePath="buildTransitive/NetWasm.TUnit.Core.props" Visible="false" />
+    <None Include="NetWasmTarget\BuildDispatch\TUnit.Core.targets" Pack="true"
+          PackagePath="buildTransitive/NetWasm.TUnit.Core.targets" Visible="false" />
+    <None Include="..\src\TUnit.Core\TUnit.Core.props" Pack="true"
+          PackagePath="build/net10.0/NetWasm.TUnit.Core.props" Visible="false" />
+    <None Include="..\src\TUnit.Core\TUnit.Core.targets" Pack="true"
+          PackagePath="build/net10.0/NetWasm.TUnit.Core.targets" Visible="false" />
+    <None Include="..\src\TUnit.Core\TUnit.Core.props" Pack="true"
+          PackagePath="buildTransitive/net10.0/NetWasm.TUnit.Core.props" Visible="false" />
+    <None Include="..\src\TUnit.Core\TUnit.Core.targets" Pack="true"
+          PackagePath="buildTransitive/net10.0/NetWasm.TUnit.Core.targets" Visible="false" />
+    <None Include="NetWasmTarget\Build\TUnit.Core.props" Pack="true"
+          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Core.props" Visible="false"
+          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+    <None Include="NetWasmTarget\Build\TUnit.Core.targets" Pack="true"
+          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Core.targets" Visible="false"
+          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+    <None Include="NetWasmTarget\Build\TUnit.Core.props" Pack="true"
+          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.Core.props" Visible="false"
+          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+    <None Include="NetWasmTarget\Build\TUnit.Core.targets" Pack="true"
+          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.Core.targets" Visible="false"
+          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\src\TUnit.Analyzers.Roslyn44\bin\$(Configuration)\netstandard2.0\TUnit.Analyzers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/roslyn4.4/cs/TUnit.Analyzers.dll" Visible="false" />
+    <None Include="..\src\TUnit.Analyzers.Roslyn47\bin\$(Configuration)\netstandard2.0\TUnit.Analyzers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/roslyn4.7/cs/TUnit.Analyzers.dll" Visible="false" />
+    <None Include="..\src\TUnit.Analyzers.Roslyn414\bin\$(Configuration)\netstandard2.0\TUnit.Analyzers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/roslyn4.14/cs/TUnit.Analyzers.dll" Visible="false" />
+    <None Include="..\src\TUnit.Analyzers.CodeFixers\bin\$(Configuration)\netstandard2.0\TUnit.Analyzers.CodeFixers.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs/TUnit.Analyzers.CodeFixers.dll" Visible="false" />
+    <None Include="..\src\TUnit.Core.SourceGenerator.Roslyn44\bin\$(Configuration)\netstandard2.0\TUnit.Core.SourceGenerator.dll"
+          Pack="true" PackagePath="analyzers/dotnet/roslyn4.4/cs/TUnit.Core.SourceGenerator.dll" Visible="false" />
+    <None Include="..\src\TUnit.Core.SourceGenerator.Roslyn47\bin\$(Configuration)\netstandard2.0\TUnit.Core.SourceGenerator.dll"
+          Pack="true" PackagePath="analyzers/dotnet/roslyn4.7/cs/TUnit.Core.SourceGenerator.dll" Visible="false" />
+    <None Include="..\src\TUnit.Core.SourceGenerator.Roslyn414\bin\$(Configuration)\netstandard2.0\TUnit.Core.SourceGenerator.dll"
+          Pack="true" PackagePath="analyzers/dotnet/roslyn4.14/cs/TUnit.Core.SourceGenerator.dll" Visible="false" />
+  </ItemGroup>
+
+  <Import Project="..\eng\Library.targets" />
+</Project>

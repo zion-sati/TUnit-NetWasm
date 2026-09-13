@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup Condition="'$(TargetFrameworkIdentifier)' == 'NetWasm' AND '$(TargetFrameworkVersion)' == 'v0.1'">
+    <_NetWasmTUnitVSTestAdapterPath>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../tools/net10.0/any/NetWasm.TUnit.VSTest.Adapter.dll'))</_NetWasmTUnitVSTestAdapterPath>
+    <VSTestTestAdapterPath Condition="'$(VSTestTestAdapterPath)' != ''">$(VSTestTestAdapterPath);$(_NetWasmTUnitVSTestAdapterPath)</VSTestTestAdapterPath>
+    <VSTestTestAdapterPath Condition="'$(VSTestTestAdapterPath)' == ''">$(_NetWasmTUnitVSTestAdapterPath)</VSTestTestAdapterPath>
+  </PropertyGroup>
+
+  <Target Name="NetWasmTUnitDeclareCapabilities"
+          BeforeTargets="NetWasmSdkPrepareLocalDeployment"
+          Condition="'$(TargetFrameworkIdentifier)' == 'NetWasm' AND '$(TargetFrameworkVersion)' == 'v0.1'">
+    <ItemGroup>
+      <NetWasmClockGrant Include="monotonic"
+                         Condition="$([System.String]::Copy(';@(NetWasmClockGrant);').Contains(';monotonic;')) != 'True'" />
+    </ItemGroup>
+  </Target>
+</Project>

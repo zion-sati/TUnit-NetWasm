@@ -1,0 +1,13 @@
+<Project Sdk="NetWasm.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netwasm0.1</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetWasm.TUnit" Version="1.66.27-preview.3" />
+  </ItemGroup>
+</Project>

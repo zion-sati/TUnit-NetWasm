@@ -1,0 +1,26 @@
+<Project>
+  <!-- Preserve the fork's defaults, then isolate the three packaging
+       projects' restore/intermediate graphs before Microsoft.Common.props. -->
+  <Import Project="..\Directory.Build.props" />
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'NetWasm.TUnit.Core'">
+    <BaseIntermediateOutputPath>obj/Core/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>obj/Core/</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'NetWasm.TUnit.Assertions'">
+    <BaseIntermediateOutputPath>obj/Assertions/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>obj/Assertions/</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'NetWasm.TUnit.Engine'">
+    <BaseIntermediateOutputPath>obj/Engine/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>obj/Engine/</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Keep embedded deterministic-build document identities independent of
+         the checkout root while retaining normal public SourceLink metadata. -->
+    <NetWasmTUnitPackageCacheRoot Condition="'$(NUGET_PACKAGES)' != ''">$([System.IO.Path]::GetFullPath('$(NUGET_PACKAGES)'))</NetWasmTUnitPackageCacheRoot>
+    <NetWasmTUnitPackageCacheRoot Condition="'$(NetWasmTUnitPackageCacheRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)obj/packages'))</NetWasmTUnitPackageCacheRoot>
+    <RestorePackagesPath Condition="'$(NUGET_PACKAGES)' == ''">$(NetWasmTUnitPackageCacheRoot)</RestorePackagesPath>
+    <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))=/_/tunit-netwasm,$(NetWasmTUnitPackageCacheRoot)=/_/nuget</PathMap>
+  </PropertyGroup>
+</Project>

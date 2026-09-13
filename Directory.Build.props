@@ -92,4 +92,9 @@
     </PackageReference>
   </ItemGroup>
 
+  <PropertyGroup>
+    <NetWasmTUnitSourcePackageCacheRoot Condition="'$(NUGET_PACKAGES)' != ''">$([System.IO.Path]::GetFullPath('$(NUGET_PACKAGES)'))</NetWasmTUnitSourcePackageCacheRoot>
+    <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
+    <PathMap Condition="'$(NetWasmTUnitSourcePackageCacheRoot)' != ''">$(PathMap),$(NetWasmTUnitSourcePackageCacheRoot)=/_/nuget</PathMap>
+  </PropertyGroup>
 </Project>

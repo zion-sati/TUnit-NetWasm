@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Zion Sati",
+  "classifications": [ "Test", "TUnit", "NetWasm", "Wasm" ],
+  "identity": "NetWasm.TUnit.Templates.TestProject",
+  "name": "NetWasm TUnit Test Project",
+  "shortName": "netwasm-tunit",
+  "sourceName": "NetWasmTUnitTests",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}

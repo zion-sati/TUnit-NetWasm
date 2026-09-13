@@ -1,0 +1,77 @@
+<Project Sdk="NetWasm.Sdk">
+  <PropertyGroup>
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net10.0;netwasm0.1</TargetFrameworks>
+    <AssemblyName>NetWasm.TUnit.Runner</AssemblyName>
+    <RootNamespace>NetWasm.TUnit.Runner</RootNamespace>
+    <PackageId>NetWasm.TUnit</PackageId>
+    <Version>1.66.27-preview.3</Version>
+    <PackageVersion>1.66.27-preview.3</PackageVersion>
+    <Authors>Zion Sati</Authors>
+    <PackageOwners>Zion Sati</PackageOwners>
+    <PackageProjectUrl>https://github.com/zion-sati/TUnit-NetWasm</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/zion-sati/TUnit-NetWasm</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <Copyright>Copyright (c) Tom Longhurst $(CurrentYear); Copyright (c) 2026 Zion Sati (NetWasm modifications)</Copyright>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NetWasmTUnitUseRepositoryReadme>false</NetWasmTUnitUseRepositoryReadme>
+    <PackageIcon></PackageIcon>
+    <IsPackable>true</IsPackable>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Description>NetWasm-targeted TUnit catalog runner and package integration.</Description>
+    <Deterministic>true</Deterministic>
+    <!-- This release-only runner package does not ship symbols. Omitting its
+         unused portable PDB also avoids Roslyn recording physical restored-
+         reference paths in CompilationMetadataReferences debug metadata. -->
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateRepositoryUrlAttribute>false</GenerateRepositoryUrlAttribute>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableTUnitSourceGeneration>false</EnableTUnitSourceGeneration>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectNetWasmTUnitAdapter</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="..\..\README.md" Pack="false" />
+    <None Update="..\..\assets\logo.jpg" Pack="false" />
+    <None Include="README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="LICENSE" Visible="false" />
+    <Compile Include="../NetWasm.TUnit.Runner/**/*.cs"
+             Exclude="../NetWasm.TUnit.Runner/Build/**;../NetWasm.TUnit.Runner/bin/**;../NetWasm.TUnit.Runner/obj/**"
+             Link="%(RecursiveDir)%(Filename)%(Extension)" />
+    <PackageReference Include="NetWasm.TUnit.Core" Version="[1.66.27-preview.1]" />
+    <PackageReference Include="NetWasm.TUnit.Assertions" Version="[1.66.27-preview.1]" />
+    <PackageReference Include="NetWasm.Testing.VSTest" Version="[0.1.0-preview.5]" />
+    <PackageReference Include="NetWasm.TUnit.Engine" Version="[1.66.27-preview.4]"
+                      Condition="'$(TargetFramework)' == 'net10.0'" />
+    <ProjectReference Include="../NetWasm.TUnit.VSTest.Adapter/NetWasm.TUnit.VSTest.Adapter.csproj"
+                      Condition="'$(TargetFramework)' == 'net10.0'"
+                      ReferenceOutputAssembly="false"
+                      BuildReference="true"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == ''">
+    <None Include="../NetWasm.TUnit.Runner/Build/NetWasm.TUnit.props" Pack="true"
+          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.props" Visible="false" />
+    <None Include="../NetWasm.TUnit.Runner/Build/NetWasm.TUnit.Transitive.props" Pack="true"
+          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.props" Visible="false" />
+    <None Include="../NetWasm.TUnit.Runner/Build/NetWasm.TUnit.targets" Pack="true"
+          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.targets" Visible="false" />
+    <None Include="../NetWasm.TUnit.Runner/Build/NetWasm.TUnit.Program.cs" Pack="true"
+          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Program.cs" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="CollectNetWasmTUnitAdapter"
+          Returns="@(TfmSpecificPackageFile)"
+          Condition="'$(TargetFramework)' == 'net10.0'">
+    <ItemGroup>
+      <TfmSpecificPackageFile
+        Include="$(MSBuildProjectDirectory)/../NetWasm.TUnit.VSTest.Adapter/bin/$(Configuration)/net10.0/NetWasm.TUnit.VSTest.Adapter.dll"
+        PackagePath="tools/net10.0/any/NetWasm.TUnit.VSTest.Adapter.dll" />
+    </ItemGroup>
+  </Target>
+</Project>
