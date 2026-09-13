@@ -3,7 +3,7 @@
 Creates an ordinary TUnit test project for the NetWasm target.
 
 ```bash
-dotnet new install NetWasm.TUnit.Templates@1.66.27-preview.2
+dotnet new install NetWasm.TUnit.Templates@1.66.27-rc.1
 dotnet new netwasm-tunit -n MyProject.Tests
 cd MyProject.Tests
 dotnet test

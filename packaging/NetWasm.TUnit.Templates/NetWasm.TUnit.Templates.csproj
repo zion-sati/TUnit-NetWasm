@@ -3,8 +3,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <TargetFrameworks></TargetFrameworks>
     <PackageId>NetWasm.TUnit.Templates</PackageId>
-    <Version>1.66.27-preview.2</Version>
-    <PackageVersion>1.66.27-preview.2</PackageVersion>
+    <Version>1.66.27-rc.1</Version>
+    <PackageVersion>1.66.27-rc.1</PackageVersion>
     <Authors>Zion Sati</Authors>
     <PackageOwners>Zion Sati</PackageOwners>
     <PackageProjectUrl>https://github.com/zion-sati/TUnit-NetWasm</PackageProjectUrl>

@@ -5,8 +5,8 @@
     <AssemblyName>NetWasm.TUnit.Runner</AssemblyName>
     <RootNamespace>NetWasm.TUnit.Runner</RootNamespace>
     <PackageId>NetWasm.TUnit</PackageId>
-    <Version>1.66.27-preview.3</Version>
-    <PackageVersion>1.66.27-preview.3</PackageVersion>
+    <Version>1.66.27-rc.1</Version>
+    <PackageVersion>1.66.27-rc.1</PackageVersion>
     <Authors>Zion Sati</Authors>
     <PackageOwners>Zion Sati</PackageOwners>
     <PackageProjectUrl>https://github.com/zion-sati/TUnit-NetWasm</PackageProjectUrl>
@@ -42,10 +42,10 @@
     <Compile Include="../NetWasm.TUnit.Runner/**/*.cs"
              Exclude="../NetWasm.TUnit.Runner/Build/**;../NetWasm.TUnit.Runner/bin/**;../NetWasm.TUnit.Runner/obj/**"
              Link="%(RecursiveDir)%(Filename)%(Extension)" />
-    <PackageReference Include="NetWasm.TUnit.Core" Version="[1.66.27-preview.1]" />
-    <PackageReference Include="NetWasm.TUnit.Assertions" Version="[1.66.27-preview.1]" />
-    <PackageReference Include="NetWasm.Testing.VSTest" Version="[0.1.0-preview.5]" />
-    <PackageReference Include="NetWasm.TUnit.Engine" Version="[1.66.27-preview.4]"
+    <PackageReference Include="NetWasm.TUnit.Core" Version="[1.66.27-rc.1]" />
+    <PackageReference Include="NetWasm.TUnit.Assertions" Version="[1.66.27-rc.1]" />
+    <PackageReference Include="NetWasm.Testing.VSTest" Version="[0.1.0-rc.1]" />
+    <PackageReference Include="NetWasm.TUnit.Engine" Version="[1.66.27-rc.1]"
                       Condition="'$(TargetFramework)' == 'net10.0'" />
     <ProjectReference Include="../NetWasm.TUnit.VSTest.Adapter/NetWasm.TUnit.VSTest.Adapter.csproj"
                       Condition="'$(TargetFramework)' == 'net10.0'"

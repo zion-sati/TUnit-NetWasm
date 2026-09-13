@@ -8,6 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NetWasm.TUnit" Version="1.66.27-preview.3" />
+    <PackageReference Include="NetWasm.TUnit" Version="1.66.27-rc.1" />
   </ItemGroup>
 </Project>

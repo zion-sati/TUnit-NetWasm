@@ -1,5 +1,9 @@
 ![TUnit](assets/banner.png)
 
+> This fork adds ordinary TUnit support for the NetWasm target. See
+> [TUnit on NetWasm](NETWASM.md) for prerequisites, packages, templates and the
+> standard `dotnet test` workflow. The upstream TUnit documentation follows.
+
 
 # TUnit
 
