@@ -3,7 +3,41 @@
 set -euo pipefail
 
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-OUTPUT_DIR="${1:-${REPOSITORY_ROOT}/artifacts/netwasm-packages}"
+OUTPUT_DIR="${REPOSITORY_ROOT}/artifacts/netwasm-packages"
+RELEASE_VERSION="$(tr -d '[:space:]' < "${REPOSITORY_ROOT}/eng/NetWasm.ReleaseVersion.txt")"
+output_was_set=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output)
+      [[ $# -ge 2 ]] || { echo "--output requires a directory." >&2; exit 2; }
+      OUTPUT_DIR="$2"
+      output_was_set=true
+      shift 2
+      ;;
+    --version)
+      [[ $# -ge 2 ]] || { echo "--version requires a value." >&2; exit 2; }
+      RELEASE_VERSION="$2"
+      shift 2
+      ;;
+    --help|-h)
+      echo "Usage: $0 [--version VERSION] [--output DIRECTORY] [DIRECTORY]"
+      exit 0
+      ;;
+    --*)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+    *)
+      if [[ "${output_was_set}" == true ]]; then
+        echo "Package output was specified more than once." >&2
+        exit 2
+      fi
+      OUTPUT_DIR="$1"
+      output_was_set=true
+      shift
+      ;;
+  esac
+done
 mkdir -p "${OUTPUT_DIR}"
 OUTPUT_DIR="$(cd "${OUTPUT_DIR}" && pwd -P)"
 
@@ -21,10 +55,40 @@ find "${OUTPUT_DIR}" -maxdepth 1 -type f \
 
 build_root="$(mktemp -d "${TMPDIR:-/tmp}/netwasm-tunit-build.XXXXXX")"
 build_root="$(cd "${build_root}" && pwd -P)"
+source_root="${build_root}/source"
 cleanup() {
+  if [[ -d "${source_root}" ]]; then
+    git -C "${REPOSITORY_ROOT}" worktree remove --force "${source_root}" >/dev/null 2>&1 || true
+  fi
   rm -rf "${build_root}"
 }
 trap cleanup EXIT
+
+for command in dotnet git python3; do
+  command -v "${command}" >/dev/null 2>&1 || {
+    echo "Missing required command: ${command}" >&2
+    exit 2
+  }
+done
+
+[[ "$(git -C "${REPOSITORY_ROOT}" rev-parse --is-inside-work-tree 2>/dev/null || true)" == "true" ]] || {
+  echo "Package construction requires a Git checkout." >&2
+  exit 2
+}
+[[ -z "$(git -C "${REPOSITORY_ROOT}" status --porcelain=v1)" ]] || {
+  echo "Package construction requires a clean checkout." >&2
+  exit 2
+}
+
+repository_commit="$(git -C "${REPOSITORY_ROOT}" rev-parse HEAD)"
+git -C "${REPOSITORY_ROOT}" worktree add --quiet --detach "${source_root}" "${repository_commit}"
+python3 "${source_root}/eng/project-release-version.py" \
+  --source-root "${source_root}" \
+  --version "${RELEASE_VERSION}" \
+  --receipt "${OUTPUT_DIR}/NetWasm.TUnit.release-version-projection.json"
+# global.json discovery follows the process working directory, not an absolute
+# project argument. Anchor every dotnet invocation to the detached source.
+cd "${source_root}"
 
 nuget_config="${build_root}/NuGet.Config"
 xml_escape() {
@@ -49,7 +113,7 @@ ci_package_source_xml="$(xml_escape "${NETWASM_CI_PACKAGE_SOURCE:-}")"
 } > "${nuget_config}"
 
 package_cache="${NUGET_PACKAGES:-${build_root}/packages}"
-sdk_version="$(sed -n 's/.*"NetWasm.Sdk": "\([^"]*\)".*/\1/p' "${REPOSITORY_ROOT}/packaging/global.json")"
+sdk_version="$(sed -n 's/.*"NetWasm.Sdk": "\([^"]*\)".*/\1/p' "${source_root}/packaging/global.json")"
 if [[ -z "${sdk_version}" ]]; then
   echo "Unable to read the NetWasm.Sdk version from packaging/global.json." >&2
   exit 1
@@ -81,11 +145,11 @@ build_projects=(
 )
 
 for project in "${build_projects[@]}"; do
-  NUGET_PACKAGES="${package_cache}" dotnet restore "${REPOSITORY_ROOT}/${project}" \
+  NUGET_PACKAGES="${package_cache}" dotnet restore "${source_root}/${project}" \
     --configfile "${nuget_config}" \
     --disable-build-servers \
     --nologo
-  NUGET_PACKAGES="${package_cache}" dotnet build "${REPOSITORY_ROOT}/${project}" \
+  NUGET_PACKAGES="${package_cache}" dotnet build "${source_root}/${project}" \
     -c Release \
     --no-restore \
     --disable-build-servers \
@@ -101,11 +165,11 @@ package_projects=(
 )
 
 for project in "${package_projects[@]}"; do
-  NUGET_PACKAGES="${package_cache}" dotnet restore "${REPOSITORY_ROOT}/${project}" \
+  NUGET_PACKAGES="${package_cache}" dotnet restore "${source_root}/${project}" \
     --configfile "${nuget_config}" \
     --disable-build-servers \
     --nologo
-  NUGET_PACKAGES="${package_cache}" dotnet pack "${REPOSITORY_ROOT}/${project}" \
+  NUGET_PACKAGES="${package_cache}" dotnet pack "${source_root}/${project}" \
     -c Release \
     --no-restore \
     --disable-build-servers \
@@ -119,4 +183,4 @@ if [[ "${package_count}" -ne 5 ]]; then
   exit 1
 fi
 
-echo "Built five NetWasm TUnit packages in ${OUTPUT_DIR}"
+echo "Built five NetWasm TUnit packages at ${RELEASE_VERSION} in ${OUTPUT_DIR}"
