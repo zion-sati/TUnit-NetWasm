@@ -4,7 +4,6 @@
     <TargetFrameworks>net10.0;netwasm0.1</TargetFrameworks>
     <AssemblyName>NetWasm.TUnit.Runner</AssemblyName>
     <RootNamespace>NetWasm.TUnit.Runner</RootNamespace>
-    <Version>1.66.27-rc.1</Version>
     <IsPackable>false</IsPackable>
     <Deterministic>true</Deterministic>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -15,7 +14,7 @@
 
   <ItemGroup>
     <Compile Remove="Build/NetWasm.TUnit.Program.cs" />
-    <PackageReference Include="NetWasm.TUnit.Core" Version="[1.66.27-rc.1]" />
-    <PackageReference Include="NetWasm.TUnit.Assertions" Version="[1.66.27-rc.1]" />
+    <PackageReference Include="NetWasm.TUnit.Core" Version="[$(NetWasmTUnitPackageVersion)]" />
+    <PackageReference Include="NetWasm.TUnit.Assertions" Version="[$(NetWasmTUnitPackageVersion)]" />
   </ItemGroup>
 </Project>

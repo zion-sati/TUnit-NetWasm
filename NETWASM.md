@@ -18,7 +18,7 @@ Install the template package from NuGet.org, create a project, and use the
 normal .NET test command:
 
 ```bash
-dotnet new install NetWasm.TUnit.Templates@1.66.27-rc.1
+dotnet new install NetWasm.TUnit.Templates@0.1.0-rc.1
 dotnet new netwasm-tunit -n MyProject.Tests
 cd MyProject.Tests
 dotnet test
@@ -42,8 +42,10 @@ copy JavaScript or introduce a second execution entry point.
 
 - `NetWasm.TUnit` is the aggregate package for normal test projects.
 - `NetWasm.TUnit.Core`, `NetWasm.TUnit.Assertions` and
-  `NetWasm.TUnit.Engine` are its independently versioned components.
+  `NetWasm.TUnit.Engine` are its component packages.
 - `NetWasm.TUnit.Templates` supplies `dotnet new netwasm-tunit`.
 
-All consumer packages are distributed through NuGet.org and use normal NuGet
-configuration.
+All five packages use one coordinated NetWasm release version. This release is
+based on upstream TUnit `v1.66.27`; that upstream version is source provenance
+and does not dictate the downstream package version. Consumer packages are
+distributed through NuGet.org and use normal NuGet configuration.

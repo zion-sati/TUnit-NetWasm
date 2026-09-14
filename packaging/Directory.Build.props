@@ -3,6 +3,15 @@
        projects' restore/intermediate graphs before Microsoft.Common.props. -->
   <Import Project="..\Directory.Build.props" />
 
+  <PropertyGroup>
+    <!-- NetWasm packages have their own release line. The upstream TUnit
+         version is provenance, not the downstream NuGet package version. -->
+    <NetWasmTUnitPackageVersion>0.1.0-rc.1</NetWasmTUnitPackageVersion>
+    <NetWasmTUnitUpstreamVersion>1.66.27</NetWasmTUnitUpstreamVersion>
+    <Version>$(NetWasmTUnitPackageVersion)</Version>
+    <PackageVersion>$(NetWasmTUnitPackageVersion)</PackageVersion>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(MSBuildProjectName)' == 'NetWasm.TUnit.Core'">
     <BaseIntermediateOutputPath>obj/Core/</BaseIntermediateOutputPath>
     <MSBuildProjectExtensionsPath>obj/Core/</MSBuildProjectExtensionsPath>

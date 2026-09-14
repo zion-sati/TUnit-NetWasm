@@ -8,8 +8,6 @@
     <AssemblyName>TUnit.Engine</AssemblyName>
     <RootNamespace>TUnit.Engine</RootNamespace>
     <PackageId>NetWasm.TUnit.Engine</PackageId>
-    <Version>1.66.27-rc.1</Version>
-    <PackageVersion>1.66.27-rc.1</PackageVersion>
     <Authors>Zion Sati</Authors>
     <PackageOwners>Zion Sati</PackageOwners>
     <PackageProjectUrl>https://github.com/zion-sati/TUnit-NetWasm</PackageProjectUrl>
@@ -35,7 +33,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="NetWasm.TUnit.Core" Version="[1.66.27-rc.1]" />
+    <PackageReference Include="NetWasm.TUnit.Core" Version="[$(NetWasmTUnitPackageVersion)]" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.4.0]">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
