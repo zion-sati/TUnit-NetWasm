@@ -1,0 +1,69 @@
+name: NetWasm CI
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/netwasm-ci.yml
+      - Directory.Build.props
+      - global.json
+      - eng/NetWasm.ReleaseVersion.txt
+      - eng/netwasm-build-packages.sh
+      - eng/netwasm-test.sh
+      - eng/project-release-version.py
+      - eng/test-project-release-version.py
+      - eng/release-manifest.json
+      - eng/release-signers
+      - eng/verify-release-packages.py
+      - eng/tests/test_verify_release_packages.py
+      - packaging/**
+      - src/TUnit.Analyzers/PsvmAnalyzer.cs
+      - src/TUnit.Core.SourceGenerator/**
+      - src/TUnit.Core/Generated*.cs
+      - src/TUnit.Core/ITestEntryCatalog.cs
+      - src/TUnit.Core/ITestEntrySource.cs
+      - src/TUnit.Core/SourceGeneratedTestCatalog.cs
+      - src/TUnit.Core/SourceRegistrar.cs
+      - src/TUnit.Core/TestEntry.cs
+      - src/TUnit.Core/TestEntrySource.cs
+      - src/TUnit.Core/TUnit.Core.props
+      - src/TUnit.Core/build/TUnit.Core.props
+      - tests/TUnit.Analyzers.Tests/PsvmAnalyzerTests.cs
+      - tests/TUnit.Core.SourceGenerator.Tests/**
+      - tests/TUnit.PublicAPI/**
+      - tests/TUnit.TestProject/BasicTests.cs
+      - tests/TUnit.UnitTests/Generated*.cs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netwasm-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+
+      - name: Install Emscripten 6.0.7
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 6.0.7 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.7
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.7
+
+      - name: Build and test NetWasm packages
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          PYTHONDONTWRITEBYTECODE=1 python3 eng/test-project-release-version.py
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest eng/tests/test_verify_release_packages.py
+          bash eng/netwasm-test.sh
