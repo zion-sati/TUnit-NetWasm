@@ -18,11 +18,15 @@ Install the template package from NuGet.org, create a project, and use the
 normal .NET test command:
 
 ```bash
-dotnet new install NetWasm.TUnit.Templates@0.1.0-rc.1
+dotnet new install "NetWasm.TUnit.Templates@*-*"
 dotnet new netwasm-tunit -n MyProject.Tests
 cd MyProject.Tests
 dotnet test
 ```
+
+`@*-*` selects the latest templates, including prereleases. Omit it for stable
+releases only. The generated project pins concrete dependency versions. Choose
+your own test-project name and directory.
 
 The generated project targets only `netwasm0.1` and has one package reference,
 `NetWasm.TUnit`. Discovery, listing, filtering and execution use stock VSTest

@@ -6,7 +6,7 @@
   <PropertyGroup>
     <!-- NetWasm packages have their own release line. The upstream TUnit
          version is provenance, not the downstream NuGet package version. -->
-    <NetWasmTUnitPackageVersion>0.1.0-rc.1</NetWasmTUnitPackageVersion>
+    <NetWasmTUnitPackageVersion>0.1.0-rc.3</NetWasmTUnitPackageVersion>
     <NetWasmTUnitUpstreamVersion>1.66.27</NetWasmTUnitUpstreamVersion>
     <Version>$(NetWasmTUnitPackageVersion)</Version>
     <PackageVersion>$(NetWasmTUnitPackageVersion)</PackageVersion>
