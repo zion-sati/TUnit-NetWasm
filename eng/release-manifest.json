@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "repository": "zion-sati/TUnit-NetWasm",
   "repositoryUrl": "https://github.com/zion-sati/TUnit-NetWasm",
-  "releaseVersion": "0.1.0-rc.2",
-  "releaseTag": "netwasm-v0.1.0-rc.2",
-  "sourceCommit": "b712e271685a7302d508552fe519d05213328300",
+  "releaseVersion": "0.1.0-rc.3",
+  "releaseTag": "netwasm-v0.1.0-rc.3",
+  "sourceCommit": "2c05242576ff6790f52499dc7fef0a7282279a68",
   "packages": [
     "NetWasm.TUnit",
     "NetWasm.TUnit.Assertions",
