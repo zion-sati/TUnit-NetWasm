@@ -42,7 +42,7 @@
              Link="%(RecursiveDir)%(Filename)%(Extension)" />
     <PackageReference Include="NetWasm.TUnit.Core" Version="[$(NetWasmTUnitPackageVersion)]" />
     <PackageReference Include="NetWasm.TUnit.Assertions" Version="[$(NetWasmTUnitPackageVersion)]" />
-    <PackageReference Include="NetWasm.Testing.VSTest" Version="[0.1.0-rc.3]" />
+    <PackageReference Include="NetWasm.Testing.VSTest" Version="[0.1.0]" />
     <PackageReference Include="NetWasm.TUnit.Engine" Version="[$(NetWasmTUnitPackageVersion)]"
                       Condition="'$(TargetFramework)' == 'net10.0'" />
     <ProjectReference Include="../NetWasm.TUnit.VSTest.Adapter/NetWasm.TUnit.VSTest.Adapter.csproj"
