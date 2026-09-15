@@ -1,5 +1,9 @@
 # TUnit on NetWasm
 
+[![NetWasm publication](https://img.shields.io/github/actions/workflow/status/zion-sati/TUnit-NetWasm/netwasm-release.yml?label=NetWasm%20publish&event=release)](https://github.com/zion-sati/TUnit-NetWasm/actions/workflows/netwasm-release.yml)
+[![NuGet](https://img.shields.io/badge/NuGet-NetWasm.TUnit-004880?logo=nuget)](https://www.nuget.org/packages/NetWasm.TUnit)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 This fork runs TUnit on `netwasm0.1`, with a source-generated test catalog,
 sequential runner and VSTest adapter.
 

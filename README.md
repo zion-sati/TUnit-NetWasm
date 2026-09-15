@@ -1,5 +1,9 @@
 ![TUnit](assets/banner.png)
 
+[![NetWasm publication](https://img.shields.io/github/actions/workflow/status/zion-sati/TUnit-NetWasm/netwasm-release.yml?label=NetWasm%20publish&event=release)](https://github.com/zion-sati/TUnit-NetWasm/actions/workflows/netwasm-release.yml)
+[![NuGet](https://img.shields.io/badge/NuGet-NetWasm.TUnit-004880?logo=nuget)](https://www.nuget.org/packages/NetWasm.TUnit)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 > This fork adds ordinary TUnit support for the NetWasm target. See
 > [TUnit on NetWasm](NETWASM.md) for prerequisites, packages, templates and the
 > standard `dotnet test` workflow. The upstream TUnit documentation follows.
