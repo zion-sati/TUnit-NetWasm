@@ -66,9 +66,17 @@ jobs:
           node-version: '24'
           package-manager-cache: false
 
+      - name: Install Emscripten 6.0.7
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 6.0.7 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.7
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.7
+
       - name: Build release packages
         shell: bash
         run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           bash source/eng/netwasm-build-packages.sh \
             --version "${{ steps.release.outputs.version }}" \
             --output "$GITHUB_WORKSPACE/artifacts/packages"
