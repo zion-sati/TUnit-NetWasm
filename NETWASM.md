@@ -1,9 +1,7 @@
 # TUnit on NetWasm
 
-This fork packages TUnit as an ordinary consumer of the public NetWasm SDK,
-runtime, hosting and generic VSTest support. It does not bundle the compiler,
-copy the JavaScript host, introduce a custom runtime identifier or replace the
-standard `dotnet test` command.
+This fork runs TUnit on `netwasm0.1`, with a source-generated test catalog,
+sequential runner and VSTest adapter.
 
 ## Prerequisites
 
@@ -14,9 +12,6 @@ and LLD 24 or newer. The recommended setup installs and activates Emscripten SDK
 
 ## Create and run a test project
 
-Install the template package from NuGet.org, create a project, and use the
-normal .NET test command:
-
 ```bash
 dotnet new install "NetWasm.TUnit.Templates@*-*"
 dotnet new netwasm-tunit -n MyProject.Tests
@@ -25,22 +20,16 @@ dotnet test
 ```
 
 `@*-*` selects the latest templates, including prereleases. Omit it for stable
-releases only. The generated project pins concrete dependency versions. Choose
-your own test-project name and directory.
+releases only.
 
 The generated project targets only `netwasm0.1` and has one package reference,
-`NetWasm.TUnit`. Discovery, listing, filtering and execution use stock VSTest
-commands:
+`NetWasm.TUnit`. List or filter tests:
 
 ```bash
 dotnet test --list-tests
 dotnet test --filter "FullyQualifiedName=MyProject.Tests.Tests.AnswerIsFortyTwo"
 dotnet test --filter "Category=smoke"
 ```
-
-The test package generates the managed `Main` entry point. NetWasm owns the
-reusable JavaScript host modules and local launcher, so the template does not
-copy JavaScript or introduce a second execution entry point.
 
 ## Packages
 
@@ -51,8 +40,7 @@ copy JavaScript or introduce a second execution entry point.
 
 All five packages use one coordinated NetWasm release version. This release is
 based on upstream TUnit `v1.66.27`; that upstream version is source provenance
-and does not dictate the downstream package version. Consumer packages are
-distributed through NuGet.org and use normal NuGet configuration.
+and does not dictate the downstream package version.
 
 ## Maintainer releases
 
