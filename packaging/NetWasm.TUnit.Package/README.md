@@ -8,7 +8,7 @@ runtime provider.
 Add the package to a project created with the NetWasm SDK:
 
 ```bash
-dotnet add package NetWasm.TUnit --prerelease
+dotnet add package NetWasm.TUnit
 ```
 
 Write TUnit tests, then run them:

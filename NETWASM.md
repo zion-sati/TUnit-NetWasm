@@ -13,14 +13,11 @@ and LLD 24 or newer. The recommended setup installs and activates Emscripten SDK
 ## Create and run a test project
 
 ```bash
-dotnet new install "NetWasm.TUnit.Templates@*-*"
+dotnet new install NetWasm.TUnit.Templates
 dotnet new netwasm-tunit -n MyProject.Tests
 cd MyProject.Tests
 dotnet test
 ```
-
-`@*-*` selects the latest templates, including prereleases. Omit it for stable
-releases only.
 
 The generated project targets only `netwasm0.1` and has one package reference,
 `NetWasm.TUnit`. List or filter tests:

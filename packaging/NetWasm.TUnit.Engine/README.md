@@ -5,7 +5,7 @@ NetWasm’s .NET 10 TUnit engine integration for test discovery and execution su
 It is consumed by `NetWasm.TUnit`; install the meta-package for the complete runner experience:
 
 ```bash
-dotnet add package NetWasm.TUnit --prerelease
+dotnet add package NetWasm.TUnit
 ```
 
 The package is part of the [TUnit-NetWasm](https://github.com/zion-sati/TUnit-NetWasm) integration and is MIT licensed.
