@@ -17,6 +17,20 @@ VERSION_PATTERN = re.compile(
     r"(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$"
 )
 VERSION_FILE = Path("eng/NetWasm.ReleaseVersion.txt")
+RELEASE_VERSION_FILES = {
+    Path("eng/NetWasm.ReleaseVersion.txt"),
+    Path("packaging/Directory.Build.props"),
+    Path("packaging/global.json"),
+    Path("packaging/NetWasm.TUnit.Templates/content/NetWasmTUnitTests/global.json"),
+}
+
+
+def projects_release_version(relative_path: Path) -> bool:
+    return relative_path in RELEASE_VERSION_FILES or (
+        relative_path.suffix == ".csproj"
+        and relative_path.parts
+        and relative_path.parts[0] == "packaging"
+    )
 
 
 def run_git(source_root: Path, *arguments: str) -> bytes:
@@ -45,9 +59,16 @@ def project_version(source_root: Path, target_version: str, receipt_path: Path) 
 
     source_bytes = source_version.encode("utf-8")
     target_bytes = target_version.encode("utf-8")
+    version_token = re.compile(
+        rb"(?<![0-9.])" + re.escape(source_bytes) + rb"(?![0-9.])"
+    )
     changed_files: list[dict[str, object]] = []
     remaining_files: list[str] = []
-    files = tracked_files(source_root)
+    files = [
+        path
+        for path in tracked_files(source_root)
+        if projects_release_version(path.relative_to(source_root))
+    ]
 
     for path in files:
         if path.is_symlink():
@@ -56,9 +77,9 @@ def project_version(source_root: Path, target_version: str, receipt_path: Path) 
         if b"\0" in contents:
             continue
 
-        replacement_count = contents.count(source_bytes)
+        replacement_count = len(version_token.findall(contents))
         if replacement_count and source_version != target_version:
-            path.write_bytes(contents.replace(source_bytes, target_bytes))
+            path.write_bytes(version_token.sub(target_bytes, contents))
             changed_files.append(
                 {
                     "path": path.relative_to(source_root).as_posix(),
@@ -70,10 +91,11 @@ def project_version(source_root: Path, target_version: str, receipt_path: Path) 
         if path.is_symlink():
             continue
         contents = path.read_bytes()
+        remaining_contents = contents.replace(target_bytes, b"")
         if (
             source_version != target_version
             and b"\0" not in contents
-            and source_bytes in contents
+            and version_token.search(remaining_contents)
         ):
             remaining_files.append(path.relative_to(source_root).as_posix())
 
