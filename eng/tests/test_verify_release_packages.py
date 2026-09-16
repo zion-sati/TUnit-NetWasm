@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -99,6 +100,30 @@ class VerifyReleasePackagesTests(unittest.TestCase):
         self.assertEqual("PASS", receipt["status"])
         self.assertEqual(1, receipt["packageCount"])
         self.assertEqual(64, len(receipt["packages"][0]["sha256"]))
+
+    def test_accepts_github_release_lightweight_tag_without_signer_policy(self) -> None:
+        source = self.root / "source"
+        source.mkdir()
+        subprocess.run(["git", "init", "-q", source], check=True)
+        subprocess.run(["git", "-C", source, "config", "user.name", "Test"], check=True)
+        subprocess.run(
+            ["git", "-C", source, "config", "user.email", "test@example.invalid"],
+            check=True,
+        )
+        (source / "README.md").write_text("release\n", encoding="utf-8")
+        subprocess.run(["git", "-C", source, "add", "README.md"], check=True)
+        subprocess.run(["git", "-C", source, "commit", "-q", "-m", "Release"], check=True)
+        subprocess.run(
+            ["git", "-C", source, "tag", self.manifest["releaseTag"]], check=True
+        )
+        self.manifest["sourceCommit"] = subprocess.check_output(
+            ["git", "-C", source, "rev-parse", "HEAD"], text=True
+        ).strip()
+
+        MODULE.verify_source(source, self.manifest)
+
+        with self.assertRaisesRegex(ValueError, "annotated signed tag"):
+            MODULE.verify_source(source, self.manifest, self.root / "allowed-signers")
 
 
 if __name__ == "__main__":
