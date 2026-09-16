@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -104,6 +104,7 @@ public class AotConverterGenerator : IIncrementalGenerator
     private void ScanTestParameters(Compilation compilation, List<ConversionInfo> conversionInfos, CancellationToken cancellationToken)
     {
         var typesToScan = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+        var baseTestAttribute = compilation.GetTypeByMetadataName(WellKnownFullyQualifiedClassNames.BaseTestAttribute.WithoutGlobalPrefix);
 
         foreach (var tree in compilation.SyntaxTrees)
         {
@@ -112,19 +113,26 @@ public class AotConverterGenerator : IIncrementalGenerator
             var semanticModel = compilation.GetSemanticModel(tree);
             var root = tree.GetRoot();
 
-            foreach (var nodes in root.DescendantNodes())
+            // Conversions depend on declarations and their attributes, never executable bodies.
+            foreach (var nodes in root.DescendantNodes(static node => node is not
+                         (BaseMethodDeclarationSyntax or BasePropertyDeclarationSyntax or BaseFieldDeclarationSyntax)))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (nodes is MethodDeclarationSyntax method)
                 {
+                    if (method.AttributeLists.Count == 0)
+                    {
+                        continue;
+                    }
+
                     var methodSymbol = semanticModel.GetDeclaredSymbol(method);
                     if (methodSymbol == null)
                     {
                         continue;
                     }
 
-                    if (!IsTestMethod(methodSymbol))
+                    if (!IsTestMethod(methodSymbol, baseTestAttribute))
                     {
                         continue;
                     }
@@ -145,7 +153,7 @@ public class AotConverterGenerator : IIncrementalGenerator
                         continue;
                     }
 
-                    if (!IsTestClass(classSymbol))
+                    if (!IsTestClass(classSymbol, baseTestAttribute))
                     {
                         continue;
                     }
@@ -176,35 +184,42 @@ public class AotConverterGenerator : IIncrementalGenerator
         }
     }
 
-    private static bool IsTestMethod(IMethodSymbol method)
+    private static bool IsTestMethod(IMethodSymbol method, INamedTypeSymbol? baseTestAttribute)
     {
-        return method.GetAttributes().Any(attr =>
+        foreach (var attr in method.GetAttributes())
         {
             var attrClass = attr.AttributeClass;
             if (attrClass == null)
             {
-                return false;
+                continue;
             }
 
             var baseType = attrClass;
             while (baseType != null)
             {
-                if (baseType.ToDisplayString() == WellKnownFullyQualifiedClassNames.BaseTestAttribute.WithoutGlobalPrefix)
+                if (SymbolEqualityComparer.Default.Equals(baseType, baseTestAttribute))
                 {
                     return true;
                 }
                 baseType = baseType.BaseType;
             }
 
-            return false;
-        });
+        }
+
+        return false;
     }
 
-    private bool IsTestClass(INamedTypeSymbol classSymbol)
+    private static bool IsTestClass(INamedTypeSymbol classSymbol, INamedTypeSymbol? baseTestAttribute)
     {
-        return classSymbol.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Any(IsTestMethod);
+        foreach (var member in classSymbol.GetMembers())
+        {
+            if (member is IMethodSymbol method && IsTestMethod(method, baseTestAttribute))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void ScanAttributesForTypes(ImmutableArray<AttributeData> attributes, HashSet<ITypeSymbol> typesToScan)

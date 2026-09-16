@@ -430,8 +430,6 @@ NUGETTESTER_AOT*
 nul
 
 # Claude Code settings
-.claude/settings.local.json
-.claude/agents
 
 # Documentation plans
 docs/plans/
@@ -444,7 +442,6 @@ docs/plans/
 
 # Git worktrees
 .worktrees/
-.claude/worktrees/
 
 # Speckit feature specs
 specs/

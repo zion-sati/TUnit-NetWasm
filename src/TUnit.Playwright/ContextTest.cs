@@ -15,13 +15,8 @@ public class ContextTest : BrowserTest
 
     public IBrowserContext Context { get; private set; } = null!;
 
-    public virtual BrowserNewContextOptions ContextOptions(TestContext testContext)
-    {
-        return TUnitPlaywrightSettings.Default.DefaultBrowserNewContextOptions ?? new BrowserNewContextOptions
-        {
-            Locale = "en-US", ColorScheme = ColorScheme.Light,
-        };
-    }
+    public virtual BrowserNewContextOptions ContextOptions(TestContext testContext) =>
+        PlaywrightContextOptions.ApplyRecording(PlaywrightContextOptions.Defaults(), testContext);
 
     [Before(HookType.Test, "", 0)]
     public async Task ContextSetup(TestContext testContext)

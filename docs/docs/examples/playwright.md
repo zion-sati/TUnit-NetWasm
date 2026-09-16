@@ -123,4 +123,74 @@ public class HeavyBrowserTests : PageTest
 
 This ensures at most 2 tests from this class run at the same time, preventing browser resource exhaustion.
 
+## Recording Videos
+
+Add `[RecordVideo]` to an individual test that inherits from `ContextTest` or `PageTest`, or uses per-test `ContextFixture` or `PageFixture` instances. Recording is enabled only for the selected test methods:
+
+```csharp
+public class LoginPageTests : PageTest
+{
+    [Test]
+    [RecordVideo]
+    public async Task Login_Button_Is_Visible()
+    {
+        await Page.GotoAsync("https://example.com/login");
+
+        var loginButton = Page.Locator("button#login");
+
+        await Assert.That(await loginButton.IsVisibleAsync()).IsTrue();
+    }
+}
+```
+
+Once the test finishes, its recording is renamed to match the test (and attempt, if the test was retried) and attached to the test result, so it's easy to find in CI output alongside a dozen other recordings.
+
+The same attribute works with composition:
+
+```csharp
+public class CheckoutTests
+{
+    [ClassDataSource<PageFixture>]
+    public required PageFixture BrowserPage { get; init; }
+
+    [Test]
+    [RecordVideo]
+    public async Task Checkout_Page_Is_Visible()
+    {
+        await BrowserPage.Page.GotoAsync("https://example.com");
+        await Assert.That(await BrowserPage.Page.Locator("body").IsVisibleAsync()).IsTrue();
+    }
+}
+```
+
+Keep `ContextFixture` and `PageFixture` private to each test with their default `SharedType.None`. The underlying `BrowserFixture` can still be shared. Recording fixtures shared between tests are rejected because their videos cannot be attributed reliably to one test.
+
+With `[RecordVideo]`, each retry gets fresh contexts and pages before setup hooks run. Recordings are finalized after teardown hooks and attached with the attempt number. Multiple page fixtures and pages closed early are supported. Without the attribute, fixtures retain their normal lifetime across retries.
+
+Overrides of `ContextFixture.GetContextOptions()` retain their custom options; recording settings are applied to a copy. If overriding fixture initialization or disposal, call the base implementation to preserve recording and cleanup.
+
+Setting `RecordVideoDir` through `DefaultBrowserNewContextOptions` or `GetContextOptions()` without `[RecordVideo]` enables Playwright recording with the fixture's normal lifetime. These videos keep Playwright's filenames and are not automatically attached to a test result, because shared fixtures can record more than one test. Manage those artifacts yourself, or use `[RecordVideo]` with per-test fixtures for automatic naming and attachment.
+
+Pass constructor arguments to control where recordings are written and the viewport size used while recording:
+
+```csharp
+public class LoginPageTests : PageTest
+{
+    [Test]
+    [RecordVideo(path: "videos", width: 1920, height: 1080)]
+    public async Task Login_Button_Is_Visible()
+    {
+        await Page.GotoAsync("https://example.com/login");
+
+        var loginButton = Page.Locator("button#login");
+
+        await Assert.That(await loginButton.IsVisibleAsync()).IsTrue();
+    }
+}
+```
+
+- `path` - directory recordings are written to, resolved relative to the test application's working directory unless given as an absolute path. Defaults to `"playwright-artifacts"`.
+- `width` - viewport width used for the recording, in pixels. Defaults to `1280`.
+- `height` - viewport height used for the recording, in pixels. Defaults to `1400`.
+
 For full Playwright API details, see the [Playwright for .NET documentation](https://playwright.dev/dotnet/).

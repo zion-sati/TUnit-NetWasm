@@ -15,6 +15,14 @@ Parallel execution is a major contributor to TUnit's speed advantage. See the [p
 
 With no attributes, every test is eligible to run concurrently. The .NET thread pool determines how many execute at once. For most test suites this is the fastest option and requires no configuration.
 
+:::note Async tests and the thread pool
+TUnit uses the standard .NET thread pool and, like most .NET applications, is susceptible to thread pool starvation. Blocking calls or heavy CPU-bound `Task.Run` work can delay async continuations in other tests and cause timed waits to expire.
+
+Use proper async throughout your tests: `await` asynchronous APIs instead of blocking with `.Wait()`, `.Result`, or `.GetAwaiter().GetResult()`. Await asynchronous I/O directly rather than wrapping it in `Task.Run`; `Task.Run` still uses the same thread pool.
+
+For heavy CPU-bound tests, use a shared [`ParallelLimiter<T>`](#parallellimitert--limiting-concurrent-test-count) to reduce concurrency for those tests. The limiter caps concurrent tests that share it, not the number of tasks each test creates.
+:::
+
 ## `[NotInParallel]` — Disabling Parallelism
 
 Add `[NotInParallel]` to prevent a test from running at the same time as other constrained tests.
@@ -130,6 +138,8 @@ Tests not assigned to any group run separately under normal parallel execution r
 `[ParallelLimiter<T>]` caps how many tests sharing the same limiter type can run concurrently. The generic type argument must implement `IParallelLimit` with a public parameterless constructor.
 
 The limit is shared across **all** tests referencing the same `IParallelLimit` type. Tests with a different limiter type or no limiter are unaffected.
+
+An explicit `[ParallelLimiter<T>]` always takes precedence over a limiter set programmatically through `TestRegisteredContext.SetParallelLimiter`, including one supplied by an executor. This precedence does not depend on registration callback order. Without an explicit attribute, the last programmatic limiter applies.
 
 ```csharp
 using TUnit.Core;

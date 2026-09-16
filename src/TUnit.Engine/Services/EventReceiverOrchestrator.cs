@@ -49,6 +49,13 @@ internal sealed class EventReceiverOrchestrator
 
         foreach (var obj in context.GetEligibleEventObjects())
         {
+            // Ordinary attributes, arguments and test instances cannot receive events.
+            // Avoid retaining them in the deduplication set or scanning every receiver interface.
+            if (obj is not IEventReceiver)
+            {
+                continue;
+            }
+
             // Use single TryAdd operation instead of Contains + Add
             if (!_initializedObjects.Add(obj))
             {
@@ -88,7 +95,7 @@ internal sealed class EventReceiverOrchestrator
     {
         var classInstance = context.Metadata.TestDetails.ClassInstance;
         Debug.Assert(classInstance is not null, "RegisterClassInstanceReceiver should only be called after ClassInstance is assigned.");
-        if (classInstance is null)
+        if (classInstance is not IEventReceiver)
         {
             return;
         }
@@ -123,6 +130,13 @@ internal sealed class EventReceiverOrchestrator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask InvokeTestStartEventReceiversAsync(TestContext context, CancellationToken cancellationToken, EventReceiverStage? stage = null)
     {
+#if !NET
+        // Older targets have no Stage property: every receiver belongs to the late stage.
+        if (stage == EventReceiverStage.Early)
+        {
+            return default;
+        }
+#endif
         // Fast path - no allocation if no receivers
         if (!_registry.HasTestStartReceivers())
         {
@@ -171,6 +185,12 @@ internal sealed class EventReceiverOrchestrator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask<IReadOnlyList<Exception>> InvokeTestEndEventReceiversAsync(TestContext context, CancellationToken cancellationToken, EventReceiverStage? stage = null)
     {
+#if !NET
+        if (stage == EventReceiverStage.Early)
+        {
+            return new ValueTask<IReadOnlyList<Exception>>([]);
+        }
+#endif
         if (!_registry.HasTestEndReceivers())
         {
             return new ValueTask<IReadOnlyList<Exception>>([]);

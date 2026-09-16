@@ -9,9 +9,9 @@ sidebar_position: 3
 > Full workflow: create → setup → invoke → verify — comparing **TUnit.Mocks** (source-generated) against runtime proxy-based mocking libraries.
 
 :::info Last Updated
-This benchmark was automatically generated on **2026-09-07** from the latest CI run.
+This benchmark was automatically generated on **2026-09-16** from the latest CI run.
 
-**Environment:** Ubuntu Latest • .NET SDK 10.0.400
+**Environment:** Ubuntu Latest • .NET SDK 10.0.401
 :::
 
 ## 📊 Results
@@ -20,12 +20,12 @@ Full workflow: create → setup → invoke → verify:
 
 | Library | Mean | Error | StdDev | Allocated |
 |---------|------|-------|--------|-----------|
-| **TUnit.Mocks** | 1.810 μs | 0.0132 μs | 0.0117 μs | 6.23 KB |
-| Imposter | 2.670 μs | 0.0524 μs | 0.0846 μs | 15.71 KB |
-| Mockolate | 1.828 μs | 0.0331 μs | 0.0354 μs | 7.36 KB |
-| Moq | 412.277 μs | 3.0604 μs | 2.7130 μs | 36.55 KB |
-| NSubstitute | 19.485 μs | 0.2501 μs | 0.2340 μs | 26.89 KB |
-| FakeItEasy | 17.841 μs | 0.3499 μs | 0.5129 μs | 25.52 KB |
+| **TUnit.Mocks** | 1.833 μs | 0.0343 μs | 0.0491 μs | 6.23 KB |
+| Imposter | 2.329 μs | 0.0554 μs | 0.1634 μs | 15.71 KB |
+| Mockolate | 1.489 μs | 0.0289 μs | 0.0405 μs | 7.36 KB |
+| Moq | 172.265 μs | 3.0849 μs | 2.8856 μs | 36.19 KB |
+| NSubstitute | 17.380 μs | 0.3141 μs | 0.4084 μs | 26.72 KB |
+| FakeItEasy | 13.204 μs | 0.2516 μs | 0.2471 μs | 25.51 KB |
 
 ```mermaid
 %%{init: {
@@ -51,8 +51,8 @@ Full workflow: create → setup → invoke → verify:
 xychart-beta
   title "CombinedWorkflow Performance Comparison"
   x-axis ["TUnit.Mocks", "Imposter", "Mockolate", "Moq", "NSubstitute", "FakeItEasy"]
-  y-axis "Time (μs)" 0 --> 495
-  bar [1.81, 2.67, 1.828, 412.277, 19.485, 17.841]
+  y-axis "Time (μs)" 0 --> 207
+  bar [1.833, 2.329, 1.489, 172.265, 17.38, 13.204]
 ```
 
 ## 🎯 Key Insights
@@ -65,4 +65,4 @@ This benchmark compares **TUnit.Mocks** (source-generated) against runtime proxy
 View the [mock benchmarks overview](/docs/benchmarks/mocks) for methodology details and environment information.
 :::
 
-*Last generated: 2026-09-07T02:34:20.667Z*
+*Last generated: 2026-09-16T02:32:43.042Z*

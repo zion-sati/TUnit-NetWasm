@@ -6,6 +6,7 @@ using Microsoft.Testing.Platform.Extensions.Messages;
 using TUnit.Core;
 using TUnit.Core.Extensions;
 using TUnit.Engine.Capabilities;
+using TUnit.Engine.Exceptions;
 using TUnit.Engine.Helpers;
 using TUnit.Engine.Reporters;
 #pragma warning disable TPEXP
@@ -17,10 +18,13 @@ internal static class TestExtensions
     private static bool? _cachedIsTrxEnabled;
 
     private static readonly ConcurrentDictionary<Assembly, string> AssemblyFullNameCache = new();
-    private static readonly ConcurrentDictionary<string, CachedTestNodeProperties> TestNodePropertiesCache = new();
+    // Changing the scope invalidates entries even when callers retain a context
+    // across service-provider resets, without a global per-test dictionary.
+    private static object _reportingCacheScope = new();
 
     private sealed class CachedTestNodeProperties
     {
+        public required object Scope { get; init; }
         public required TestFileLocationProperty FileLocation { get; init; }
         public required TestMethodIdentifierProperty MethodIdentifier { get; init; }
         public TestMetadataProperty[]? CategoryProperties { get; init; }
@@ -32,7 +36,8 @@ internal static class TestExtensions
     internal static void ClearCaches()
     {
         AssemblyFullNameCache.Clear();
-        TestNodePropertiesCache.Clear();
+        Volatile.Write(ref _reportingCacheScope, new object());
+        TestContext.ClearReportingCaches();
         _cachedIsTrxEnabled = null;
     }
 
@@ -43,9 +48,24 @@ internal static class TestExtensions
 
     private static CachedTestNodeProperties GetOrCreateCachedProperties(TestContext testContext)
     {
-        var testId = testContext.Metadata.TestDetails.TestId;
+        var scope = Volatile.Read(ref _reportingCacheScope);
+        if (Volatile.Read(ref testContext.CachedReportingProperties) is CachedTestNodeProperties cached &&
+            ReferenceEquals(cached.Scope, scope))
+        {
+            return cached;
+        }
 
-        return TestNodePropertiesCache.GetOrAdd(testId, static (_, testContext) =>
+        var properties = CreateCachedProperties(testContext, scope);
+        Volatile.Write(ref testContext.CachedReportingProperties, properties);
+        // A reset may have swept this context while its properties were being
+        // created. Do not retain an entry published after that sweep.
+        if (!ReferenceEquals(scope, Volatile.Read(ref _reportingCacheScope)))
+        {
+            Interlocked.CompareExchange(ref testContext.CachedReportingProperties, null, properties);
+        }
+        return properties;
+
+        static CachedTestNodeProperties CreateCachedProperties(TestContext testContext, object scope)
         {
             var testDetails = testContext.Metadata.TestDetails;
 
@@ -106,6 +126,7 @@ internal static class TestExtensions
 
             return new CachedTestNodeProperties
             {
+                Scope = scope,
                 FileLocation = fileLocation,
                 MethodIdentifier = methodIdentifier,
                 CategoryProperties = categoryProps,
@@ -113,7 +134,7 @@ internal static class TestExtensions
                 TrxFullyQualifiedTypeName = trxTypeName,
                 TrxCategories = trxCategories
             };
-        }, testContext);
+        }
     }
 
     internal static TestNode ToTestNode(this TestContext testContext, TestNodeStateProperty stateProperty)
@@ -196,7 +217,14 @@ internal static class TestExtensions
 
                 if (exception is not null)
                 {
-                    propertyBag.Add(new TrxExceptionProperty(exception.Message, exception.StackTrace));
+                    // A TRX ErrorInfo only carries a message and a stack trace, so fold the inner-exception
+                    // chain into both (#1327). IDE clients already receive a FlattenedException (no inner
+                    // chain, so this is a no-op); console clients still hand over the full chain here.
+                    var folded = FlattenedException.Wrap(exception);
+
+                    propertyBag.Add(new TrxExceptionProperty(
+                        folded.Message,
+                        string.IsNullOrEmpty(folded.StackTrace) ? null : folded.StackTrace));
                 }
                 else if (!string.IsNullOrEmpty(explanation))
                 {
@@ -225,6 +253,13 @@ internal static class TestExtensions
             DisplayName = testContext.GetDisplayName(),
             Properties = propertyBag
         };
+
+        if (isFinalState)
+        {
+            // Placeholders and failures before execution do not reach the
+            // coordinator's registry cleanup. The node owns its property snapshot.
+            Volatile.Write(ref testContext.CachedReportingProperties, null);
+        }
 
         return testNode;
     }
