@@ -11,9 +11,11 @@ on:
       - eng/netwasm-test.sh
       - eng/project-release-version.py
       - eng/test-project-release-version.py
+      - eng/resolve-release.py
       - eng/release-manifest.json
       - eng/release-signers
       - eng/verify-release-packages.py
+      - eng/tests/test_resolve_release.py
       - eng/tests/test_verify_release_packages.py
       - packaging/**
       - src/TUnit.Analyzers/PsvmAnalyzer.cs
@@ -71,5 +73,7 @@ jobs:
         run: |
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           PYTHONDONTWRITEBYTECODE=1 python3 eng/test-project-release-version.py
-          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest eng/tests/test_verify_release_packages.py
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
+            eng/tests/test_resolve_release.py \
+            eng/tests/test_verify_release_packages.py
           bash eng/netwasm-test.sh
