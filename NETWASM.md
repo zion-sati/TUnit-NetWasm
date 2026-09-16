@@ -45,7 +45,7 @@ dotnet test --filter "Category=smoke"
 - `NetWasm.TUnit.Templates` supplies `dotnet new netwasm-tunit`.
 
 All five packages use one coordinated NetWasm release version. This release is
-based on upstream TUnit `v1.66.27`; that upstream version is source provenance
+based on upstream TUnit `v1.68.4`; that upstream version is source provenance
 and does not dictate the downstream package version.
 
 ## Maintainer releases
