@@ -4,6 +4,7 @@ set -euo pipefail
 
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PACKAGE_DIR="${1:-${REPOSITORY_ROOT}/artifacts/netwasm-packages}"
+TEST_VERSION="${NETWASM_TUNIT_TEST_VERSION:-$(tr -d '[:space:]' < "${REPOSITORY_ROOT}/eng/NetWasm.ReleaseVersion.txt")}"
 mkdir -p "${PACKAGE_DIR}"
 PACKAGE_DIR="$(cd "${PACKAGE_DIR}" && pwd -P)"
 
@@ -32,7 +33,9 @@ assert_vstest_pass_summary() {
     }
 }
 
-"${REPOSITORY_ROOT}/eng/netwasm-build-packages.sh" "${PACKAGE_DIR}"
+"${REPOSITORY_ROOT}/eng/netwasm-build-packages.sh" \
+  --version "${TEST_VERSION}" \
+  --output "${PACKAGE_DIR}"
 
 nuget_config="${test_root}/NuGet.Config"
 xml_escape() {
@@ -65,10 +68,24 @@ dotnet run --project "${runner_tests}" \
   --disable-build-servers \
   -- --minimum-expected-tests 52
 
+desktop_package_tests="${REPOSITORY_ROOT}/packaging/NetWasm.TUnit.Desktop.Package.Tests/NetWasm.TUnit.Desktop.Package.Tests.csproj"
+dotnet restore "${desktop_package_tests}" \
+  --configfile "${nuget_config}" \
+  --disable-build-servers \
+  --nologo \
+  -p:NetWasmTUnitPackageVersion="${TEST_VERSION}"
+dotnet run --project "${desktop_package_tests}" \
+  -c Release \
+  --no-restore \
+  --no-launch-profile \
+  --disable-build-servers \
+  -p:NetWasmTUnitPackageVersion="${TEST_VERSION}"
+
 package_tests="NetWasm.TUnit.Package.Tests/NetWasm.TUnit.Package.Tests.csproj"
 (
   cd "${REPOSITORY_ROOT}/packaging"
-  dotnet restore "${package_tests}" --configfile "${nuget_config}" --disable-build-servers --nologo
+  dotnet restore "${package_tests}" --configfile "${nuget_config}" --disable-build-servers --nologo \
+    -p:NetWasmTUnitPackageVersion="${TEST_VERSION}"
   dotnet test "${package_tests}" -c Release --no-restore --disable-build-servers --nologo |
     tee "${test_root}/package-run.log"
   assert_vstest_pass_summary "${test_root}/package-run.log" 2

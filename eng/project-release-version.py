@@ -20,17 +20,12 @@ VERSION_FILE = Path("eng/NetWasm.ReleaseVersion.txt")
 RELEASE_VERSION_FILES = {
     Path("eng/NetWasm.ReleaseVersion.txt"),
     Path("packaging/Directory.Build.props"),
-    Path("packaging/global.json"),
-    Path("packaging/NetWasm.TUnit.Templates/content/NetWasmTUnitTests/global.json"),
+    Path("packaging/NetWasm.TUnit.Templates/content/NetWasmTUnitTests/NetWasmTUnitTests.csproj"),
 }
 
 
 def projects_release_version(relative_path: Path) -> bool:
-    return relative_path in RELEASE_VERSION_FILES or (
-        relative_path.suffix == ".csproj"
-        and relative_path.parts
-        and relative_path.parts[0] == "packaging"
-    )
+    return relative_path in RELEASE_VERSION_FILES
 
 
 def run_git(source_root: Path, *arguments: str) -> bytes:

@@ -10,6 +10,10 @@
     <NetWasmTUnitUpstreamVersion>1.66.27</NetWasmTUnitUpstreamVersion>
     <Version>$(NetWasmTUnitPackageVersion)</Version>
     <PackageVersion>$(NetWasmTUnitPackageVersion)</PackageVersion>
+    <!-- TUnit's strong-named desktop assemblies intentionally retain the
+         upstream 1.0 assembly identity across package releases. TUnit.Engine
+         is built from the upstream project and references this identity. -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(MSBuildProjectName)' == 'NetWasm.TUnit.Core'">

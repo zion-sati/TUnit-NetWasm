@@ -29,10 +29,11 @@ def resolve_manifest(
         "releaseVersion",
         "releaseTag",
         "sourceCommit",
+        "dependencyVersions",
         "packages",
     }
-    if set(manifest) != required or manifest["schemaVersion"] != 1:
-        raise ValueError("Release manifest does not match schema version 1.")
+    if set(manifest) != required or manifest["schemaVersion"] != 2:
+        raise ValueError("Release manifest does not match schema version 2.")
     if not tag_prefix or not tag.startswith(tag_prefix):
         raise ValueError(f"Release tag must start with {tag_prefix!r}.")
     version = tag[len(tag_prefix) :]
@@ -47,6 +48,15 @@ def resolve_manifest(
         raise ValueError("Release manifest packages must be a non-empty string list.")
     if len(packages) != len(set(packages)):
         raise ValueError("Release manifest contains duplicate package IDs.")
+    dependency_versions = manifest["dependencyVersions"]
+    if not isinstance(dependency_versions, dict) or any(
+        not isinstance(package, str)
+        or not package
+        or not isinstance(version, str)
+        or SEMVER.fullmatch(version) is None
+        for package, version in dependency_versions.items()
+    ):
+        raise ValueError("Release manifest dependencyVersions must map package IDs to versions.")
 
     resolved = dict(manifest)
     resolved.update(

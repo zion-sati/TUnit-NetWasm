@@ -63,6 +63,6 @@
   <Target Name="BuildForkEngine" BeforeTargets="GenerateNuspec" Condition="'$(NoBuild)' != 'true'">
     <MSBuild Projects="$(MSBuildProjectDirectory)\..\src\TUnit.Engine\TUnit.Engine.csproj"
              Targets="Rebuild"
-             Properties="TargetFramework=net10.0;Configuration=$(Configuration);BuildProjectReferences=true;GenerateDocumentationFile=true;IsPacking=true" />
+             Properties="TargetFramework=net10.0;Configuration=$(Configuration);AssemblyVersion=$(AssemblyVersion);BuildProjectReferences=true;GenerateDocumentationFile=true;IsPacking=true" />
   </Target>
 </Project>

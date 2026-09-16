@@ -93,13 +93,13 @@ jobs:
           "$RUNNER_TEMP/emsdk/emsdk" install 6.0.7
           "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.7
 
-      - name: Build release packages
+      - name: Build and test release packages
         shell: bash
         run: |
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
-          bash source/eng/netwasm-build-packages.sh \
-            --version "${{ steps.release.outputs.version }}" \
-            --output "$GITHUB_WORKSPACE/artifacts/packages"
+          NETWASM_TUNIT_TEST_VERSION="${{ steps.release.outputs.version }}" \
+            bash source/eng/netwasm-test.sh \
+              "$GITHUB_WORKSPACE/artifacts/packages"
 
       - name: Validate release packages
         shell: bash

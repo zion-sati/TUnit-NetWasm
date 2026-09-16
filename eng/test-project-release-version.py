@@ -28,12 +28,13 @@ class ProjectReleaseVersionTests(unittest.TestCase):
             check=True,
         )
         (self.root / "eng").mkdir()
-        (self.root / "packaging/Example").mkdir(parents=True)
+        (self.root / "packaging/NetWasm.TUnit.Templates/content/NetWasmTUnitTests").mkdir(parents=True)
         (self.root / "eng/NetWasm.ReleaseVersion.txt").write_text("0.1.0\n")
         (self.root / "packaging/Directory.Build.props").write_text(
-            "Package=0.1.0\nProtocol=M11.2.3\nAssembly=0.1.0.4\n"
+            "Package=0.1.0\nNetWasm=0.2.0\nProtocol=M11.2.3\nAssembly=1.0.0.0\n"
         )
-        (self.root / "packaging/Example/Example.csproj").write_text("Dependency=0.1.0\n")
+        (self.root / "packaging/NetWasm.TUnit.Templates/content/NetWasmTUnitTests/NetWasmTUnitTests.csproj").write_text("TUnit=0.1.0\n")
+        (self.root / "packaging/global.json").write_text('{"msbuild-sdks":{"NetWasm.Sdk":"0.2.0"}}\n')
         (self.root / "docs.txt").write_text("Historical release 0.1.0\n")
         subprocess.run(["git", "-C", str(self.root), "add", "."], check=True)
         subprocess.run(["git", "-C", str(self.root), "commit", "--quiet", "-m", "fixture"], check=True)
@@ -46,7 +47,9 @@ class ProjectReleaseVersionTests(unittest.TestCase):
 
         self.assertEqual("0.2.0-preview.1\n", (self.root / "eng/NetWasm.ReleaseVersion.txt").read_text())
         self.assertIn("Package=0.2.0-preview.1", (self.root / "packaging/Directory.Build.props").read_text())
-        self.assertIn("Dependency=0.2.0-preview.1", (self.root / "packaging/Example/Example.csproj").read_text())
+        template = self.root / "packaging/NetWasm.TUnit.Templates/content/NetWasmTUnitTests/NetWasmTUnitTests.csproj"
+        self.assertIn("TUnit=0.2.0-preview.1", template.read_text())
+        self.assertIn('"NetWasm.Sdk":"0.2.0"', (self.root / "packaging/global.json").read_text())
         self.assertEqual("Historical release 0.1.0\n", (self.root / "docs.txt").read_text())
         self.assertEqual(3, receipt["replacementCount"])
 
@@ -55,7 +58,8 @@ class ProjectReleaseVersionTests(unittest.TestCase):
 
         props = (self.root / "packaging/Directory.Build.props").read_text()
         self.assertIn("Protocol=M11.2.3", props)
-        self.assertIn("Assembly=0.1.0.4", props)
+        self.assertIn("Assembly=1.0.0.0", props)
+        self.assertIn("NetWasm=0.2.0", props)
 
     def test_rejects_invalid_version(self) -> None:
         with self.assertRaisesRegex(ValueError, "Invalid release version"):

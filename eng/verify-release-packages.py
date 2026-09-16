@@ -24,11 +24,12 @@ def read_manifest(path: Path) -> dict[str, object]:
         "releaseVersion",
         "releaseTag",
         "sourceCommit",
+        "dependencyVersions",
         "packages",
     }
     if set(manifest) != required:
-        raise ValueError("Release manifest fields do not match schema version 1.")
-    if manifest["schemaVersion"] != 1:
+        raise ValueError("Release manifest fields do not match schema version 2.")
+    if manifest["schemaVersion"] != 2:
         raise ValueError("Unsupported release manifest schema.")
     packages = manifest["packages"]
     if not isinstance(packages, list) or not packages or any(
@@ -37,6 +38,15 @@ def read_manifest(path: Path) -> dict[str, object]:
         raise ValueError("Release manifest packages must be a non-empty string list.")
     if len(packages) != len(set(packages)):
         raise ValueError("Release manifest contains duplicate package IDs.")
+    dependency_versions = manifest["dependencyVersions"]
+    if not isinstance(dependency_versions, dict) or any(
+        not isinstance(package, str)
+        or not package
+        or not isinstance(version, str)
+        or not version
+        for package, version in dependency_versions.items()
+    ):
+        raise ValueError("Release manifest dependencyVersions must map package IDs to versions.")
     return manifest
 
 
@@ -118,6 +128,8 @@ def inspect_package(
     package_id = text(metadata, "id")
     version = text(metadata, "version")
     expected_version = str(manifest["releaseVersion"])
+    release_package_ids = set(manifest["packages"])
+    dependency_versions = manifest["dependencyVersions"]
     expected_file_name = f"{package_id}.{expected_version}.nupkg"
     if version != expected_version:
         raise ValueError(f"{package_id} has unexpected version {version}.")
@@ -139,10 +151,18 @@ def inspect_package(
             dependency_id = dependency.get("id", "")
             dependency_version = dependency.get("version", "")
             dependencies.append({"id": dependency_id, "version": dependency_version})
-            if dependency_id.startswith("NetWasm.") and dependency_version != f"[{expected_version}]":
+            if dependency_id in release_package_ids:
+                required_version = expected_version
+            elif dependency_id in dependency_versions:
+                required_version = str(dependency_versions[dependency_id])
+            elif dependency_id.startswith("NetWasm."):
+                raise ValueError(f"{package_id} has unapproved NetWasm dependency {dependency_id}.")
+            else:
+                continue
+            if dependency_version != f"[{required_version}]":
                 raise ValueError(
                     f"{package_id} dependency {dependency_id} is not pinned to "
-                    f"[{expected_version}]."
+                    f"[{required_version}]."
                 )
 
     return {

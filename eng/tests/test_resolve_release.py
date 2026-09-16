@@ -15,12 +15,13 @@ SPEC.loader.exec_module(MODULE)
 class ResolveReleaseTests(unittest.TestCase):
     def setUp(self) -> None:
         self.manifest = {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "repository": "zion-sati/Example",
             "repositoryUrl": "https://github.com/zion-sati/Example",
             "releaseVersion": "0.1.0",
             "releaseTag": "v0.1.0",
             "sourceCommit": "a" * 40,
+            "dependencyVersions": {"NetWasm.Dependency": "0.2.0"},
             "packages": ["NetWasm.Example"],
         }
 

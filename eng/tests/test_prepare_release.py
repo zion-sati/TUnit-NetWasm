@@ -17,10 +17,11 @@ class PrepareReleaseTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         (self.root / "eng").mkdir()
-        self.manifest = {"schemaVersion": 1, "repository": "zion-sati/NetWasm",
+        self.manifest = {"schemaVersion": 2, "repository": "zion-sati/NetWasm",
                          "repositoryUrl": "https://github.com/zion-sati/netwasm",
                          "releaseVersion": "0.1.0-rc.1", "releaseTag": "v0.1.0-rc.1",
-                         "sourceCommit": "previous", "packages": ["NetWasm.Sdk"]}
+                         "sourceCommit": "previous", "dependencyVersions": {},
+                         "packages": ["NetWasm.Sdk"]}
         self.write_manifest()
         (self.root / "eng/release-signers").write_text("public@example.com ssh-ed25519 PUBLIC_KEY\n")
         (self.root / "eng/NetWasm.ReleaseVersion.txt").write_text("0.1.0-rc.1\n")
@@ -122,10 +123,11 @@ class PrepareReleaseGitIntegrationTests(unittest.TestCase):
             (root / "eng/release-signers").write_text("public@example.com " + key.with_suffix(".pub").read_text())
             (root / "eng/NetWasm.ReleaseVersion.txt").write_text("0.1.0-rc.1\n")
             (root / "global.json").write_text(json.dumps({"msbuild-sdks": {"NetWasm.Sdk": "0.1.0-rc.1"}}))
-            manifest = {"schemaVersion": 1, "repository": "zion-sati/NetWasm",
+            manifest = {"schemaVersion": 2, "repository": "zion-sati/NetWasm",
                         "repositoryUrl": "https://github.com/zion-sati/netwasm",
                         "releaseVersion": "0.1.0-rc.1", "releaseTag": "v0.1.0-rc.1",
-                        "sourceCommit": "initial", "packages": ["NetWasm.Sdk"]}
+                        "sourceCommit": "initial", "dependencyVersions": {},
+                        "packages": ["NetWasm.Sdk"]}
             (root / "eng/release-manifest.json").write_text(json.dumps(manifest))
             actual_git = release.git
             actual_git(root, "init", "-b", "main")
