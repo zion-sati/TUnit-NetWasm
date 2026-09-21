@@ -22,6 +22,29 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
 mkdir -p "${DOTNET_CLI_HOME}" "${NUGET_PACKAGES}" "${NUGET_HTTP_CACHE_PATH}"
 
+if [[ -n "${NETWASM_TUNIT_EXPECT_DOTNET_ROOT:-}" ]]; then
+  isolated_root="$(cd "${NETWASM_TUNIT_EXPECT_DOTNET_ROOT}" && pwd -P)"
+  expected_dotnet="${isolated_root}/dotnet"
+  [[ -f "${expected_dotnet}" ]] || expected_dotnet="${isolated_root}/dotnet.exe"
+  expected_dotnet="$(realpath "${expected_dotnet}")"
+  actual_dotnet="$(realpath "$(command -v dotnet)")"
+  [[ "${actual_dotnet}" == "${expected_dotnet}" ]] || {
+    echo "TUnit qualification did not select the isolated dotnet host." >&2
+    exit 1
+  }
+  [[ "$(dotnet --list-sdks | wc -l | tr -d ' ')" == 1 ]] || {
+    echo "TUnit qualification dotnet root contains more than one SDK." >&2
+    exit 1
+  }
+  expected_major="${NETWASM_TUNIT_EXPECT_SDK_VERSION%%.*}"
+  if dotnet --list-runtimes | awk '{ print $2 }' | cut -d. -f1 | grep -Fvxq "${expected_major}"; then
+    echo "TUnit qualification dotnet root contains another runtime major." >&2
+    exit 1
+  fi
+  dotnet --list-sdks
+  dotnet --list-runtimes
+fi
+
 assert_vstest_pass_summary() {
   local log_file="$1"
   local expected_count="$2"
@@ -146,6 +169,17 @@ dotnet new netwasm-tunit \
     --disable-build-servers \
     --nologo | tee "${test_root}/template-run.log"
   assert_vstest_pass_summary "${test_root}/template-run.log" 1
+  dotnet publish Generated.Tests.csproj \
+    -c Release \
+    --no-restore \
+    --disable-build-servers \
+    --nologo \
+    -p:NetWasmPublishTarget=portable \
+    -o "${test_root}/template-publish"
+  [[ -f "${test_root}/template-publish/deployment.json" ]] || {
+    echo "The TUnit candidate publish output is missing deployment.json." >&2
+    exit 1
+  }
 )
 
 echo "NetWasm TUnit package, runner, VSTest and template tests passed."

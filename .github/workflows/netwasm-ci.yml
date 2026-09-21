@@ -52,13 +52,20 @@ jobs:
     timeout-minutes: 60
     outputs:
       version: ${{ steps.version.outputs.value }}
+      sdk11: ${{ steps.toolchain.outputs.sdk11 }}
     steps:
       - name: Check out pinned NetWasm source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: zion-sati/NetWasm
-          ref: 61b3fa542e1b44ac7a9e1c08fa467fd392c84852
+          ref: 78bfb001bfd2e8b902a6317de539e09a148616ee
           path: netwasm-core
+          persist-credentials: false
+
+      - name: Check out TUnit candidate source for provenance
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: tunit-source
           persist-credentials: false
 
       - name: Install .NET SDK
@@ -78,6 +85,7 @@ jobs:
           print(f"node={manifest['node']}")
           print(f"wasm_tools={manifest['wasmTools']}")
           print(f"wasm_tools_sha={manifest['wasmToolsLinuxX64Sha256']}")
+          print(f"sdk11={json.loads(Path('netwasm-core/eng/csharp15-toolchain.json').read_text())['sdk11Version']}")
           PY
 
       - name: Install Node.js
@@ -119,11 +127,45 @@ jobs:
           cp "$RUNNER_TEMP/netwasm-host-tools-packages"/*.nupkg \
             "$RUNNER_TEMP/netwasm-packages/"
 
+      - name: Record Core candidate provenance
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+
+          def revision(root):
+              head = subprocess.check_output(['git', '-C', root, 'rev-parse', 'HEAD'], text=True).strip()
+              tree = subprocess.check_output(['git', '-C', root, 'rev-parse', f'{head}^{{tree}}'], text=True).strip()
+              return {'commit': head, 'tree': tree}
+
+          event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          packages = {}
+          for path in sorted(Path(os.environ['RUNNER_TEMP'], 'netwasm-packages').glob('*.nupkg')):
+              packages[path.name] = {'bytes': path.stat().st_size,
+                                     'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+          receipt = {
+              'schemaVersion': 1,
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'pullRequest': event.get('pull_request', {}).get('number'),
+              'pullRequestHead': event.get('pull_request', {}).get('head', {}).get('sha'),
+              'pullRequestBase': event.get('pull_request', {}).get('base', {}).get('sha'),
+              'core': revision('netwasm-core'),
+              'consumer': revision('tunit-source'),
+              'workflowRunId': os.environ['GITHUB_RUN_ID'],
+              'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'candidateVersion': '0.4.0-ci.' + os.environ['GITHUB_RUN_ID'] + '.' + os.environ['GITHUB_RUN_ATTEMPT'],
+              'packages': packages,
+          }
+          Path(os.environ['RUNNER_TEMP'], 'netwasm-packages', 'netwasm-core-receipt.json').write_text(
+              json.dumps(receipt, indent=2) + '\n')
+          PY
+
       - name: Retain NetWasm candidate packages
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: netwasm-core-candidate
-          path: ${{ runner.temp }}/netwasm-packages/*.nupkg
+          path: ${{ runner.temp }}/netwasm-packages/*
           if-no-files-found: error
           retention-days: 14
 
@@ -131,20 +173,76 @@ jobs:
     needs: core-candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    name: test / isolated SDK ${{ matrix.sdk-major }}
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk-major: [10, 11]
     steps:
       - name: Check out source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        with:
-          global-json-file: global.json
+      - name: Install one isolated .NET SDK and runtime
+        id: isolated-dotnet
+        shell: bash
+        env:
+          SDK_MAJOR: ${{ matrix.sdk-major }}
+          SDK11_VERSION: ${{ needs.core-candidate.outputs.sdk11 }}
+        run: |
+          if [[ "$SDK_MAJOR" == 10 ]]; then sdk_version=10.0.300; else sdk_version="$SDK11_VERSION"; fi
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            --output "$RUNNER_TEMP/dotnet-install.sh" https://dot.net/v1/dotnet-install.sh
+          bash "$RUNNER_TEMP/dotnet-install.sh" \
+            --version "$sdk_version" --architecture x64 \
+            --install-dir "$RUNNER_TEMP/dotnet-isolated" --no-path
+          echo "$RUNNER_TEMP/dotnet-isolated" >> "$GITHUB_PATH"
+          {
+            echo "DOTNET_ROOT=$RUNNER_TEMP/dotnet-isolated"
+            echo "DOTNET_MULTILEVEL_LOOKUP=0"
+            echo "NETWASM_TUNIT_EXPECT_DOTNET_ROOT=$RUNNER_TEMP/dotnet-isolated"
+            echo "NETWASM_TUNIT_EXPECT_SDK_VERSION=$sdk_version"
+            if [[ "$SDK_MAJOR" == 11 ]]; then echo "DOTNET_ROLL_FORWARD=Major"; fi
+          } >> "$GITHUB_ENV"
+          echo "sdk-version=$sdk_version" >> "$GITHUB_OUTPUT"
+
+      - name: Select the isolated SDK in disposable CI source
+        shell: bash
+        env:
+          SDK_VERSION: ${{ steps.isolated-dotnet.outputs.sdk-version }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          for name in ('global.json', 'packaging/global.json'):
+              path = Path(name)
+              value = json.loads(path.read_text())
+              value['sdk'].update(version=os.environ['SDK_VERSION'], rollForward='disable', allowPrerelease=True)
+              path.write_text(json.dumps(value, indent=2) + '\n')
+          PY
 
       - name: Download NetWasm candidate packages
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: netwasm-core-candidate
           path: ${{ runner.temp }}/netwasm-packages
+
+      - name: Verify Core candidate provenance
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ needs.core-candidate.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'], 'netwasm-packages')
+          receipt = json.loads((root / 'netwasm-core-receipt.json').read_text())
+          if receipt['candidateVersion'] != os.environ['EXPECTED_VERSION']:
+              raise SystemExit('Core candidate version does not match its receipt.')
+          for path in sorted(root.glob('*.nupkg')):
+              expected = receipt['packages'].get(path.name)
+              if expected is None or expected['bytes'] != path.stat().st_size or expected['sha256'] != hashlib.sha256(path.read_bytes()).hexdigest():
+                  raise SystemExit(f'Core candidate package does not match its receipt: {path.name}')
+          PY
 
       - name: Build and test NetWasm packages
         shell: bash
@@ -158,3 +256,43 @@ jobs:
           NETWASM_CORE_CANDIDATE_VERSION="${{ needs.core-candidate.outputs.version }}" \
           NETWASM_TUNIT_TEST_VERSION="0.4.0-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}" \
             bash eng/netwasm-test.sh
+
+      - name: Record TUnit candidate packages and analyzer closure
+        if: always()
+        shell: bash
+        env:
+          SDK_VERSION: ${{ steps.isolated-dotnet.outputs.sdk-version }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+          root = Path('artifacts/netwasm-packages')
+          packages, analyzers = {}, {}
+          for path in sorted(root.glob('*.nupkg')):
+              packages[path.name] = {'bytes': path.stat().st_size,
+                                     'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+              with zipfile.ZipFile(path) as archive:
+                  for name in sorted(n for n in archive.namelist() if '/analyzers/' in '/' + n or n.startswith('analyzers/')):
+                      analyzers[f'{path.name}:{name}'] = hashlib.sha256(archive.read(name)).hexdigest()
+          Path('artifacts/tunit-candidate-receipt.json').write_text(json.dumps({
+              'schemaVersion': 1,
+              'checkedOutCommit': os.environ['GITHUB_SHA'],
+              'workflowRunId': os.environ['GITHUB_RUN_ID'],
+              'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'sdkVersion': os.environ['SDK_VERSION'],
+              'candidateVersion': '0.4.0-ci.' + os.environ['GITHUB_RUN_ID'] + '.' + os.environ['GITHUB_RUN_ATTEMPT'],
+              'packages': packages,
+              'analyzers': analyzers,
+          }, indent=2) + '\n')
+          PY
+
+      - name: Retain TUnit candidate evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: tunit-candidate-sdk-${{ matrix.sdk-major }}
+          path: |
+            artifacts/netwasm-packages/*.nupkg
+            artifacts/tunit-candidate-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
