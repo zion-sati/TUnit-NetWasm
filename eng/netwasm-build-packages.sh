@@ -5,6 +5,7 @@ set -euo pipefail
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 OUTPUT_DIR="${REPOSITORY_ROOT}/artifacts/netwasm-packages"
 RELEASE_VERSION="$(tr -d '[:space:]' < "${REPOSITORY_ROOT}/eng/NetWasm.ReleaseVersion.txt")"
+NETWASM_CANDIDATE_VERSION=""
 output_was_set=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -19,8 +20,13 @@ while [[ $# -gt 0 ]]; do
       RELEASE_VERSION="$2"
       shift 2
       ;;
+    --netwasm-candidate-version)
+      [[ $# -ge 2 ]] || { echo "--netwasm-candidate-version requires a value." >&2; exit 2; }
+      NETWASM_CANDIDATE_VERSION="$2"
+      shift 2
+      ;;
     --help|-h)
-      echo "Usage: $0 [--version VERSION] [--output DIRECTORY] [DIRECTORY]"
+      echo "Usage: $0 [--version VERSION] [--netwasm-candidate-version VERSION] [--output DIRECTORY] [DIRECTORY]"
       exit 0
       ;;
     --*)
@@ -86,6 +92,12 @@ python3 "${source_root}/eng/project-release-version.py" \
   --source-root "${source_root}" \
   --version "${RELEASE_VERSION}" \
   --receipt "${OUTPUT_DIR}/NetWasm.TUnit.release-version-projection.json"
+if [[ -n "${NETWASM_CANDIDATE_VERSION}" ]]; then
+  python3 "${source_root}/eng/project-netwasm-candidate-version.py" \
+    --source-root "${source_root}" \
+    --version "${NETWASM_CANDIDATE_VERSION}" \
+    --receipt "${OUTPUT_DIR}/NetWasm.TUnit.netwasm-candidate-projection.json"
+fi
 # global.json discovery follows the process working directory, not an absolute
 # project argument. Anchor every dotnet invocation to the detached source.
 cd "${source_root}"

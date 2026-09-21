@@ -11,6 +11,8 @@ on:
       - eng/NetWasm.ReleaseVersion.txt
       - eng/netwasm-build-packages.sh
       - eng/netwasm-test.sh
+      - eng/project-netwasm-candidate-version.py
+      - eng/test-project-netwasm-candidate-version.py
       - eng/project-release-version.py
       - eng/test-project-release-version.py
       - eng/resolve-release.py
@@ -45,7 +47,88 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  core-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Check out pinned NetWasm source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: zion-sati/NetWasm
+          ref: 61b3fa542e1b44ac7a9e1c08fa467fd392c84852
+          path: netwasm-core
+          persist-credentials: false
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: netwasm-core/global.json
+
+      - name: Read NetWasm toolchain pins
+        id: toolchain
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('netwasm-core/eng/toolchain.json').read_text())
+          print(f"emscripten={manifest['emscripten']}")
+          print(f"node={manifest['node']}")
+          print(f"wasm_tools={manifest['wasmTools']}")
+          print(f"wasm_tools_sha={manifest['wasmToolsLinuxX64Sha256']}")
+          PY
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ steps.toolchain.outputs.node }}
+          package-manager-cache: false
+
+      - name: Install pinned native toolchain
+        shell: bash
+        run: |
+          git clone --depth 1 --branch "${{ steps.toolchain.outputs.emscripten }}" https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install "${{ steps.toolchain.outputs.emscripten }}"
+          "$RUNNER_TEMP/emsdk/emsdk" activate "${{ steps.toolchain.outputs.emscripten }}"
+          archive="$RUNNER_TEMP/wasm-tools.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors --output "$archive" \
+            "https://github.com/bytecodealliance/wasm-tools/releases/download/v${{ steps.toolchain.outputs.wasm_tools }}/wasm-tools-${{ steps.toolchain.outputs.wasm_tools }}-x86_64-linux.tar.gz"
+          printf '%s  %s\n' '${{ steps.toolchain.outputs.wasm_tools_sha }}' "$archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/wasm-tools"
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/wasm-tools" --strip-components=1
+          echo "$RUNNER_TEMP/wasm-tools" >> "$GITHUB_PATH"
+
+      - name: Build NetWasm candidate packages
+        id: version
+        shell: bash
+        working-directory: netwasm-core
+        run: |
+          version="0.4.0-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          bash eng/build-packages.sh --version "$version" --output "$RUNNER_TEMP/netwasm-packages"
+          sudo apt-get update -qq
+          sudo apt-get install -y patchelf=0.18.0-1.1build1
+          python3 eng/build-host-tools-package.py \
+            --rid linux-x64 \
+            --version "$version" \
+            --output "$RUNNER_TEMP/netwasm-host-tools-packages" \
+            --cache "$RUNNER_TEMP/netwasm-host-tools-inputs"
+          cp "$RUNNER_TEMP/netwasm-host-tools-packages"/*.nupkg \
+            "$RUNNER_TEMP/netwasm-packages/"
+
+      - name: Retain NetWasm candidate packages
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: netwasm-core-candidate
+          path: ${{ runner.temp }}/netwasm-packages/*.nupkg
+          if-no-files-found: error
+          retention-days: 14
+
   test:
+    needs: core-candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -57,11 +140,21 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Download NetWasm candidate packages
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: netwasm-core-candidate
+          path: ${{ runner.temp }}/netwasm-packages
+
       - name: Build and test NetWasm packages
         shell: bash
         run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 eng/test-project-netwasm-candidate-version.py
           PYTHONDONTWRITEBYTECODE=1 python3 eng/test-project-release-version.py
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
             eng/tests/test_resolve_release.py \
             eng/tests/test_verify_release_packages.py
-          bash eng/netwasm-test.sh
+          NETWASM_CI_PACKAGE_SOURCE="$RUNNER_TEMP/netwasm-packages" \
+          NETWASM_CORE_CANDIDATE_VERSION="${{ needs.core-candidate.outputs.version }}" \
+          NETWASM_TUNIT_TEST_VERSION="0.4.0-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}" \
+            bash eng/netwasm-test.sh

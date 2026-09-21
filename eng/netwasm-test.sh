@@ -33,9 +33,22 @@ assert_vstest_pass_summary() {
     }
 }
 
-"${REPOSITORY_ROOT}/eng/netwasm-build-packages.sh" \
-  --version "${TEST_VERSION}" \
-  --output "${PACKAGE_DIR}"
+build_arguments=(--version "${TEST_VERSION}" --output "${PACKAGE_DIR}")
+if [[ -n "${NETWASM_CORE_CANDIDATE_VERSION:-}" ]]; then
+  build_arguments+=(--netwasm-candidate-version "${NETWASM_CORE_CANDIDATE_VERSION}")
+fi
+"${REPOSITORY_ROOT}/eng/netwasm-build-packages.sh" "${build_arguments[@]}"
+
+qualification_root="${REPOSITORY_ROOT}"
+if [[ -n "${NETWASM_CORE_CANDIDATE_VERSION:-}" ]]; then
+  qualification_root="${test_root}/source"
+  mkdir -p "${qualification_root}"
+  git -C "${REPOSITORY_ROOT}" archive HEAD | tar -x -C "${qualification_root}"
+  python3 "${qualification_root}/eng/project-netwasm-candidate-version.py" \
+    --source-root "${qualification_root}" \
+    --version "${NETWASM_CORE_CANDIDATE_VERSION}" \
+    --receipt "${test_root}/NetWasm.TUnit.test-source-projection.json"
+fi
 
 nuget_config="${test_root}/NuGet.Config"
 xml_escape() {
@@ -59,7 +72,7 @@ ci_package_source_xml="$(xml_escape "${NETWASM_CI_PACKAGE_SOURCE:-}")"
     '</configuration>'
 } > "${nuget_config}"
 
-runner_tests="${REPOSITORY_ROOT}/packaging/NetWasm.TUnit.Runner.Tests/NetWasm.TUnit.Runner.Tests.csproj"
+runner_tests="${qualification_root}/packaging/NetWasm.TUnit.Runner.Tests/NetWasm.TUnit.Runner.Tests.csproj"
 dotnet restore "${runner_tests}" --configfile "${nuget_config}" --disable-build-servers --nologo
 dotnet run --project "${runner_tests}" \
   -c Release \
@@ -68,7 +81,7 @@ dotnet run --project "${runner_tests}" \
   --disable-build-servers \
   -- --minimum-expected-tests 52
 
-desktop_package_tests="${REPOSITORY_ROOT}/packaging/NetWasm.TUnit.Desktop.Package.Tests/NetWasm.TUnit.Desktop.Package.Tests.csproj"
+desktop_package_tests="${qualification_root}/packaging/NetWasm.TUnit.Desktop.Package.Tests/NetWasm.TUnit.Desktop.Package.Tests.csproj"
 dotnet restore "${desktop_package_tests}" \
   --configfile "${nuget_config}" \
   --disable-build-servers \
@@ -83,7 +96,7 @@ dotnet run --project "${desktop_package_tests}" \
 
 package_tests="NetWasm.TUnit.Package.Tests/NetWasm.TUnit.Package.Tests.csproj"
 (
-  cd "${REPOSITORY_ROOT}/packaging"
+  cd "${qualification_root}/packaging"
   dotnet restore "${package_tests}" --configfile "${nuget_config}" --disable-build-servers --nologo \
     -p:NetWasmTUnitPackageVersion="${TEST_VERSION}"
   dotnet test "${package_tests}" -c Release --no-restore --disable-build-servers --nologo |
