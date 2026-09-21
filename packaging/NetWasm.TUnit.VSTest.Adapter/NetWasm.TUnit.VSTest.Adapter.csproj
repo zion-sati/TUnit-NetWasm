@@ -15,7 +15,7 @@
                       Version="18.0.1"
                       PrivateAssets="all" />
     <PackageReference Include="NetWasm.Hosting"
-                      Version="[0.2.2]"
+                      Version="[0.3.0]"
                       PrivateAssets="all" />
   </ItemGroup>
 

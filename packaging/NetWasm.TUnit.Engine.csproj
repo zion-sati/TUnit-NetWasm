@@ -34,13 +34,13 @@
 
   <ItemGroup>
     <PackageReference Include="NetWasm.TUnit.Core" Version="[$(NetWasmTUnitPackageVersion)]" />
-    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.4.0]">
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.4.1]">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Testing.Platform" Version="[2.4.0]">
+    <PackageReference Include="Microsoft.Testing.Platform" Version="[2.4.1]">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="[2.4.0]">
+    <PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="[2.4.1]">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
