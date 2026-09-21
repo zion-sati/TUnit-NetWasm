@@ -177,6 +177,17 @@ dotnet new netwasm-tunit \
   -n Generated.Tests \
   -o "${template_consumer}" \
   --debug:custom-hive "${template_hive}"
+if [[ -n "${NETWASM_TUNIT_BUILD_SDK_VERSION:-}" ]]; then
+  python3 - "${template_consumer}/global.json" "${NETWASM_TUNIT_BUILD_SDK_VERSION}" <<'PY'
+import json, sys
+from pathlib import Path
+
+path, version = Path(sys.argv[1]), sys.argv[2]
+value = json.loads(path.read_text())
+value['sdk'].update(version=version, rollForward='disable', allowPrerelease=True)
+path.write_text(json.dumps(value, indent=2) + '\n')
+PY
+fi
 (
   cd "${template_consumer}"
   dotnet restore Generated.Tests.csproj \
