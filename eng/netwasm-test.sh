@@ -60,6 +60,9 @@ build_arguments=(--version "${TEST_VERSION}" --output "${PACKAGE_DIR}")
 if [[ -n "${NETWASM_CORE_CANDIDATE_VERSION:-}" ]]; then
   build_arguments+=(--netwasm-candidate-version "${NETWASM_CORE_CANDIDATE_VERSION}")
 fi
+if [[ -n "${NETWASM_TUNIT_BUILD_SDK_VERSION:-}" ]]; then
+  build_arguments+=(--sdk-version "${NETWASM_TUNIT_BUILD_SDK_VERSION}")
+fi
 "${REPOSITORY_ROOT}/eng/netwasm-build-packages.sh" "${build_arguments[@]}"
 
 qualification_root="${REPOSITORY_ROOT}"
@@ -71,6 +74,19 @@ if [[ -n "${NETWASM_CORE_CANDIDATE_VERSION:-}" ]]; then
     --source-root "${qualification_root}" \
     --version "${NETWASM_CORE_CANDIDATE_VERSION}" \
     --receipt "${test_root}/NetWasm.TUnit.test-source-projection.json"
+fi
+if [[ -n "${NETWASM_TUNIT_BUILD_SDK_VERSION:-}" ]]; then
+  python3 - "${qualification_root}" "${NETWASM_TUNIT_BUILD_SDK_VERSION}" <<'PY'
+import json, sys
+from pathlib import Path
+
+root, version = Path(sys.argv[1]), sys.argv[2]
+for name in ('global.json', 'packaging/global.json'):
+    path = root / name
+    value = json.loads(path.read_text())
+    value['sdk'].update(version=version, rollForward='disable', allowPrerelease=True)
+    path.write_text(json.dumps(value, indent=2) + '\n')
+PY
 fi
 
 nuget_config="${test_root}/NuGet.Config"

@@ -58,7 +58,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: zion-sati/NetWasm
-          ref: d214cd6fca1ab29d304cc585827a935ec18a98d3
+          ref: b4ce6f79f5149511d57e86be0143398fc282dcfe
           path: netwasm-core
           persist-credentials: false
 
@@ -205,23 +205,8 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "sdk-version=$sdk_version" >> "$GITHUB_OUTPUT"
 
-      - name: Select the isolated SDK in disposable CI source
-        shell: bash
-        env:
-          SDK_VERSION: ${{ steps.isolated-dotnet.outputs.sdk-version }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          for name in ('global.json', 'packaging/global.json'):
-              path = Path(name)
-              value = json.loads(path.read_text())
-              value['sdk'].update(version=os.environ['SDK_VERSION'], rollForward='disable', allowPrerelease=True)
-              path.write_text(json.dumps(value, indent=2) + '\n')
-          PY
-
       - name: Download NetWasm candidate packages
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: netwasm-core-candidate
           path: ${{ runner.temp }}/netwasm-packages
@@ -254,6 +239,7 @@ jobs:
             eng/tests/test_verify_release_packages.py
           NETWASM_CI_PACKAGE_SOURCE="$RUNNER_TEMP/netwasm-packages" \
           NETWASM_CORE_CANDIDATE_VERSION="${{ needs.core-candidate.outputs.version }}" \
+          NETWASM_TUNIT_BUILD_SDK_VERSION="${{ steps.isolated-dotnet.outputs.sdk-version }}" \
           NETWASM_TUNIT_TEST_VERSION="0.4.0-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}" \
             bash eng/netwasm-test.sh
 
