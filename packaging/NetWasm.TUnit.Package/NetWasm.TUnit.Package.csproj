@@ -29,6 +29,8 @@
     <GenerateRepositoryUrlAttribute>false</GenerateRepositoryUrlAttribute>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableTUnitSourceGeneration>false</EnableTUnitSourceGeneration>
+    <!-- The NuGet package ships the managed runner DLL and runtimeconfig only. -->
+    <UseAppHost>false</UseAppHost>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectNetWasmTUnitAdapter</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
 

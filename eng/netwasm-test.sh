@@ -88,6 +88,10 @@ for name in ('global.json', 'packaging/global.json'):
     path.write_text(json.dumps(value, indent=2) + '\n')
 PY
 fi
+# SDK resolution starts from the process working directory. Keep every
+# qualification command inside the disposable source whose global.json was
+# projected to the isolated SDK above.
+cd "${qualification_root}"
 
 nuget_config="${test_root}/NuGet.Config"
 xml_escape() {
