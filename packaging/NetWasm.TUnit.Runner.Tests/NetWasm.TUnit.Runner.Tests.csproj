@@ -13,7 +13,7 @@
   <ItemGroup>
     <PackageReference Include="xunit.v3" Version="4.0.0" />
     <PackageReference Include="Microsoft.TestPlatform.ObjectModel" Version="18.0.1" />
-    <PackageReference Include="NetWasm.Hosting" Version="[0.2.2]" />
+    <PackageReference Include="NetWasm.Hosting" Version="[0.3.0]" />
     <PackageReference Include="NSubstitute" Version="6.2.0" />
   </ItemGroup>
 
