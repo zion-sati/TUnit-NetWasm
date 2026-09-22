@@ -21,7 +21,7 @@ internal sealed class ClosedWorldActivationCapabilityValidator : IClosedWorldCap
 
                 foreach (var attribute in type.GetAttributes().Where(static attribute =>
                              DataSourceAttributeHelper.IsDataSourceAttribute(attribute.AttributeClass) &&
-                             attribute.AttributeClass!.Name != "ArgumentsAttribute"))
+                             attribute.AttributeClass!.Name is not "ArgumentsAttribute" and not "ClassDataSourceAttribute"))
                 {
                     yield return new(classSyntax.GetLocation(),
                         $"Runtime class data source '{attribute.AttributeClass!.Name}' is not supported by the closed-world catalog.");

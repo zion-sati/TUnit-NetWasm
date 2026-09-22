@@ -8,27 +8,38 @@ namespace TUnit.Core;
 /// </summary>
 public sealed class GeneratedTestCaseRow
 {
+    private readonly Func<object?[]>? _argumentsFactory;
+    private readonly Func<object?[]>? _constructorArgumentsFactory;
+    private IReadOnlyList<object?>? _arguments;
+    private IReadOnlyList<object?>? _constructorArguments;
+
     public GeneratedTestCaseRow(
         string stableId,
         string? displayName,
         IEnumerable<object?>? arguments = null,
-        IEnumerable<object?>? constructorArguments = null)
+        IEnumerable<object?>? constructorArguments = null,
+        Func<object?[]>? argumentsFactory = null,
+        Func<object?[]>? constructorArgumentsFactory = null)
     {
         StableId = string.IsNullOrWhiteSpace(stableId)
             ? throw new ArgumentException("Value cannot be empty.", nameof(stableId))
             : stableId;
         DisplayName = displayName;
-        Arguments = new ReadOnlyCollection<object?>(new List<object?>(arguments ?? []));
-        ConstructorArguments = new ReadOnlyCollection<object?>(new List<object?>(constructorArguments ?? []));
+        _arguments = arguments is null ? null : CopyToReadOnly(arguments);
+        _constructorArguments = constructorArguments is null ? null : CopyToReadOnly(constructorArguments);
+        _argumentsFactory = argumentsFactory;
+        _constructorArgumentsFactory = constructorArgumentsFactory;
     }
 
     public string StableId { get; }
 
     public string? DisplayName { get; }
 
-    public IReadOnlyList<object?> Arguments { get; }
+    public IReadOnlyList<object?> Arguments =>
+        _arguments ??= CopyToReadOnly(_argumentsFactory?.Invoke() ?? []);
 
-    public IReadOnlyList<object?> ConstructorArguments { get; }
+    public IReadOnlyList<object?> ConstructorArguments =>
+        _constructorArguments ??= CopyToReadOnly(_constructorArgumentsFactory?.Invoke() ?? []);
 
     internal object?[] CreateArguments() => Copy(Arguments);
 
@@ -44,4 +55,7 @@ public sealed class GeneratedTestCaseRow
 
         return result;
     }
+
+    private static IReadOnlyList<object?> CopyToReadOnly(IEnumerable<object?> values) =>
+        new ReadOnlyCollection<object?>(new List<object?>(values));
 }

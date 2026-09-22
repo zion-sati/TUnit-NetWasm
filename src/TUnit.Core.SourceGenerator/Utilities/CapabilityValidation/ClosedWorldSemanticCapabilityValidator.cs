@@ -25,6 +25,13 @@ internal sealed class ClosedWorldSemanticCapabilityValidator : IClosedWorldCapab
         "PropertyAttribute",
         "TestAttribute",
         "TestConstructorAttribute",
+        "TimeoutAttribute",
+        "SkipAttribute",
+        "RepeatAttribute",
+        "ExplicitAttribute",
+        "ExecutionPriorityAttribute",
+        "NotDiscoverableAttribute",
+        "RetryAttribute",
         "BeforeAttribute",
         "AfterAttribute",
         "BeforeEveryAttribute",
@@ -84,7 +91,8 @@ internal sealed class ClosedWorldSemanticCapabilityValidator : IClosedWorldCapab
                 continue;
             }
 
-            if (isParameter && IsParameterDataSource(attributeClass))
+            if (isParameter && IsParameterDataSource(attributeClass) &&
+                attributeClass.Name != "ClassDataSourceAttribute")
             {
                 yield return new(
                     location,
@@ -137,21 +145,9 @@ internal sealed class ClosedWorldSemanticCapabilityValidator : IClosedWorldCapab
 
     private static IEnumerable<string> GetArgumentsDiagnostics(AttributeData attribute)
     {
-        foreach (var namedArgument in attribute.NamedArguments)
-        {
-            if (namedArgument.Key == "Skip")
-            {
-                yield return "Arguments row Skip is not supported by the closed-world catalog.";
-            }
-            else if (namedArgument.Key == "Categories")
-            {
-                yield return "Arguments row Categories are not supported by the closed-world catalog.";
-            }
-            else if (namedArgument.Key == "SkipIfEmpty" && namedArgument.Value.Value is true)
-            {
-                yield return "Arguments row SkipIfEmpty is not supported by the closed-world catalog.";
-            }
-        }
+        // Arguments always represents one row. SkipIfEmpty is retained for API
+        // parity and becomes meaningful for generated runtime sources.
+        yield break;
     }
 
     private static bool TryGetDependsOnDiagnostic(AttributeData attribute, out string message)
@@ -186,7 +182,8 @@ internal sealed class ClosedWorldSemanticCapabilityValidator : IClosedWorldCapab
 
     private static bool IsSupported(INamedTypeSymbol attributeClass)
     {
-        if (SupportedAttributes.Contains(attributeClass.Name))
+        if (attributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core" &&
+            SupportedAttributes.Contains(attributeClass.Name))
         {
             return true;
         }

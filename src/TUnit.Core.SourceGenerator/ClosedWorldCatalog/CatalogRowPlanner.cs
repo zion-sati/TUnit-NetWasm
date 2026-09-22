@@ -35,7 +35,6 @@ internal sealed class CatalogRowPlanner : ICatalogRowPlanner
                 var methodCanonical = string.Join("|", methodRow.Values.Select(static value => value.Canonical));
                 var constructorCanonical = string.Join("|", constructorRow.Values.Select(static value => value.Canonical));
                 var canonical = $"method:[{methodCanonical}];constructor:[{constructorCanonical}]";
-                var stableId = $"{request.MethodIdentity}#row-{rowIndex}:{canonical}";
                 var customDisplayNameTemplate = request.MethodDisplayName ?? request.ClassDisplayName;
                 var customDisplayName = customDisplayNameTemplate is null
                     ? null
@@ -49,9 +48,31 @@ internal sealed class CatalogRowPlanner : ICatalogRowPlanner
                     FormatRowDisplayName(constructorRow.DisplayName, request.MethodParameterNames, methodRow.Values) ??
                     $"{request.MethodName}({string.Join(", ", methodRow.Values.Select(static value => value.Display))})";
                 var displayName = !string.IsNullOrEmpty(customDisplayName)
-                    ? customDisplayName
-                    : rowDisplayName;
-                rows.Add(new CatalogRow(methodRow.Values, constructorRow.Values, stableId, displayName));
+                    ? customDisplayName!
+                    : rowDisplayName ?? request.MethodName;
+                var methodCategories = methodRow.Categories.IsDefault ? ImmutableArray<string>.Empty : methodRow.Categories;
+                var constructorCategories = constructorRow.Categories.IsDefault ? ImmutableArray<string>.Empty : constructorRow.Categories;
+                var categories = methodCategories
+                    .Concat(constructorCategories)
+                    .Where(static category => !string.IsNullOrWhiteSpace(category))
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(static category => category, StringComparer.Ordinal)
+                    .ToImmutableArray();
+                var skipReason = methodRow.SkipReason is not null
+                    ? methodRow.SkipReason
+                    : constructorRow.SkipReason;
+                for (var repeatIndex = 0; repeatIndex <= request.RepeatCount; repeatIndex++)
+                {
+                    var stableId = $"{request.MethodIdentity}#row-{rowIndex}:repeat-{repeatIndex}:{canonical}";
+                    rows.Add(new CatalogRow(
+                        methodRow.Values,
+                        constructorRow.Values,
+                        stableId,
+                        displayName,
+                        skipReason,
+                        categories,
+                        repeatIndex));
+                }
                 rowIndex++;
             }
         }
@@ -74,7 +95,7 @@ internal sealed class CatalogRowPlanner : ICatalogRowPlanner
             parameterNames = ImmutableArray<string>.Empty;
         }
 
-        var displayName = template;
+        var displayName = template!;
 
         for (var index = 0; index < values.Length; index++)
         {

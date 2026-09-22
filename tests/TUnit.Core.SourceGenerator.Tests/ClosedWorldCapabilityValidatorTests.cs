@@ -7,7 +7,7 @@ namespace TUnit.Core.SourceGenerator.Tests;
 internal sealed class ClosedWorldCapabilityValidatorTests
 {
     [Test]
-    public async Task SemanticValidatorRejectsUnsupportedDiscoveryAndExecutionAttributes()
+    public async Task SemanticValidatorAcceptsRepresentedAndRejectsUnsupportedDiscoveryAndExecutionAttributes()
     {
         var validator = new ClosedWorldSemanticCapabilityValidator();
         var diagnostics = validator.Validate(CreateCompilation("""
@@ -32,8 +32,11 @@ internal sealed class ClosedWorldCapabilityValidatorTests
 
         await Assert.That(diagnostics.Count(static diagnostic =>
                 diagnostic.Message.Contains("is not supported by the closed-world catalog", StringComparison.Ordinal)))
-            .IsEqualTo(7);
-        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("SkipAttribute", StringComparison.Ordinal))).IsTrue();
+            .IsEqualTo(3);
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("SkipAttribute", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("ExplicitAttribute", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("TimeoutAttribute", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("RetryAttribute", StringComparison.Ordinal))).IsFalse();
         await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("ParallelGroupAttribute", StringComparison.Ordinal))).IsTrue();
     }
 
@@ -141,11 +144,11 @@ internal sealed class ClosedWorldCapabilityValidatorTests
 
         await Assert.That(diagnostics.Count(static diagnostic =>
                 diagnostic.Message.Contains("not supported by the closed-world catalog", StringComparison.Ordinal)))
-            .IsEqualTo(8)
+            .IsEqualTo(5)
             .Because(string.Join(Environment.NewLine, diagnostics.Select(static diagnostic => diagnostic.Message)));
-        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("Arguments row Skip", StringComparison.Ordinal))).IsTrue();
-        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("Arguments row Categories", StringComparison.Ordinal))).IsTrue();
-        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("Arguments row SkipIfEmpty", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("Arguments row Skip", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("Arguments row Categories", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("Arguments row SkipIfEmpty", StringComparison.Ordinal))).IsFalse();
         await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("Parameter data source", StringComparison.Ordinal))).IsTrue();
         await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("DependsOn class identities", StringComparison.Ordinal))).IsTrue();
         await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("ProceedOnFailure=true", StringComparison.Ordinal))).IsTrue();
@@ -462,7 +465,7 @@ internal sealed class ClosedWorldCapabilityValidatorTests
     }
 
     [Test]
-    public async Task ActivationValidatorRejectsRuntimeClassData()
+    public async Task ActivationValidatorAllowsGeneratedClassDataButRejectsRuntimeConstructors()
     {
         var validator = new ClosedWorldActivationCapabilityValidator();
         var diagnostics = validator.Validate(CreateCompilation("""
@@ -481,7 +484,7 @@ internal sealed class ClosedWorldCapabilityValidatorTests
             public sealed class Data { }
             """)).ToArray();
 
-        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("Runtime class data source", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("Runtime class data source", StringComparison.Ordinal))).IsFalse();
         await Assert.That(diagnostics.Count(static diagnostic => diagnostic.Message.Contains("ClassConstructor runtime activation", StringComparison.Ordinal))).IsEqualTo(2);
     }
 

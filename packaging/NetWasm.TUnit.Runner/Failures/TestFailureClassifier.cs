@@ -19,6 +19,11 @@ public sealed class TestFailureClassifier : ITestFailureClassifier
             return new TestFailureClassification(TestOutcome.Unsupported, exception.Message);
         }
 
+        if (exception is TimeoutException)
+        {
+            return new TestFailureClassification(TestOutcome.TimedOut, exception.Message);
+        }
+
         if (exception is AggregateException aggregateException)
         {
             return ClassifyAggregate(aggregateException, cancellationToken);
@@ -37,6 +42,7 @@ public sealed class TestFailureClassifier : ITestFailureClassifier
         var hasAssertionFailure = false;
         var hasCancellation = false;
         var hasUnsupported = false;
+        var hasTimeout = false;
         var hasUnexpectedFailure = false;
         foreach (var innerException in flattened.InnerExceptions)
         {
@@ -52,6 +58,12 @@ public sealed class TestFailureClassifier : ITestFailureClassifier
                 continue;
             }
 
+            if (innerException is TimeoutException)
+            {
+                hasTimeout = true;
+                continue;
+            }
+
             if (innerException is BaseAssertionException)
             {
                 hasAssertionFailure = true;
@@ -64,6 +76,7 @@ public sealed class TestFailureClassifier : ITestFailureClassifier
         var categories = Convert.ToInt32(hasAssertionFailure)
             + Convert.ToInt32(hasCancellation)
             + Convert.ToInt32(hasUnsupported)
+            + Convert.ToInt32(hasTimeout)
             + Convert.ToInt32(hasUnexpectedFailure);
         var outcome = categories != 1 || hasUnexpectedFailure
             ? TestOutcome.UnexpectedFailure
@@ -71,7 +84,9 @@ public sealed class TestFailureClassifier : ITestFailureClassifier
                 ? TestOutcome.AssertionFailed
                 : hasCancellation
                     ? TestOutcome.Cancelled
-                    : TestOutcome.Unsupported;
+                    : hasTimeout
+                        ? TestOutcome.TimedOut
+                        : TestOutcome.Unsupported;
 
         return new TestFailureClassification(outcome, exception.Message);
     }

@@ -80,10 +80,12 @@ public sealed class ConsoleTestEventSink : ITestEventSink
     private static string Format(TestOutcome outcome) => outcome switch
     {
         TestOutcome.Passed => "passed",
+        TestOutcome.Skipped => "skipped",
         TestOutcome.AssertionFailed => "assertion-failed",
         TestOutcome.UnexpectedFailure => "unexpected-failure",
         TestOutcome.Unsupported => "unsupported",
         TestOutcome.Cancelled => "cancelled",
+        TestOutcome.TimedOut => "timed-out",
         _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
     };
 

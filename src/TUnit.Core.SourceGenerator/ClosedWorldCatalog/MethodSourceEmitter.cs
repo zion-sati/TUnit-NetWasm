@@ -16,7 +16,8 @@ internal sealed class MethodSourceEmitter : IMethodSourceEmitter
             writer.AppendLine($"private static readonly global::TUnit.Core.GeneratedLifecycle __Lifecycle_{index} = {request.Groups[index].LifecycleCode};");
         }
 
-        writer.AppendLine("internal static global::TUnit.Core.GeneratedTestCase[] GetGeneratedCases()");
+        writer.AppendLine("internal static global::TUnit.Core.GeneratedTestCase[] GetGeneratedCases() => GetGeneratedCasesAsync().AsTask().GetAwaiter().GetResult();");
+        writer.AppendLine("internal static async global::System.Threading.Tasks.ValueTask<global::TUnit.Core.GeneratedTestCase[]> GetGeneratedCasesAsync(global::System.Threading.CancellationToken cancellationToken = default)");
         writer.AppendLine("{");
         writer.Indent();
         writer.AppendLine("var cases = new global::System.Collections.Generic.List<global::TUnit.Core.GeneratedTestCase>();");
@@ -28,6 +29,7 @@ internal sealed class MethodSourceEmitter : IMethodSourceEmitter
             }
         }
 
+        writer.AppendLine("await global::System.Threading.Tasks.Task.CompletedTask;");
         writer.AppendLine("return cases.ToArray();");
         writer.Unindent();
         writer.AppendLine("}");

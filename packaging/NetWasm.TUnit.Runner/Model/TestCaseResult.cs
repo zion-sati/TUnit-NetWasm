@@ -7,4 +7,6 @@ public sealed record TestCaseResult(
     string? Message)
 {
     public TimeSpan Duration { get; init; }
+
+    public int AttemptCount { get; init; } = 1;
 }

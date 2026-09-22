@@ -13,7 +13,7 @@ internal sealed class LifecycleFormatter : ILifecycleFormatter
         writer.Indent();
         foreach (var hook in hooks)
         {
-            writer.AppendLine($"new global::TUnit.Core.GeneratedLifecycleAction(global::TUnit.Core.GeneratedLifecycleStage.{hook.Stage}, {hook.Order}, {FormatDelegate(hook.Invocation, hook.ReturnType)}),");
+            writer.AppendLine($"new global::TUnit.Core.GeneratedLifecycleAction(global::TUnit.Core.GeneratedLifecycleStage.{hook.Stage}, {hook.Order}, {FormatDelegate(hook.Invocation, hook.ReturnType)}, {FormatTimeout(hook.TimeoutMilliseconds)}),");
         }
 
         writer.Unindent();
@@ -28,4 +28,8 @@ internal sealed class LifecycleFormatter : ILifecycleFormatter
         if (returnType.StartsWith("global::System.Threading.Tasks.Task", StringComparison.Ordinal)) return $"static (instance, cancellationToken) => new global::System.Threading.Tasks.ValueTask({invocation})";
         return $"static (instance, cancellationToken) => {{ {invocation}; return default(global::System.Threading.Tasks.ValueTask); }}";
     }
+
+    private static string FormatTimeout(int? milliseconds) => milliseconds is int value
+        ? $"global::System.TimeSpan.FromMilliseconds({value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)})"
+        : "null";
 }

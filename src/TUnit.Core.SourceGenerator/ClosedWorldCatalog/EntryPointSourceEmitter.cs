@@ -16,15 +16,14 @@ internal sealed class EntryPointSourceEmitter : IEntryPointSourceEmitter
         writer.AppendLine("public static class GeneratedTestEntryPoint");
         writer.AppendLine("{");
         writer.Indent();
-        writer.AppendLine("private static readonly global::TUnit.Core.ITestEntryCatalog __catalog = CreateDirectCatalog();");
-        writer.AppendLine("public static global::TUnit.Core.ITestEntryCatalog GetCatalog() => __catalog;");
-        writer.AppendLine("private static global::TUnit.Core.ITestEntryCatalog CreateDirectCatalog()");
+        writer.AppendLine("public static global::TUnit.Core.ITestEntryCatalog GetCatalog() => GetCatalogAsync().AsTask().GetAwaiter().GetResult();");
+        writer.AppendLine("public static async global::System.Threading.Tasks.ValueTask<global::TUnit.Core.ITestEntryCatalog> GetCatalogAsync(global::System.Threading.CancellationToken cancellationToken = default)");
         writer.AppendLine("{");
         writer.Indent();
         writer.AppendLine("var cases = new global::System.Collections.Generic.List<global::TUnit.Core.GeneratedTestCase>();");
         foreach (var sourceName in request.SourceNames)
         {
-            writer.AppendLine($"cases.AddRange({sourceName}.GetGeneratedCases());");
+            writer.AppendLine($"cases.AddRange(await {sourceName}.GetGeneratedCasesAsync(cancellationToken));");
         }
 
         writer.AppendLine("return new global::TUnit.Core.SourceGeneratedTestCatalog(cases, \"TUnit.Core.SourceGenerator\");");

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -19,6 +20,34 @@ def load(name: str, filename: str):
 
 projection = load("release_projection", "project-release-version.py")
 verification = load("release_verification", "verify-release-packages.py")
+
+
+def dependency_versions(root: Path, manifest: dict[str, object]) -> dict[str, str]:
+    current = manifest["dependencyVersions"]
+    if manifest["repository"] != "zion-sati/TUnit-NetWasm":
+        return dict(current)
+
+    props = (root / "packaging/Directory.Build.props").read_text(encoding="utf-8")
+    match = re.search(r"<NetWasmPackageVersion>([^<]+)</NetWasmPackageVersion>", props)
+    if match is None or not projection.VERSION_PATTERN.fullmatch(match.group(1)):
+        raise ValueError("Unable to read the NetWasm dependency version.")
+    version = match.group(1)
+    sdk_paths = (
+        root / "packaging/global.json",
+        root / "packaging/NetWasm.TUnit.Templates/content/NetWasmTUnitTests/global.json",
+    )
+    for path in sdk_paths:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        sdk_version = document.get("msbuild-sdks", {}).get("NetWasm.Sdk")
+        if sdk_version != version:
+            raise ValueError(
+                f"{path.relative_to(root)} selects NetWasm.Sdk {sdk_version!r}, "
+                f"expected {version!r}."
+            )
+    return {
+        "NetWasm.Sdk": version,
+        "NetWasm.Testing.VSTest": version,
+    }
 
 
 def git(root: Path, *arguments: str) -> str:
@@ -44,6 +73,7 @@ def prepare(root: Path, version: str) -> dict[str, str]:
         raise ValueError("This release version is already prepared; use a new version.")
     if not manifest["releaseTag"].endswith(previous):
         raise ValueError("The existing manifest tag must end with its release version.")
+    release_dependencies = dependency_versions(root, manifest)
     tag = manifest["releaseTag"][:-len(previous)] + version
     origin = git(root, "remote", "get-url", "origin")
     expected = str(manifest["repository"])
@@ -63,7 +93,12 @@ def prepare(root: Path, version: str) -> dict[str, str]:
     git(root, "commit", "-S", "-m", f"Prepare {expected.split('/')[-1]} {version}")
     source = git(root, "rev-parse", "HEAD")
     git(root, "tag", "-s", tag, "-m", f"{expected.split('/')[-1]} {version}", source)
-    manifest.update(releaseVersion=version, releaseTag=tag, sourceCommit=source)
+    manifest.update(
+        releaseVersion=version,
+        releaseTag=tag,
+        sourceCommit=source,
+        dependencyVersions=release_dependencies,
+    )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     verification.verify_source(root, manifest, root / "eng/release-signers")
     git(root, "add", "eng/release-manifest.json")

@@ -10,11 +10,13 @@ public sealed class GeneratedLifecycleAction
     public GeneratedLifecycleAction(
         GeneratedLifecycleStage stage,
         int order,
-        Func<object?, CancellationToken, ValueTask> invoke)
+        Func<object?, CancellationToken, ValueTask> invoke,
+        TimeSpan? timeout = null)
     {
         Invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
         Stage = stage;
         Order = order;
+        Timeout = timeout;
     }
 
     public GeneratedLifecycleStage Stage { get; }
@@ -22,6 +24,92 @@ public sealed class GeneratedLifecycleAction
     public int Order { get; }
 
     public Func<object?, CancellationToken, ValueTask> Invoke { get; }
+
+    public TimeSpan? Timeout { get; }
+
+    public async ValueTask InvokeAsync(object? instance, CancellationToken cancellationToken)
+    {
+        if (Timeout is not TimeSpan timeout)
+        {
+            await Invoke(instance, cancellationToken);
+            return;
+        }
+
+        var executionSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task execution;
+        try
+        {
+            execution = Invoke(instance, executionSource.Token).AsTask();
+        }
+        catch
+        {
+            executionSource.Dispose();
+            throw;
+        }
+
+        var deadline = Task.Delay(timeout, cancellationToken);
+        var completed = await Task.WhenAny(execution, deadline);
+        if (ReferenceEquals(completed, execution))
+        {
+            executionSource.Dispose();
+            await execution;
+            return;
+        }
+
+        CancelWithoutThrowing(executionSource);
+        var executionStillRunning = !execution.IsCompleted;
+        if (executionStillRunning)
+        {
+            _ = ObserveAndDisposeAsync(execution, executionSource);
+        }
+        else
+        {
+            executionSource.Dispose();
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            throw new GeneratedCancellationException(
+                cancellationToken,
+                execution,
+                executionStillRunning);
+        }
+
+        throw new GeneratedTimeoutException(
+            $"Lifecycle hook exceeded its timeout of {timeout.TotalMilliseconds.ToString(global::System.Globalization.CultureInfo.InvariantCulture)} ms.",
+            execution,
+            executionStillRunning);
+    }
+
+    private static async Task ObserveAndDisposeAsync(Task execution, CancellationTokenSource source)
+    {
+        try
+        {
+            await execution;
+        }
+        catch
+        {
+            // The timeout is the reported failure. Observe any late exception so
+            // an abandoned yielding hook cannot raise an unobserved-task failure.
+        }
+        finally
+        {
+            source.Dispose();
+        }
+    }
+
+    private static void CancelWithoutThrowing(CancellationTokenSource source)
+    {
+        try
+        {
+            source.Cancel();
+        }
+        catch
+        {
+            // Timeout/cancellation remains the primary outcome. A callback failure
+            // must not lose the completion boundary for the still-running hook.
+        }
+    }
 }
 
 /// <summary>

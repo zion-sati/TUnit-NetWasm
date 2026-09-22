@@ -61,10 +61,15 @@ public static class TestApplication
 
     private static int List(ITestEntryCatalog catalog, ITestEventSink sink)
     {
-        var cases = new TestCaseResolver().Resolve(catalog, TestRunRequest.All);
+        var cases = new TestCaseResolver().Resolve(catalog, TestRunRequest.Discovery);
 
         foreach (var testCase in cases)
         {
+            if (testCase.IsNotDiscoverable)
+            {
+                continue;
+            }
+
             sink.Write(new CatalogEntryEvent(
                 testCase.StableId,
                 testCase.DisplayName,
@@ -81,7 +86,16 @@ public static class TestApplication
             }
         }
 
-        sink.Write(new HostResultEvent(0, $"listed={cases.Count}"));
+        var listedCount = 0;
+        foreach (var testCase in cases)
+        {
+            if (!testCase.IsNotDiscoverable)
+            {
+                listedCount++;
+            }
+        }
+
+        sink.Write(new HostResultEvent(0, $"listed={listedCount}"));
         return 0;
     }
 

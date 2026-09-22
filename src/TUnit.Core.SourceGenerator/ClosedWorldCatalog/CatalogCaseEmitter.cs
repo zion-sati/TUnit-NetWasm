@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
@@ -25,36 +26,59 @@ internal sealed class CatalogCaseEmitter : ICaseEmitter
         writer.AppendLine("\"" + Escape(request.FilePath ?? string.Empty) + "\",");
         writer.AppendLine($"{request.LineNumber},");
         writer.AppendLine($"{request.InvocationKind},");
-        writer.AppendLine("static () =>");
+        writer.AppendLine(request.CapturesRuntimeValues ? "() =>" : "static () =>");
         writer.AppendLine("{");
         writer.Indent();
         writer.AppendRaw(_instanceCreationEmitter.Emit(request.InstanceCreation));
         writer.Unindent();
         writer.AppendLine("},");
-        writer.AppendLine("static (instance, cancellationToken) =>");
+        writer.AppendLine(request.CapturesRuntimeValues ? "(instance, cancellationToken) =>" : "static (instance, cancellationToken) =>");
         writer.AppendLine("{");
         writer.Indent();
         writer.AppendRaw(_invocationEmitter.Emit(request.Invocation));
         writer.Unindent();
         writer.AppendLine("},");
-        writer.AppendLine(FormatStringArray(request.Categories) + ",");
+        var rowCategories = request.Row.Categories.IsDefault ? ImmutableArray<string>.Empty : request.Row.Categories;
+        writer.AppendLine(FormatStringArray(request.Categories.Concat(rowCategories).Distinct(StringComparer.Ordinal).ToImmutableArray()) + ",");
         writer.AppendLine(FormatStringArray(request.Properties) + ",");
         writer.AppendLine(FormatStringArray(request.Dependencies) + ",");
-        writer.AppendLine(FormatRow(request.Row) + ",");
+        writer.AppendLine(FormatRow(request) + ",");
         writer.AppendLine($"{request.LifecycleName},");
         writer.AppendLine("global::TUnit.Core.GeneratedCompletionPolicy.Await,");
-        writer.AppendLine("\"TUnit.Core.SourceGenerator\"));");
+        writer.AppendLine("\"TUnit.Core.SourceGenerator\",");
+        writer.AppendLine($"timeout: {FormatTimeout(request.TimeoutMilliseconds)},");
+        writer.AppendLine($"retryPolicy: {FormatRetryPolicy(request.RetryPolicy)},");
+        writer.AppendLine($"skipReason: {FormatNullableString(request.Row.SkipReason ?? request.SkipReason)},");
+        writer.AppendLine($"executionPriority: {request.ExecutionPriority.ToString(global::System.Globalization.CultureInfo.InvariantCulture)},");
+        writer.AppendLine($"isExplicit: {FormatBoolean(request.IsExplicit)},");
+        writer.AppendLine($"isNotDiscoverable: {FormatBoolean(request.IsNotDiscoverable)},");
+        writer.AppendLine($"repeatIndex: {request.RepeatIndexExpression ?? request.Row.RepeatIndex.ToString(global::System.Globalization.CultureInfo.InvariantCulture)},");
+        writer.AppendLine($"disposeData: {request.DisposeDataExpression ?? "null"}));");
         writer.Unindent();
         return writer.ToString();
     }
 
-    private static string FormatRow(CatalogRow row)
+    private static string FormatRow(CaseRequest request)
     {
+        var row = request.Row;
         var values = string.Join(", ", row.MethodValues.Select(static value => value.Code));
-        var result = new StringBuilder($"new global::TUnit.Core.GeneratedTestCaseRow(\"{Escape(row.StableId)}\", \"{Escape(row.DisplayName)}\", new object?[] {{ {values} }}");
+        var stableId = request.StableIdExpression ?? $"\"{Escape(row.StableId)}\"";
+        var displayName = request.DisplayNameExpression ?? $"\"{Escape(row.DisplayName)}\"";
+        var result = new StringBuilder($"new global::TUnit.Core.GeneratedTestCaseRow({stableId}, {displayName}");
+        if (request.LazilyMaterializeRowArguments)
+        {
+            result.Append($", argumentsFactory: () => new object?[] {{ {values} }}");
+        }
+        else
+        {
+            result.Append($", new object?[] {{ {values} }}");
+        }
+
         if (!row.ConstructorValues.IsDefaultOrEmpty)
         {
-            result.Append(", constructorArguments: new object?[] { ");
+            result.Append(request.LazilyMaterializeConstructorArguments
+                ? ", constructorArgumentsFactory: () => new object?[] { "
+                : ", constructorArguments: new object?[] { ");
             result.Append(string.Join(", ", row.ConstructorValues.Select(static value => value.Code)));
             result.Append(" }");
         }
@@ -67,6 +91,29 @@ internal sealed class CatalogCaseEmitter : ICaseEmitter
         var formatted = values.Select(static value => "\"" + Escape(value) + "\"");
         return $"new string[] {{ {string.Join(", ", formatted)} }}";
     }
+
+    private static string FormatTimeout(int? milliseconds) => milliseconds is int value
+        ? $"global::System.TimeSpan.FromMilliseconds({value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)})"
+        : "null";
+
+    private static string FormatRetryPolicy(RetryPolicyRequest? policy)
+    {
+        if (policy is null || policy.MaxRetries == 0)
+        {
+            return "global::TUnit.Core.GeneratedRetryPolicy.None";
+        }
+
+        var predicate = policy.ExceptionTypeNames.IsDefaultOrEmpty
+            ? "null"
+            : "static exception => " + string.Join(" || ", policy.ExceptionTypeNames.Select(static type => $"exception is {type}"));
+        return $"new global::TUnit.Core.GeneratedRetryPolicy({policy.MaxRetries.ToString(global::System.Globalization.CultureInfo.InvariantCulture)}, {policy.BackoffMilliseconds.ToString(global::System.Globalization.CultureInfo.InvariantCulture)}, {policy.BackoffMultiplier.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture)}, {predicate})";
+    }
+
+    private static string FormatNullableString(string? value) => value is null
+        ? "null"
+        : $"\"{Escape(value)}\"";
+
+    private static string FormatBoolean(bool value) => value ? "true" : "false";
 
     private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
 }

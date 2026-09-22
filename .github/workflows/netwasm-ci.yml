@@ -58,7 +58,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: zion-sati/NetWasm
-          ref: 306485113aa2258f408224ae9e9108931892aca9
+          ref: 8ac247a273d14ba0bbba13d32a7c0ed97337f9e8
           path: netwasm-core
           persist-credentials: false
 
