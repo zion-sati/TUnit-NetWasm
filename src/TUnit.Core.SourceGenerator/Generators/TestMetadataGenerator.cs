@@ -3762,7 +3762,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     true),
                 Location.None,
                 classGroup.ClassFullyQualified,
-                ex.ToString()));
+                ex.Message));
         }
     }
 

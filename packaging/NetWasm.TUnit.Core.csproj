@@ -41,11 +41,18 @@
   <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
     <Compile Include="NetWasmTarget\GlobalUsings.cs" />
     <Compile Include="NetWasmTarget\TUnitCoreAuthoringContracts.cs" />
+    <Compile Include="NetWasmTarget\TUnitCoreDataSourceContracts.cs" />
+    <Compile Include="NetWasmTarget\TUnitCoreMetadataContracts.cs" />
     <Compile Include="..\src\TUnit.Core\GeneratedCompletionPolicy.cs" />
     <Compile Include="..\src\TUnit.Core\GeneratedInvocationKind.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedCaseData.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedCaseDataDisposal.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedCancellationException.cs" />
     <Compile Include="..\src\TUnit.Core\GeneratedLifecycle.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedRetryPolicy.cs" />
     <Compile Include="..\src\TUnit.Core\GeneratedTestCase.cs" />
     <Compile Include="..\src\TUnit.Core\GeneratedTestCaseRow.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedTimeoutException.cs" />
     <Compile Include="..\src\TUnit.Core\ITestEntryCatalog.cs" />
     <Compile Include="..\src\TUnit.Core\SourceGeneratedTestCatalog.cs" />
   </ItemGroup>

@@ -94,6 +94,75 @@ public sealed class TestCaseResolverTests
         XunitAssert.Equal("stableIds", exception.ParamName);
     }
 
+    [Fact]
+    public void AllExcludesExplicitCasesWhileDiscoveryIncludesThem()
+    {
+        var catalog = new SourceGeneratedTestCatalog([
+            TestCaseFactory.Create("ordinary"),
+            TestCaseFactory.Create("explicit", isExplicit: true),
+        ]);
+
+        var runCases = _resolver.Resolve(catalog, TestRunRequest.All);
+        var discoveryCases = _resolver.Resolve(catalog, TestRunRequest.Discovery);
+
+        XunitAssert.Equal(["ordinary"], runCases.Select(static testCase => testCase.StableId));
+        XunitAssert.Equal(["explicit", "ordinary"], discoveryCases.Select(static testCase => testCase.StableId));
+    }
+
+    [Fact]
+    public void ExplicitSelectionRunsOnlyWhenNoOrdinaryCaseIsSelected()
+    {
+        var catalog = new SourceGeneratedTestCatalog([
+            TestCaseFactory.Create("ordinary"),
+            TestCaseFactory.Create("explicit", isExplicit: true),
+        ]);
+
+        var explicitOnly = _resolver.Resolve(catalog, new TestRunRequest(["explicit"]));
+        var mixed = _resolver.Resolve(catalog, new TestRunRequest(["ordinary", "explicit"]));
+
+        XunitAssert.Equal(["explicit"], explicitOnly.Select(static testCase => testCase.StableId));
+        XunitAssert.Equal(["ordinary"], mixed.Select(static testCase => testCase.StableId));
+    }
+
+    [Fact]
+    public void SelectionAddsTransitiveDependenciesAndOrdersReadyCasesByPriority()
+    {
+        var catalog = new SourceGeneratedTestCatalog([
+            TestCaseFactory.Create("low", methodName: "Low", executionPriority: 0),
+            TestCaseFactory.Create("high", methodName: "High", executionPriority: 5),
+            TestCaseFactory.Create(
+                "middle",
+                methodName: "Middle",
+                dependencies: ["High"],
+                executionPriority: 2),
+            TestCaseFactory.Create(
+                "root",
+                methodName: "Root",
+                dependencies: ["Middle"],
+                executionPriority: 5),
+        ]);
+
+        var selected = _resolver.Resolve(catalog, new TestRunRequest(["low", "root"]));
+
+        XunitAssert.Equal(
+            ["high", "middle", "root", "low"],
+            selected.Select(static testCase => testCase.StableId));
+    }
+
+    [Fact]
+    public void SelectionRejectsDependencyCycles()
+    {
+        var catalog = new SourceGeneratedTestCatalog([
+            TestCaseFactory.Create("a", methodName: "A", dependencies: ["B"]),
+            TestCaseFactory.Create("b", methodName: "B", dependencies: ["A"]),
+        ]);
+
+        var exception = XunitAssert.Throws<ArgumentException>(() =>
+            _resolver.Resolve(catalog, TestRunRequest.All));
+
+        XunitAssert.Contains("cycle", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static SourceGeneratedTestCatalog Catalog(params string[] stableIds) =>
         new(stableIds.Select(stableId => TestCaseFactory.Create(stableId)));
 

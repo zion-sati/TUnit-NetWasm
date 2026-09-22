@@ -116,12 +116,17 @@ ci_package_source_xml="$(xml_escape "${NETWASM_CI_PACKAGE_SOURCE:-}")"
 } > "${nuget_config}"
 
 runner_tests="${qualification_root}/packaging/NetWasm.TUnit.Runner.Tests/NetWasm.TUnit.Runner.Tests.csproj"
-dotnet restore "${runner_tests}" --configfile "${nuget_config}" --disable-build-servers --nologo
+dotnet restore "${runner_tests}" \
+  --configfile "${nuget_config}" \
+  --disable-build-servers \
+  --nologo \
+  -p:NetWasmTUnitPackageVersion="${TEST_VERSION}"
 dotnet run --project "${runner_tests}" \
   -c Release \
   --no-restore \
   --no-launch-profile \
   --disable-build-servers \
+  -p:NetWasmTUnitPackageVersion="${TEST_VERSION}" \
   -- --minimum-expected-tests 52
 
 desktop_package_tests="${qualification_root}/packaging/NetWasm.TUnit.Desktop.Package.Tests/NetWasm.TUnit.Desktop.Package.Tests.csproj"
@@ -144,7 +149,7 @@ package_tests="NetWasm.TUnit.Package.Tests/NetWasm.TUnit.Package.Tests.csproj"
     -p:NetWasmTUnitPackageVersion="${TEST_VERSION}"
   dotnet test "${package_tests}" -c Release --no-restore --disable-build-servers --nologo |
     tee "${test_root}/package-run.log"
-  assert_vstest_pass_summary "${test_root}/package-run.log" 2
+  assert_vstest_pass_summary "${test_root}/package-run.log" 7
   dotnet test "${package_tests}" -c Release --no-build --no-restore --list-tests --nologo |
     tee "${test_root}/package-list.log"
   grep -F -q 'PackageOnlyConsumerRunsThroughStandardDotNetTest()' \

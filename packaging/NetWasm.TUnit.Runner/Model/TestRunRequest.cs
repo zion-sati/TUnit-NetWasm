@@ -4,10 +4,18 @@ namespace NetWasm.TUnit.Runner.Model;
 
 public sealed class TestRunRequest
 {
-    public static TestRunRequest All { get; } = new(null);
+    public static TestRunRequest All { get; } = new(null, includeExplicit: false);
+
+    public static TestRunRequest Discovery { get; } = new(null, includeExplicit: true);
 
     public TestRunRequest(IEnumerable<string>? stableIds)
+        : this(stableIds, includeExplicit: false)
     {
+    }
+
+    private TestRunRequest(IEnumerable<string>? stableIds, bool includeExplicit)
+    {
+        IncludeExplicit = includeExplicit;
         if (stableIds is null)
         {
             StableIds = null;
@@ -29,4 +37,6 @@ public sealed class TestRunRequest
     }
 
     public IReadOnlyList<string>? StableIds { get; }
+
+    public bool IncludeExplicit { get; }
 }

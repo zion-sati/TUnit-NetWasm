@@ -10,7 +10,8 @@ internal sealed record LifecycleHook(
     int Line,
     string MethodName,
     string Invocation,
-    string ReturnType);
+    string ReturnType,
+    int? TimeoutMilliseconds = null);
 
 internal sealed record LifecycleRequest(ImmutableArray<LifecycleHook> Hooks);
 

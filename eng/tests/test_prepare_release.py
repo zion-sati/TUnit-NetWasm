@@ -63,9 +63,56 @@ class PrepareReleaseTests(unittest.TestCase):
 
     def test_preserves_tunit_tag_prefix(self):
         self.manifest.update(repository="zion-sati/TUnit-NetWasm", releaseTag="netwasm-v0.1.0-rc.1")
+        self.manifest["dependencyVersions"] = {
+            "NetWasm.Sdk": "0.4.0",
+            "NetWasm.Testing.VSTest": "0.4.0",
+        }
         self.write_manifest()
+        packaging = self.root / "packaging"
+        packaging.mkdir()
+        (packaging / "Directory.Build.props").write_text(
+            "<Project><PropertyGroup><NetWasmPackageVersion>0.4.1</NetWasmPackageVersion>"
+            "</PropertyGroup></Project>\n"
+        )
+        sdk_paths = (
+            packaging / "global.json",
+            packaging / "NetWasm.TUnit.Templates/content/NetWasmTUnitTests/global.json",
+        )
+        for path in sdk_paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"msbuild-sdks": {"NetWasm.Sdk": "0.4.1"}}))
         self.responses[("remote", "get-url", "origin")] = "git@github.com:zion-sati/TUnit-NetWasm.git"
         self.assertEqual("netwasm-v0.1.0-rc.2", self.run_prepare()["releaseTag"])
+        manifest = json.loads((self.root / "eng/release-manifest.json").read_text())
+        self.assertEqual(
+            {"NetWasm.Sdk": "0.4.1", "NetWasm.Testing.VSTest": "0.4.1"},
+            manifest["dependencyVersions"],
+        )
+
+    def test_rejects_mismatched_tunit_sdk_pin_before_mutation(self):
+        self.manifest.update(repository="zion-sati/TUnit-NetWasm", releaseTag="netwasm-v0.1.0-rc.1")
+        self.write_manifest()
+        packaging = self.root / "packaging"
+        packaging.mkdir()
+        (packaging / "Directory.Build.props").write_text(
+            "<Project><PropertyGroup><NetWasmPackageVersion>0.4.1</NetWasmPackageVersion>"
+            "</PropertyGroup></Project>\n"
+        )
+        sdk_paths = (
+            packaging / "global.json",
+            packaging / "NetWasm.TUnit.Templates/content/NetWasmTUnitTests/global.json",
+        )
+        for path in sdk_paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"msbuild-sdks": {"NetWasm.Sdk": "0.4.1"}}))
+        sdk_paths[1].write_text(json.dumps({"msbuild-sdks": {"NetWasm.Sdk": "0.4.0"}}))
+
+        with patch.object(release, "git", side_effect=self.git), \
+             patch.object(release.projection, "project_version") as project:
+            with self.assertRaisesRegex(ValueError, "expected '0.4.1'"):
+                release.prepare(self.root, "0.1.0-rc.2")
+            project.assert_not_called()
+        self.assertFalse(any(call[0] in {"add", "commit", "tag"} for call in self.calls))
 
     def test_preflight_rejects_dirty_branch_private_origin_or_unapproved_identity_before_mutation(self):
         cases = [(("branch", "--show-current"), "feature"), (("status", "--porcelain=v1"), " M code"),

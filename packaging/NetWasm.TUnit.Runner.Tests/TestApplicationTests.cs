@@ -48,6 +48,27 @@ public sealed class TestApplicationTests
     }
 
     [Fact]
+    public async Task ListIncludesExplicitButHidesNotDiscoverableCases()
+    {
+        var sink = new RecordingEventSink();
+        var catalog = new SourceGeneratedTestCatalog([
+            TestCaseFactory.Create("ordinary"),
+            TestCaseFactory.Create("explicit", isExplicit: true),
+            TestCaseFactory.Create("hidden", isNotDiscoverable: true),
+        ]);
+
+        var status = await TestApplication.RunAsync(catalog, ["--list"], sink, Xunit.TestContext.Current.CancellationToken);
+
+        XunitAssert.Equal(0, status);
+        var listedIds = sink.Events
+            .OfType<CatalogEntryEvent>()
+            .Select(static entry => entry.StableId)
+            .ToArray();
+        XunitAssert.Equal(["explicit", "ordinary"], listedIds);
+        XunitAssert.Equal("listed=2", XunitAssert.IsType<HostResultEvent>(sink.Events[^1]).Message);
+    }
+
+    [Fact]
     public async Task RunReturnsFailureWhenASelectedCaseThrows()
     {
         var catalog = new SourceGeneratedTestCatalog(

@@ -16,8 +16,8 @@ internal sealed class TUnitTestResultMapper : ITUnitTestResultMapper
             Outcome = completed.Outcome switch
             {
                 "passed" => TestOutcome.Passed,
-                "assertion-failed" or "unexpected-failure" => TestOutcome.Failed,
-                "unsupported" or "cancelled" => TestOutcome.Skipped,
+                "assertion-failed" or "unexpected-failure" or "timed-out" => TestOutcome.Failed,
+                "skipped" or "unsupported" or "cancelled" => TestOutcome.Skipped,
                 _ => throw new InvalidDataException($"Unknown TUnit test outcome '{completed.Outcome}'."),
             },
         };

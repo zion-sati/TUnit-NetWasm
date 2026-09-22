@@ -98,7 +98,7 @@ internal sealed class GeneratedEntryPointContractTests
             .ToArray();
         var allGenerated = string.Join(Environment.NewLine, generated);
 
-        await Assert.That(allGenerated).Contains("CreateDirectCatalog");
+        await Assert.That(allGenerated).Contains("GetCatalogAsync");
         await Assert.That(allGenerated).DoesNotContain("SourceRegistrar");
         await Assert.That(allGenerated).DoesNotContain("Sources.TestEntries");
         await Assert.That(allGenerated).DoesNotContain("ConcurrentDictionary");
@@ -132,12 +132,12 @@ internal sealed class GeneratedEntryPointContractTests
             .GetMethod("GetCatalog", BindingFlags.Public | BindingFlags.Static)!
             .Invoke(null, null)!;
         await Assert.That(directCatalog.GetGeneratedCases()).IsNotEmpty();
-        var roots = new MethodBase[]
+        var roots = new MethodBase?[]
         {
-            entryPoint.GetMethod("GetCatalog", BindingFlags.Public | BindingFlags.Static)!,
-            entryPoint.GetMethod("CreateDirectCatalog", BindingFlags.NonPublic | BindingFlags.Static)!,
-            entryPoint.TypeInitializer!,
-        };
+            entryPoint.GetMethod("GetCatalog", BindingFlags.Public | BindingFlags.Static),
+            entryPoint.GetMethod("GetCatalogAsync", BindingFlags.Public | BindingFlags.Static),
+            entryPoint.TypeInitializer,
+        }.OfType<MethodBase>();
         var visited = new HashSet<MethodBase>();
         var pending = new Queue<MethodBase>(roots);
         var forbidden = new List<string>();
@@ -432,7 +432,7 @@ internal sealed class GeneratedEntryPointContractTests
             Environment.NewLine,
             generatedCompilation.SyntaxTrees.Select(static tree => tree.GetText().ToString()));
 
-        await Assert.That(errors.Any(static error => error.Contains("Runtime data source", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(errors.Any(static error => error.Contains("Runtime data source", StringComparison.Ordinal))).IsFalse();
         await Assert.That(errors.Any(static error => error.Contains("return void, Task, or ValueTask", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains("TestContext or ClassHookContext", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains("may only inject CancellationToken", StringComparison.Ordinal))).IsTrue();
@@ -440,12 +440,13 @@ internal sealed class GeneratedEntryPointContractTests
         await Assert.That(errors.Any(static error => error.Contains("Property data injection", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains("Assembly, test-session", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains("Global lifecycle hooks", StringComparison.Ordinal))).IsTrue();
-        await Assert.That(errors.Any(static error => error.Contains("Runtime class data source", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(errors.Any(static error => error.Contains("Runtime class data source", StringComparison.Ordinal))).IsFalse();
         await Assert.That(errors.Any(static error => error.Contains("IAsyncInitializer", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains("Assembly-level runtime class construction", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains("Argument conversion", StringComparison.Ordinal))).IsTrue();
-        await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'SkipAttribute'", StringComparison.Ordinal))).IsTrue();
-        await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'RetryAttribute'", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'SkipAttribute'", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'RetryAttribute'", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'ParallelGroupAttribute'", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'FutureSemanticAttribute'", StringComparison.Ordinal))).IsTrue();
         await Assert.That(generated).DoesNotContain("AsyncConvert");
         await Assert.That(generated).Contains("Generated catalog supports only void, Task, and ValueTask");
@@ -696,6 +697,453 @@ internal sealed class GeneratedEntryPointContractTests
             .Because(string.Join(Environment.NewLine,
                 emitResult.Diagnostics.Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
                     .Select(static diagnostic => diagnostic.ToString())));
+    }
+
+    [Test]
+    public async Task ClosedWorldCatalogCarriesInheritedExecutionAndRowMetadata()
+    {
+        const string source = """
+            using TUnit.Core;
+            using TUnit.Core.Enums;
+
+            [assembly: Category("assembly")]
+            [assembly: Property("assembly", "yes")]
+            [assembly: Timeout(900)]
+            [assembly: Retry(1)]
+
+            namespace TestProject;
+
+            [Category("base")]
+            [Property("base", "yes")]
+            [Repeat(2)]
+            [Timeout(500)]
+            [Retry(2, BackoffMs = 7, BackoffMultiplier = 3.0,
+                RetryOnExceptionTypes = new[] { typeof(System.InvalidOperationException) })]
+            [ExecutionPriority(Priority.High)]
+            public class BaseFixture
+            {
+                [Before(HookType.Test)]
+                [Timeout(25)]
+                public void Setup() { }
+
+                [Test]
+                public void Prerequisite() { }
+
+                [Test]
+                [Arguments(7, Skip = "row skip", Categories = new[] { "row" })]
+                [Category("method")]
+                [Property("method", "yes")]
+                [DependsOn(nameof(Prerequisite))]
+                public void Repeated(int value) { }
+            }
+
+            [InheritsTests]
+            [Category("derived")]
+            [Explicit]
+            [NotDiscoverable]
+            public sealed class DerivedFixture : BaseFixture;
+            """;
+
+        var cases = BuildGeneratedCatalog(source, closedWorld: true)
+            .Catalog
+            .GetGeneratedCases()
+            .Where(static testCase =>
+                testCase.GroupIdentity.Contains("DerivedFixture", StringComparison.Ordinal) &&
+                testCase.MethodName == "Repeated")
+            .OrderBy(static testCase => testCase.RepeatIndex)
+            .ToArray();
+
+        await Assert.That(cases.Count).IsEqualTo(3);
+        await Assert.That(cases.Select(static testCase => testCase.RepeatIndex)).IsEquivalentTo([0, 1, 2]);
+        await Assert.That(cases.Select(static testCase => testCase.StableId).Distinct().Count()).IsEqualTo(3);
+        foreach (var testCase in cases)
+        {
+            await Assert.That(testCase.Timeout).IsEqualTo(TimeSpan.FromMilliseconds(500));
+            await Assert.That(testCase.RetryPolicy.MaxRetries).IsEqualTo(2);
+            await Assert.That(testCase.RetryPolicy.BackoffMilliseconds).IsEqualTo(7);
+            await Assert.That(testCase.RetryPolicy.BackoffMultiplier).IsEqualTo(3.0);
+            await Assert.That(testCase.RetryPolicy.Accepts(new InvalidOperationException())).IsTrue();
+            await Assert.That(testCase.RetryPolicy.Accepts(new ArgumentException())).IsFalse();
+            await Assert.That(testCase.SkipReason).IsEqualTo("row skip");
+            await Assert.That(testCase.ExecutionPriority).IsEqualTo((int) TUnit.Core.Enums.Priority.High);
+            await Assert.That(testCase.IsExplicit).IsTrue();
+            await Assert.That(testCase.IsNotDiscoverable).IsTrue();
+            await Assert.That(testCase.Categories).IsEquivalentTo(["assembly", "base", "derived", "method", "row"]);
+            await Assert.That(testCase.Properties).IsEquivalentTo(["assembly=yes", "base=yes", "method=yes"]);
+            await Assert.That(testCase.Dependencies).Contains(":Prerequisite");
+            await Assert.That(testCase.Lifecycle.Actions.Single(static action =>
+                    action.Stage == GeneratedLifecycleStage.TestSetup).Timeout)
+                .IsEqualTo(TimeSpan.FromMilliseconds(25));
+        }
+    }
+
+    [Test]
+    public async Task ClosedWorldCatalogMaterializesStaticMethodPropertyFieldAndAsyncDataSources()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using System.Threading.Tasks;
+            using TUnit.Core;
+
+            namespace TestProject;
+
+            public sealed class ExternalData
+            {
+                public static IEnumerable<(int, string)> Tuples()
+                {
+                    yield return (1, "one");
+                    yield return (2, "two");
+                }
+
+                public static int[] Values => new[] { 3, 4 };
+
+                public static readonly Task<int[]> AsyncValues = Task.FromResult(new[] { 5, 6 });
+
+                public static async IAsyncEnumerable<int> Stream()
+                {
+                    yield return 7;
+                    await Task.CompletedTask;
+                }
+
+                public static ValueTask<int> Scalar() => ValueTask.FromResult(8);
+
+                public static int[] Empty => [];
+            }
+
+            public sealed class MethodDataFixture
+            {
+                public static readonly List<string> Seen = [];
+
+                [Test]
+                [MethodDataSource<ExternalData>(nameof(ExternalData.Tuples))]
+                public void TupleCase(int value, string text) => Seen.Add($"tuple:{value}:{text}");
+
+                [Test]
+                [MethodDataSource(typeof(ExternalData), nameof(ExternalData.Values))]
+                public void PropertyCase(int value) => Seen.Add($"property:{value}");
+
+                [Test]
+                [MethodDataSource<ExternalData>(nameof(ExternalData.AsyncValues))]
+                public void FieldCase(int value) => Seen.Add($"field:{value}");
+
+                [Test]
+                [MethodDataSource<ExternalData>(nameof(ExternalData.Stream))]
+                public void AsyncEnumerableCase(int value) => Seen.Add($"stream:{value}");
+
+                [Test]
+                [Repeat(1)]
+                [MethodDataSource<ExternalData>(nameof(ExternalData.Scalar))]
+                public void ScalarCase(int value) => Seen.Add($"scalar:{value}");
+
+                [Test]
+                [MethodDataSource<ExternalData>(nameof(ExternalData.Empty), SkipIfEmpty = true)]
+                public void EmptyCase(int value) => Seen.Add($"empty:{value}");
+            }
+            """;
+
+        var build = BuildGeneratedCatalog(source, closedWorld: true);
+        var cases = build.Catalog.GetGeneratedCases()
+            .Where(static testCase => testCase.GroupIdentity.Contains("MethodDataFixture", StringComparison.Ordinal))
+            .ToArray();
+
+        await Assert.That(cases.Count).IsEqualTo(10);
+        await Assert.That(cases.Select(static testCase => testCase.StableId).Distinct().Count()).IsEqualTo(10);
+        var emptyCase = cases.Single(static testCase => testCase.MethodName == "EmptyCase");
+        await Assert.That(emptyCase.SkipReason).Contains("produced no rows");
+        foreach (var testCase in cases.Where(static testCase => testCase.SkipReason is null))
+        {
+            await testCase.ExecuteAsync();
+        }
+
+        var fixture = build.Assembly.GetType("TestProject.MethodDataFixture")!;
+        var seen = (List<string>) fixture.GetField("Seen", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+        await Assert.That(seen).IsEquivalentTo([
+            "tuple:1:one",
+            "tuple:2:two",
+            "property:3",
+            "property:4",
+            "field:5",
+            "field:6",
+            "stream:7",
+            "scalar:8",
+            "scalar:8",
+        ]);
+    }
+
+    [Test]
+    public async Task ClosedWorldCatalogKeepsMixedSourceKindsDistinctAndPreservesConstructorMetadata()
+    {
+        const string source = """
+            using TUnit.Core;
+
+            namespace TestProject;
+
+            public sealed class Data { }
+
+            [Arguments(null)]
+            [ClassDataSource<Data>]
+            public sealed class MixedConstructorFixture(Data data)
+            {
+                public static int[] Values() => [1];
+
+                [Test]
+                [MethodDataSource(nameof(Values))]
+                public void Case(int value) { }
+            }
+
+            [ClassDataSource<Data>]
+            public sealed class MixedMethodFixture(Data data)
+            {
+                [Test]
+                [Arguments(null)]
+                [ClassDataSource<Data>]
+                public void Case(Data methodData) { }
+            }
+
+            [Arguments(1, Skip = "constructor skip", Categories = new[] { "row" })]
+            public sealed class ConstructorMetadataFixture(int constructorValue)
+            {
+                public static int[] Values() => [1];
+
+                [Test]
+                [MethodDataSource(nameof(Values))]
+                public void Case(int value) { }
+            }
+
+            [Arguments(null, Skip = "class constructor skip", Categories = new[] { "class-row" })]
+            public sealed class ClassConstructorMetadataFixture(Data constructorData)
+            {
+                [Test]
+                [ClassDataSource<Data>]
+                public void Case(Data methodData) { }
+            }
+            """;
+
+        var cases = BuildGeneratedCatalog(source, closedWorld: true).Catalog.GetGeneratedCases();
+
+        await Assert.That(cases.Count).IsEqualTo(6);
+        await Assert.That(cases.Select(static testCase => testCase.StableId).Distinct(StringComparer.Ordinal).Count())
+            .IsEqualTo(6);
+        var metadataCase = cases.Single(static testCase =>
+            testCase.SkipReason == "constructor skip");
+        await Assert.That(metadataCase.SkipReason).IsEqualTo("constructor skip");
+        await Assert.That(metadataCase.Categories).Contains("row");
+        var classMetadataCase = cases.Single(static testCase =>
+            testCase.SkipReason == "class constructor skip");
+        await Assert.That(classMetadataCase.SkipReason).IsEqualTo("class constructor skip");
+        await Assert.That(classMetadataCase.Categories).Contains("class-row");
+    }
+
+    [Test]
+    public async Task ClosedWorldCatalogTreatsEmptySkipAsSkipAndRejectsNegativeRepeat()
+    {
+        const string emptySkipSource = """
+            using TUnit.Core;
+            namespace TestProject;
+            public sealed class Fixture
+            {
+                [Test]
+                [Skip("")]
+                public void Case() { }
+            }
+            """;
+        var skipped = BuildGeneratedCatalog(emptySkipSource, closedWorld: true)
+            .Catalog
+            .GetGeneratedCases()
+            .Single();
+        await Assert.That(skipped.SkipReason).IsEqualTo(string.Empty);
+
+        const string negativeRepeatSource = """
+            using TUnit.Core;
+            namespace TestProject;
+            public sealed class Fixture
+            {
+                [Test]
+                [Repeat(-1)]
+                public void Case() { }
+            }
+            """;
+        InvalidOperationException? failure = null;
+        try
+        {
+            BuildGeneratedCatalog(negativeRepeatSource, closedWorld: true);
+        }
+        catch (InvalidOperationException exception)
+        {
+            failure = exception;
+        }
+
+        await Assert.That(failure).IsNotNull();
+        await Assert.That(failure!.Message).Contains("Repeat count cannot be negative");
+    }
+
+    [Test]
+    public async Task ClosedWorldCatalogCreatesClassDataLazilyPerLogicalCaseAndDisposesItOnce()
+    {
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            using System.Threading.Tasks;
+            using TUnit.Core;
+
+            namespace TestProject;
+
+            public sealed class ConstructorResource : IDisposable, IAsyncDisposable
+            {
+                public static int Created;
+                public static int AsyncDisposed;
+                public static int SyncDisposed;
+
+                public ConstructorResource() => Created++;
+                public void Dispose() => SyncDisposed++;
+                public ValueTask DisposeAsync()
+                {
+                    AsyncDisposed++;
+                    return default;
+                }
+            }
+
+            public sealed class MethodResource : IDisposable, IAsyncDisposable
+            {
+                public static int Created;
+                public static int AsyncDisposed;
+                public static int SyncDisposed;
+
+                public MethodResource() => Created++;
+                public void Dispose() => SyncDisposed++;
+                public ValueTask DisposeAsync()
+                {
+                    AsyncDisposed++;
+                    return default;
+                }
+            }
+
+            [ClassDataSource<ConstructorResource>]
+            public sealed class ClassDataFixture(ConstructorResource constructorResource)
+            {
+                public static readonly List<bool> Observed = [];
+
+                [Test]
+                [Repeat(1)]
+                [ClassDataSource<MethodResource>]
+                public void Case(MethodResource methodResource) =>
+                    Observed.Add(constructorResource is not null && methodResource is not null);
+            }
+
+            public sealed class ParameterClassDataFixture
+            {
+                [Test]
+                public void Case([ClassDataSource<MethodResource>] MethodResource methodResource) =>
+                    ClassDataFixture.Observed.Add(methodResource is not null);
+            }
+            """;
+
+        var build = BuildGeneratedCatalog(source, closedWorld: true);
+        var cases = build.Catalog.GetGeneratedCases()
+            .Where(static testCase => testCase.GroupIdentity.Contains("TestProject.ClassDataFixture", StringComparison.Ordinal))
+            .OrderBy(static testCase => testCase.RepeatIndex)
+            .ToArray();
+        var constructorResource = build.Assembly.GetType("TestProject.ConstructorResource")!;
+        var methodResource = build.Assembly.GetType("TestProject.MethodResource")!;
+
+        await Assert.That(cases.Count).IsEqualTo(2);
+        await Assert.That((int) constructorResource.GetField("Created")!.GetValue(null)!).IsEqualTo(0);
+        await Assert.That((int) methodResource.GetField("Created")!.GetValue(null)!).IsEqualTo(0);
+
+        foreach (var testCase in cases)
+        {
+            await testCase.ExecuteAsync();
+            await testCase.DisposeDataAsync();
+            await testCase.DisposeDataAsync();
+        }
+
+        await Assert.That((int) constructorResource.GetField("Created")!.GetValue(null)!).IsEqualTo(2);
+        await Assert.That((int) methodResource.GetField("Created")!.GetValue(null)!).IsEqualTo(2);
+        await Assert.That((int) constructorResource.GetField("AsyncDisposed")!.GetValue(null)!).IsEqualTo(2);
+        await Assert.That((int) methodResource.GetField("AsyncDisposed")!.GetValue(null)!).IsEqualTo(2);
+        await Assert.That((int) constructorResource.GetField("SyncDisposed")!.GetValue(null)!).IsEqualTo(0);
+        await Assert.That((int) methodResource.GetField("SyncDisposed")!.GetValue(null)!).IsEqualTo(0);
+        var fixture = build.Assembly.GetType("TestProject.ClassDataFixture")!;
+        var observed = (List<bool>) fixture.GetField("Observed")!.GetValue(null)!;
+        await Assert.That(observed).IsEquivalentTo([true, true]);
+
+        var parameterCase = build.Catalog.GetGeneratedCases().Single(static testCase =>
+            testCase.GroupIdentity.Contains("ParameterClassDataFixture", StringComparison.Ordinal));
+        await parameterCase.ExecuteAsync();
+        await parameterCase.DisposeDataAsync();
+        await Assert.That((int) methodResource.GetField("Created")!.GetValue(null)!).IsEqualTo(3);
+        await Assert.That((int) methodResource.GetField("AsyncDisposed")!.GetValue(null)!).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task ClosedWorldCatalogReportsPreciseInvalidDataSourceShapes()
+    {
+        const string source = """
+            using TUnit.Core;
+            namespace TestProject;
+
+            public sealed class InstanceProviderFixture
+            {
+                [Test]
+                [MethodDataSource(nameof(Data))]
+                public void Case(int value) { }
+                public int[] Data() => [1];
+            }
+
+            public sealed class DeferredProviderFixture
+            {
+                [Test]
+                [MethodDataSource(nameof(Data), DeferEnumeration = true)]
+                public void Case(int value) { }
+                public static int[] Data() => [1];
+            }
+
+            public sealed class AmbiguousProviderFixture
+            {
+                [Test]
+                [MethodDataSource(nameof(Data))]
+                public void Case(int value) { }
+                public static int[] Data(int value = 1) => [value];
+                public static int[] Data(long value = 1) => [(int)value];
+            }
+
+            public sealed class SharedProviderFixture
+            {
+                [Test]
+                [ClassDataSource<Resource>(Shared = SharedType.PerClass)]
+                public void Case(Resource value) { }
+            }
+
+            public sealed class Resource { }
+            """;
+
+        var compilation = CSharpCompilation.Create(
+                "ClosedWorldInvalidDataSources",
+                [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview))],
+                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+            .WithReferences(ReferencesHelper.References);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                CreateGenerators(),
+                parseOptions: new CSharpParseOptions(LanguageVersion.Preview))
+            .WithUpdatedAnalyzerConfigOptions(new TestAnalyzerConfigOptionsProvider(
+                ImmutableDictionary<string, string>.Empty.Add(
+                    "build_property.TUnitSourceGenerationMode",
+                    "ClosedWorldCatalog")));
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var generatedCompilation, out var diagnostics);
+        var errors = diagnostics
+            .Concat(generatedCompilation.GetDiagnostics())
+            .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .Select(static diagnostic => diagnostic.ToString())
+            .ToArray();
+
+        await Assert.That(errors.Any(static error => error.Contains(
+            "must resolve to an accessible static method, property, or field", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(errors.Any(static error => error.Contains(
+            "DeferEnumeration=true is not supported", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(errors.Any(static error => error.Contains(
+            "is ambiguous for the supplied arguments", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(errors.Any(static error => error.Contains(
+            "use SharedType.None", StringComparison.Ordinal))).IsTrue();
     }
 
     private static GeneratedCatalogBuild BuildGeneratedCatalog(string source, bool closedWorld)

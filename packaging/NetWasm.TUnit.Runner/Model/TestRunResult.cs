@@ -17,7 +17,11 @@ public sealed class TestRunResult
 
     public int PassedCount => Count(TestOutcome.Passed);
 
-    public int FailedCount => Cases.Count - PassedCount;
+    public int SkippedCount => Count(TestOutcome.Skipped) + Count(TestOutcome.Unsupported);
+
+    public int FailedCount => Count(TestOutcome.AssertionFailed) +
+        Count(TestOutcome.UnexpectedFailure) +
+        Count(TestOutcome.TimedOut);
 
     private int Count(TestOutcome outcome)
     {

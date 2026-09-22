@@ -28,6 +28,15 @@ public sealed class TestAttribute(
     [CallerFilePath] string file = "",
     [CallerLineNumber] int line = 0) : BaseTestAttribute(file, line);
 
+[AttributeUsage(AttributeTargets.Constructor)]
+public sealed class TestConstructorAttribute : TUnitAttribute;
+
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class | AttributeTargets.Assembly)]
+public sealed class TimeoutAttribute(int timeoutInMilliseconds) : TUnitAttribute
+{
+    public TimeSpan Timeout { get; } = TimeSpan.FromMilliseconds(timeoutInMilliseconds);
+}
+
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Parameter, AllowMultiple = true)]
 public sealed class ArgumentsAttribute(params object?[]? values) : Attribute
 {

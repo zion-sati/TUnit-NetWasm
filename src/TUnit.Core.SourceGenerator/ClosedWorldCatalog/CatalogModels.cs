@@ -9,7 +9,9 @@ internal sealed record CatalogValue(string Code, string Canonical, string Displa
 internal sealed record CatalogArgumentRow(
     ImmutableArray<CatalogValue> Values,
     string? DisplayName = null,
-    string? Identity = null);
+    string? Identity = null,
+    string? SkipReason = null,
+    ImmutableArray<string> Categories = default);
 
 internal sealed record CatalogRowRequest(
     string MethodIdentity,
@@ -21,13 +23,24 @@ internal sealed record CatalogRowRequest(
     string? MethodDisplayName = null,
     ImmutableArray<string> MethodParameterNames = default,
     string? ClassDisplayName = null,
-    ImmutableArray<string> ConstructorParameterNames = default);
+    ImmutableArray<string> ConstructorParameterNames = default,
+    int RepeatCount = 0);
+
 
 internal sealed record CatalogRow(
     ImmutableArray<CatalogValue> MethodValues,
     ImmutableArray<CatalogValue> ConstructorValues,
     string StableId,
-    string DisplayName);
+    string DisplayName,
+    string? SkipReason = null,
+    ImmutableArray<string> Categories = default,
+    int RepeatIndex = 0);
+
+internal sealed record RetryPolicyRequest(
+    int MaxRetries,
+    int BackoffMilliseconds,
+    double BackoffMultiplier,
+    ImmutableArray<string> ExceptionTypeNames);
 
 internal sealed record CaseRequest(
     string TypeName,
@@ -43,7 +56,20 @@ internal sealed record CaseRequest(
     ImmutableArray<string> Properties,
     ImmutableArray<string> Dependencies,
     CatalogRow Row,
-    string LifecycleName);
+    string LifecycleName,
+    int? TimeoutMilliseconds = null,
+    RetryPolicyRequest? RetryPolicy = null,
+    string? SkipReason = null,
+    int ExecutionPriority = 2,
+    bool IsExplicit = false,
+    bool IsNotDiscoverable = false,
+    string? StableIdExpression = null,
+    string? DisplayNameExpression = null,
+    bool CapturesRuntimeValues = false,
+    string? DisposeDataExpression = null,
+    string? RepeatIndexExpression = null,
+    bool LazilyMaterializeRowArguments = false,
+    bool LazilyMaterializeConstructorArguments = false);
 
 internal sealed record CatalogCollectionGroup(int Index, ImmutableArray<string> CaseBodies);
 

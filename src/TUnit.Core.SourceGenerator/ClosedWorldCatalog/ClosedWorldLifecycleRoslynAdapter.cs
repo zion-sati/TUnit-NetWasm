@@ -86,7 +86,8 @@ internal sealed class ClosedWorldLifecycleRoslynAdapter : IClosedWorldLifecycleR
                         line,
                         method.Name,
                         invocation,
-                        method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+                        method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        GetTimeoutMilliseconds(method)));
                 }
             }
         }
@@ -110,5 +111,20 @@ internal sealed class ClosedWorldLifecycleRoslynAdapter : IClosedWorldLifecycleR
             _ => string.Empty,
         };
         return stage.Length > 0;
+    }
+
+    private static int? GetTimeoutMilliseconds(IMethodSymbol method)
+    {
+        foreach (var attribute in method.GetAttributes())
+        {
+            if (attribute.AttributeClass?.Name == "TimeoutAttribute" &&
+                attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core" &&
+                attribute.ConstructorArguments.FirstOrDefault().Value is int milliseconds)
+            {
+                return milliseconds;
+            }
+        }
+
+        return null;
     }
 }

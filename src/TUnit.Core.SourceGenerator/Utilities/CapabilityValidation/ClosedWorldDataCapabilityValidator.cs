@@ -26,6 +26,12 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
                              DataSourceAttributeHelper.IsDataSourceAttribute(attribute.AttributeClass) &&
                              attribute.AttributeClass!.Name != "ArgumentsAttribute"))
                 {
+                    if (attribute.AttributeClass!.Name is "MethodDataSourceAttribute" or "ClassDataSourceAttribute" &&
+                        attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core")
+                    {
+                        continue;
+                    }
+
                     yield return new(methodSyntax.GetLocation(),
                         $"Runtime data source '{attribute.AttributeClass!.Name}' is not supported by the closed-world catalog; use compile-time Arguments data.");
                 }
@@ -40,7 +46,10 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
                     .ToArray();
                 var hasRuntimeDataSource = attributes.Any(static attribute =>
                     DataSourceAttributeHelper.IsDataSourceAttribute(attribute.AttributeClass) &&
-                    attribute.AttributeClass!.Name != "ArgumentsAttribute");
+                    attribute.AttributeClass!.Name != "ArgumentsAttribute") ||
+                    method.Parameters.Any(static parameter => parameter.GetAttributes().Any(attribute =>
+                        attribute.AttributeClass!.Name == "ClassDataSourceAttribute" &&
+                        attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core"));
                 if (argumentAttributes.Length == 0 && !hasRuntimeDataSource)
                 {
                     var methodParameters = method.Parameters;
@@ -98,7 +107,14 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
                 var classArgumentAttributes = type.GetAttributes().Where(static attribute =>
                              attribute.AttributeClass!.Name == "ArgumentsAttribute")
                     .ToArray();
+                var hasClassDataSource = type.GetAttributes().Any(static attribute =>
+                    attribute.AttributeClass!.Name == "ClassDataSourceAttribute" &&
+                    attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core") ||
+                    constructor.Parameters.Any(static parameter => parameter.GetAttributes().Any(attribute =>
+                        attribute.AttributeClass!.Name == "ClassDataSourceAttribute" &&
+                        attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core"));
                 if (classArgumentAttributes.Length == 0 &&
+                    !hasClassDataSource &&
                     type.GetMembers().OfType<IMethodSymbol>().Any(static method =>
                         method.GetAttributes().Any(static attribute => attribute.IsTestAttribute())) &&
                     !ValidateArgumentCount(constructor.Parameters, 0, out var missingConstructorMessage, "test class constructor"))

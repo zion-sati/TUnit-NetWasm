@@ -8,6 +8,9 @@ namespace TUnit.Core;
 /// </summary>
 public abstract class GeneratedTestCase
 {
+    private readonly Func<ValueTask>? _disposeData;
+    private bool _dataDisposed;
+
     protected GeneratedTestCase(
         string methodName,
         string fullyQualifiedName,
@@ -21,7 +24,15 @@ public abstract class GeneratedTestCase
         GeneratedTestCaseRow row,
         GeneratedLifecycle? lifecycle,
         GeneratedCompletionPolicy completionPolicy,
-        string? catalogProvenance)
+        string? catalogProvenance,
+        TimeSpan? timeout,
+        GeneratedRetryPolicy? retryPolicy,
+        string? skipReason,
+        int executionPriority,
+        bool isExplicit,
+        bool isNotDiscoverable,
+        int repeatIndex,
+        Func<ValueTask>? disposeData)
     {
         MethodName = Require(methodName, nameof(methodName));
         FullyQualifiedName = Require(fullyQualifiedName, nameof(fullyQualifiedName));
@@ -35,6 +46,14 @@ public abstract class GeneratedTestCase
         Row = row ?? throw new ArgumentNullException(nameof(row));
         Lifecycle = lifecycle ?? GeneratedLifecycle.Empty;
         CompletionPolicy = completionPolicy;
+        Timeout = timeout;
+        RetryPolicy = retryPolicy ?? GeneratedRetryPolicy.None;
+        SkipReason = skipReason;
+        ExecutionPriority = executionPriority;
+        IsExplicit = isExplicit;
+        IsNotDiscoverable = isNotDiscoverable;
+        RepeatIndex = repeatIndex;
+        _disposeData = disposeData;
         CatalogProvenance = string.IsNullOrWhiteSpace(catalogProvenance)
             ? "TUnit.Core.SourceGenerator"
             : catalogProvenance!;
@@ -77,10 +96,39 @@ public abstract class GeneratedTestCase
 
     public GeneratedCompletionPolicy CompletionPolicy { get; }
 
+    public TimeSpan? Timeout { get; }
+
+    public GeneratedRetryPolicy RetryPolicy { get; }
+
+    public string? SkipReason { get; }
+
+    public int ExecutionPriority { get; }
+
+    public bool IsExplicit { get; }
+
+    public bool IsNotDiscoverable { get; }
+
+    public int RepeatIndex { get; }
+
     public string CatalogProvenance { get; }
 
     /// <summary>Runs this case through its generated, type-safe execution action.</summary>
     public abstract ValueTask ExecuteAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Disposes case-scoped generated data after all retry attempts complete.</summary>
+    public async ValueTask DisposeDataAsync()
+    {
+        if (_dataDisposed)
+        {
+            return;
+        }
+
+        _dataDisposed = true;
+        if (_disposeData is not null)
+        {
+            await _disposeData();
+        }
+    }
 
     private static string Require(string value, string name)
     {
@@ -129,7 +177,15 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
         GeneratedTestCaseRow row,
         GeneratedLifecycle? lifecycle = null,
         GeneratedCompletionPolicy completionPolicy = GeneratedCompletionPolicy.Await,
-        string? catalogProvenance = null)
+        string? catalogProvenance = null,
+        TimeSpan? timeout = null,
+        GeneratedRetryPolicy? retryPolicy = null,
+        string? skipReason = null,
+        int executionPriority = 2,
+        bool isExplicit = false,
+        bool isNotDiscoverable = false,
+        int repeatIndex = 0,
+        Func<ValueTask>? disposeData = null)
         : base(
             methodName,
             fullyQualifiedName,
@@ -143,7 +199,15 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
             row,
             lifecycle,
             completionPolicy,
-            catalogProvenance)
+            catalogProvenance,
+            timeout,
+            retryPolicy,
+            skipReason,
+            executionPriority,
+            isExplicit,
+            isNotDiscoverable,
+            repeatIndex,
+            disposeData)
     {
         _legacyCreateInstance = createInstance ?? throw new ArgumentNullException(nameof(createInstance));
         _legacyInvoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
@@ -166,7 +230,15 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
         GeneratedTestCaseRow row,
         GeneratedLifecycle? lifecycle = null,
         GeneratedCompletionPolicy completionPolicy = GeneratedCompletionPolicy.Await,
-        string? catalogProvenance = null)
+        string? catalogProvenance = null,
+        TimeSpan? timeout = null,
+        GeneratedRetryPolicy? retryPolicy = null,
+        string? skipReason = null,
+        int executionPriority = 2,
+        bool isExplicit = false,
+        bool isNotDiscoverable = false,
+        int repeatIndex = 0,
+        Func<ValueTask>? disposeData = null)
         : base(
             methodName,
             fullyQualifiedName,
@@ -180,7 +252,15 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
             row,
             lifecycle,
             completionPolicy,
-            catalogProvenance)
+            catalogProvenance,
+            timeout,
+            retryPolicy,
+            skipReason,
+            executionPriority,
+            isExplicit,
+            isNotDiscoverable,
+            repeatIndex,
+            disposeData)
     {
         if (createInstance is null)
         {
@@ -202,33 +282,35 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
         // scoped around a class's complete case group, so executing it here would repeat
         // class setup/teardown once per row. A case owns only its test-level lifecycle.
         Exception? primaryException = null;
+        Task? abandonedExecution = null;
         try
         {
             foreach (var action in Lifecycle.Actions)
             {
                 if (action.Stage == GeneratedLifecycleStage.TestSetup)
                 {
-                    await action.Invoke(instance, cancellationToken);
+                    await action.InvokeAsync(instance, cancellationToken);
                 }
             }
 
-            if (_typedInvoke is not null)
-            {
-                await _typedInvoke(instance, cancellationToken);
-            }
-            else
-            {
-                await _legacyInvoke!(instance, Row.CreateArguments(), cancellationToken);
-            }
+            await InvokeBodyAsync(instance, cancellationToken);
         }
         catch (Exception exception)
         {
             primaryException = exception;
+            TryGetAbandonedExecution(exception, out abandonedExecution);
+        }
+
+        if (abandonedExecution is not null)
+        {
+            var cleanupCompletion = CompleteDeferredCleanupAsync(instance, abandonedExecution, 0);
+            throw ReplaceExecutionCompletion(primaryException!, cleanupCompletion);
         }
 
         List<Exception>? teardownExceptions = null;
-        foreach (var action in Lifecycle.Actions)
+        for (var actionIndex = 0; actionIndex < Lifecycle.Actions.Count; actionIndex++)
         {
+            var action = Lifecycle.Actions[actionIndex];
             if (action.Stage != GeneratedLifecycleStage.TestTeardown)
             {
                 continue;
@@ -236,12 +318,28 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
 
             try
             {
-                await action.Invoke(instance, CancellationToken.None);
+                await action.InvokeAsync(instance, CancellationToken.None);
             }
             catch (Exception exception)
             {
+                if (TryGetAbandonedExecution(exception, out var teardownExecution))
+                {
+                    var cleanupCompletion = CompleteDeferredCleanupAsync(
+                        instance,
+                        teardownExecution!,
+                        actionIndex + 1);
+                    (teardownExceptions ??= []).Add(ReplaceExecutionCompletion(exception, cleanupCompletion));
+                    abandonedExecution = cleanupCompletion;
+                    break;
+                }
+
                 (teardownExceptions ??= []).Add(exception);
             }
+        }
+
+        if (abandonedExecution is null)
+        {
+            await DisposeInstanceAsync(instance);
         }
 
         if (primaryException is not null)
@@ -268,5 +366,195 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
         {
             throw new AggregateException(teardownExceptions);
         }
+
     }
+
+    private async ValueTask InvokeBodyAsync(T instance, CancellationToken cancellationToken)
+    {
+        if (Timeout is not TimeSpan timeout)
+        {
+            await InvokeBodyCoreAsync(instance, cancellationToken);
+            return;
+        }
+
+        var executionSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task execution;
+        try
+        {
+            execution = InvokeBodyCoreAsync(instance, executionSource.Token).AsTask();
+        }
+        catch
+        {
+            executionSource.Dispose();
+            throw;
+        }
+
+        var deadline = Task.Delay(timeout, cancellationToken);
+        var completed = await Task.WhenAny(execution, deadline);
+        if (ReferenceEquals(completed, execution))
+        {
+            executionSource.Dispose();
+            await execution;
+            return;
+        }
+
+        CancelWithoutThrowing(executionSource);
+        var executionStillRunning = !execution.IsCompleted;
+        if (executionStillRunning)
+        {
+            _ = ObserveAndDisposeAsync(execution, executionSource);
+        }
+        else
+        {
+            executionSource.Dispose();
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            throw new GeneratedCancellationException(
+                cancellationToken,
+                execution,
+                executionStillRunning);
+        }
+
+        throw new GeneratedTimeoutException(
+            $"Test exceeded its timeout of {timeout.TotalMilliseconds.ToString(global::System.Globalization.CultureInfo.InvariantCulture)} ms.",
+            execution,
+            executionStillRunning);
+    }
+
+    private ValueTask InvokeBodyCoreAsync(T instance, CancellationToken cancellationToken) =>
+        _typedInvoke is not null
+            ? _typedInvoke(instance, cancellationToken)
+            : _legacyInvoke!(instance, Row.CreateArguments(), cancellationToken);
+
+    private static async ValueTask DisposeInstanceAsync(T instance)
+    {
+        try
+        {
+            if (instance is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+            else if (instance is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
+        catch
+        {
+            // Match the desktop engine: fixture-disposal failures do not replace
+            // the test outcome after lifecycle execution has completed.
+        }
+    }
+
+    private static async Task ObserveAndDisposeAsync(Task execution, CancellationTokenSource source)
+    {
+        try
+        {
+            await execution;
+        }
+        catch
+        {
+            // The timeout is the reported failure. Observe a late body exception.
+        }
+        finally
+        {
+            source.Dispose();
+        }
+    }
+
+    private static void CancelWithoutThrowing(CancellationTokenSource source)
+    {
+        try
+        {
+            source.Cancel();
+        }
+        catch
+        {
+            // Timeout/cancellation remains the primary outcome. A callback failure
+            // must not release test resources while execution still owns them.
+        }
+    }
+
+    private async Task CompleteDeferredCleanupAsync(T instance, Task abandonedExecution, int teardownStartIndex)
+    {
+        await ObserveCleanupCompletionAsync(abandonedExecution);
+
+        for (var actionIndex = teardownStartIndex; actionIndex < Lifecycle.Actions.Count; actionIndex++)
+        {
+            var action = Lifecycle.Actions[actionIndex];
+            if (action.Stage != GeneratedLifecycleStage.TestTeardown)
+            {
+                continue;
+            }
+
+            var exception = await InvokeCleanupActionAsync(action, instance);
+            if (exception is not null && TryGetAbandonedExecution(exception, out var teardownExecution))
+            {
+                await ObserveCleanupCompletionAsync(teardownExecution!);
+            }
+        }
+
+        await DisposeInstanceAsync(instance);
+    }
+
+    private static async ValueTask<Exception?> InvokeCleanupActionAsync(
+        GeneratedLifecycleAction action,
+        T instance)
+    {
+        try
+        {
+            await action.InvokeAsync(instance, CancellationToken.None);
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
+    }
+
+    private static async ValueTask ObserveCleanupCompletionAsync(Task execution)
+    {
+        try
+        {
+            await execution;
+        }
+        catch
+        {
+            // The original timeout or cancellation is already reported.
+        }
+    }
+
+    private static bool TryGetAbandonedExecution(Exception exception, out Task? execution)
+    {
+        if (exception is GeneratedTimeoutException { ExecutionWasAbandoned: true } timeout)
+        {
+            execution = timeout.ExecutionCompletion;
+            return true;
+        }
+
+        if (exception is GeneratedCancellationException { ExecutionWasAbandoned: true } cancellation)
+        {
+            execution = cancellation.ExecutionCompletion;
+            return true;
+        }
+
+        execution = null;
+        return false;
+    }
+
+    private static Exception ReplaceExecutionCompletion(Exception exception, Task executionCompletion) =>
+        exception switch
+        {
+            GeneratedTimeoutException timeout => new GeneratedTimeoutException(
+                timeout.Message,
+                executionCompletion,
+                executionWasAbandoned: true),
+            GeneratedCancellationException cancellation => new GeneratedCancellationException(
+                cancellation.CancellationToken,
+                executionCompletion,
+                executionWasAbandoned: true),
+            _ => exception,
+        };
 }
