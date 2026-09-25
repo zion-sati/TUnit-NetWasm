@@ -3,7 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Grpc.Core.Api" Version="2.83.0" />
+    <PackageVersion Include="Grpc.Core.Api" Version="2.84.0" />
     <PackageVersion Include="MassTransit" Version="9.2.2" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageVersion Include="Serilog.Sinks.Seq" Version="9.1.0" />
@@ -50,7 +50,6 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="Microsoft.Playwright" Version="1.62.0" />
     <PackageVersion Include="Microsoft.TemplateEngine.Authoring.TemplateVerifier" Version="10.0.401" />
-    <!-- 18.11.0 breaks Mono.Cecil framework-facade resolution in net472 PublicAPI tests. -->
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2" />
     <PackageVersion Include="Microsoft.Testing.Extensions.CrashDump" Version="2.4.1" />
     <PackageVersion Include="Microsoft.Testing.Extensions.HangDump" Version="2.4.1" />
@@ -76,25 +75,25 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <PackageVersion Include="NuGet.Protocol" Version="7.9.0" />
-    <PackageVersion Include="OpenTelemetry" Version="1.19.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.19.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.19.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.Zipkin" Version="1.19.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.19.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Zipkin" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
     <PackageVersion Include="NUnit" Version="4.6.1" />
     <PackageVersion Include="NUnit.Analyzers" Version="4.15.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="6.3.0" />
     <PackageVersion Include="OneOf" Version="3.0.271" />
     <PackageVersion Include="OneOf.SourceGenerator" Version="3.0.271" />
     <PackageVersion Include="Polly" Version="8.8.0" />
-    <PackageVersion Include="Polyfill" Version="11.3.0" />
+    <PackageVersion Include="Polyfill" Version="11.4.0" />
     <PackageVersion Include="PublicApiGenerator" Version="11.5.4" />
     <PackageVersion Include="RandomDataGenerator.Net" Version="1.0.19.1" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
-    <PackageVersion Include="StackExchange.Redis" Version="3.3.0" />
+    <PackageVersion Include="StackExchange.Redis" Version="3.3.1" />
     <PackageVersion Include="System.Reactive" Version="7.0.0" />
     <PackageVersion Include="Sourcy.DotNet" Version="1.1.1">
       <PrivateAssets>all</PrivateAssets>
@@ -114,15 +113,15 @@
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
     <PackageVersion Include="Testcontainers.Redis" Version="4.15.0" />
     <PackageVersion Include="trxparser" Version="0.5.0" />
-    <PackageVersion Include="TUnit.Assertions.FSharp" Version="1.68.4" />
-    <PackageVersion Include="Verify" Version="33.0.2" />
-    <PackageVersion Include="Verify.NUnit" Version="33.0.2" />
-    <PackageVersion Include="TUnit" Version="1.68.4" />
-    <PackageVersion Include="TUnit.AspNetCore" Version="1.68.4" />
-    <PackageVersion Include="TUnit.Core" Version="1.68.4" />
-    <PackageVersion Include="TUnit.Engine" Version="1.68.4" />
-    <PackageVersion Include="TUnit.Assertions" Version="1.68.4" />
-    <PackageVersion Include="Verify.TUnit" Version="33.0.2" />
+    <PackageVersion Include="TUnit.Assertions.FSharp" Version="1.68.17" />
+    <PackageVersion Include="Verify" Version="33.1.1" />
+    <PackageVersion Include="Verify.NUnit" Version="33.1.1" />
+    <PackageVersion Include="TUnit" Version="1.68.17" />
+    <PackageVersion Include="TUnit.AspNetCore" Version="1.68.17" />
+    <PackageVersion Include="TUnit.Core" Version="1.68.17" />
+    <PackageVersion Include="TUnit.Engine" Version="1.68.17" />
+    <PackageVersion Include="TUnit.Assertions" Version="1.68.17" />
+    <PackageVersion Include="Verify.TUnit" Version="33.1.1" />
     <PackageVersion Include="Vogen" Version="8.0.6" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.assert" Version="2.9.3" />

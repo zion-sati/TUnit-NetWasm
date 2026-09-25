@@ -1651,51 +1651,28 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         var attrTypeName = attr.AttributeClass.GloballyQualified();
         var testMethodParameters = methodSymbol.Parameters;
 
-        // Get the attribute syntax to access source text (preserves precision for decimals)
-        var attributeSyntax = attr.ApplicationSyntaxReference?.GetSyntax() as AttributeSyntax;
-        if (attributeSyntax == null)
+        // The application syntax is null for metadata references. For CompilationReferences to other
+        // projects (IDE workspaces) it exists but lives in a tree this compilation does not own: its source
+        // text is still usable for literal extraction, but only a tree in this compilation can provide the
+        // semantic model needed to fully qualify identifiers.
+        var attributeSyntax = attr.GetApplicationSyntax(compilation, out var syntaxIsInCompilation);
+        var semanticModel = attributeSyntax is not null && syntaxIsInCompilation
+            ? compilation.GetSemanticModel(attributeSyntax.SyntaxTree)
+            : null;
+
+        if (semanticModel is null)
         {
-            // No syntax available - fall back to TypedConstant-based formatting
-            var formatter = new TypedConstantFormatter();
-            writer.Append($"new {attrTypeName}(");
-
-            if (attr.ConstructorArguments is
-                [
-                { Kind: TypedConstantKind.Array } _
-                ])
-            {
-                var arrayValues = attr.ConstructorArguments[0].Values;
-                for (var i = 0; i < arrayValues.Length; i++)
-                {
-                    var targetType = i < testMethodParameters.Length ? testMethodParameters[i].Type : null;
-                    writer.Append(formatter.FormatForCode(arrayValues[i], targetType));
-                    if (i < arrayValues.Length - 1) writer.Append(", ");
-                }
-            }
-            else
-            {
-                for (var i = 0; i < attr.ConstructorArguments.Length; i++)
-                {
-                    var targetType = i < testMethodParameters.Length ? testMethodParameters[i].Type : null;
-                    writer.Append(formatter.FormatForCode(attr.ConstructorArguments[i], targetType));
-                    if (i < attr.ConstructorArguments.Length - 1) writer.Append(", ");
-                }
-            }
-
-            writer.AppendLine("),");
+            GenerateArgumentsAttributeFromTypedConstants(writer, attrTypeName, attr, testMethodParameters, attributeSyntax);
             return;
         }
 
         // Get the argument expressions from syntax
-        var argumentList = attributeSyntax.ArgumentList;
+        var argumentList = attributeSyntax!.ArgumentList;
         if (argumentList == null || argumentList.Arguments.Count == 0)
         {
             writer.AppendLine($"new {attrTypeName}(),");
             return;
         }
-
-        // Get semantic model for rewriting expressions with fully qualified names
-        var semanticModel = compilation.GetSemanticModel(attributeSyntax.SyntaxTree);
 
         writer.Append($"new {attrTypeName}(");
 
@@ -1765,6 +1742,168 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         {
             writer.AppendLine(",");
         }
+    }
+
+    /// <summary>
+    /// Emits an <c>[Arguments]</c> attribute from its <see cref="TypedConstant"/>s, mirroring the object
+    /// initializer shape of the syntax-based path. Used when the attribute has no syntax (metadata
+    /// reference) or when its syntax belongs to another compilation (IDE project reference).
+    /// </summary>
+    /// <param name="foreignSyntax">
+    /// The application syntax when it exists in another compilation. Numeric literals passed to
+    /// <see cref="decimal"/> parameters keep their source text so precision matches same-project
+    /// generation; everything else is formatted from the typed constants.
+    /// </param>
+    private static void GenerateArgumentsAttributeFromTypedConstants(
+        CodeWriter writer,
+        string attrTypeName,
+        AttributeData attr,
+        ImmutableArray<IParameterSymbol> testMethodParameters,
+        AttributeSyntax? foreignSyntax)
+    {
+        // Build into a local buffer so a formatting failure part-way through leaves the shared writer
+        // untouched; the caller's catch block then appends its own fallback to a clean line.
+        var buffer = new CodeWriter(includeHeader: false);
+
+        WriteArgumentsAttributeFromTypedConstants(buffer, attrTypeName, attr, testMethodParameters, foreignSyntax);
+
+        writer.AppendRaw(buffer.ToString());
+    }
+
+    private static void WriteArgumentsAttributeFromTypedConstants(
+        CodeWriter writer,
+        string attrTypeName,
+        AttributeData attr,
+        ImmutableArray<IParameterSymbol> testMethodParameters,
+        AttributeSyntax? foreignSyntax)
+    {
+        var formatter = new TypedConstantFormatter();
+
+        writer.Append($"new {attrTypeName}(");
+
+        if (attr.ConstructorArguments is [{ Kind: TypedConstantKind.Array, IsNull: true }])
+        {
+            // [Arguments(null)] binds null to the params array itself; the constructor turns it into [null].
+            writer.Append("null");
+        }
+        else
+        {
+            var values = attr.ConstructorArguments is [{ Kind: TypedConstantKind.Array } array]
+                ? array.Values
+                : attr.ConstructorArguments;
+
+            // Source text can only be trusted when the syntax arguments line up 1:1 with the values,
+            // i.e. the params-expanded form. [Arguments(new object[] { ... })] has one syntax argument
+            // for many values and must use the typed constants.
+            var positionalSyntax = foreignSyntax?.ArgumentList?.Arguments
+                .Where(a => a.NameEquals is null)
+                .ToArray();
+            var syntaxAligned = positionalSyntax is not null && positionalSyntax.Length == values.Length;
+
+            for (var i = 0; i < values.Length; i++)
+            {
+                var targetType = i < testMethodParameters.Length ? testMethodParameters[i].Type : null;
+
+                if (syntaxAligned
+                    && targetType?.SpecialType == SpecialType.System_Decimal
+                    && TryGetDecimalLiteralText(positionalSyntax![i].Expression, out var decimalLiteral))
+                {
+                    writer.Append(decimalLiteral);
+                }
+                else
+                {
+                    writer.Append(formatter.FormatForCode(values[i], targetType));
+                }
+
+                if (i < values.Length - 1)
+                {
+                    writer.Append(", ");
+                }
+            }
+        }
+
+        writer.Append(")");
+
+        // Named arguments (Skip, DisplayName, Categories, SkipIfEmpty, ...)
+        var namedArguments = attr.NamedArguments;
+        if (namedArguments.Length > 0)
+        {
+            writer.AppendLine();
+            writer.AppendLine("{");
+            writer.Indent();
+
+            for (var i = 0; i < namedArguments.Length; i++)
+            {
+                var namedArgument = namedArguments[i];
+                writer.Append($"{namedArgument.Key} = {TypedConstantParser.GetRawTypedConstantValue(namedArgument.Value)}");
+
+                if (i < namedArguments.Length - 1)
+                {
+                    writer.AppendLine(",");
+                }
+            }
+
+            writer.AppendLine();
+            writer.Unindent();
+            writer.AppendLine("},");
+        }
+        else
+        {
+            writer.AppendLine(",");
+        }
+    }
+
+    /// <summary>
+    /// Extracts a numeric literal (optionally signed) as a <see cref="decimal"/> literal with the
+    /// <c>m</c> suffix, keeping the exact digits from source. Only forms that C# allows for decimal
+    /// literals qualify: plain digits with optional separators, fraction, exponent and a real suffix
+    /// (<c>d</c>/<c>f</c>/<c>m</c>). Hex and binary prefixes and integral suffixes (<c>L</c>, <c>U</c>,
+    /// <c>UL</c>) have no decimal form and must be formatted from their typed constant instead.
+    /// </summary>
+    private static bool TryGetDecimalLiteralText(ExpressionSyntax expression, out string decimalLiteral)
+    {
+        decimalLiteral = string.Empty;
+        var sign = string.Empty;
+
+        if (expression is PrefixUnaryExpressionSyntax unary)
+        {
+            if (unary.IsKind(SyntaxKind.UnaryMinusExpression))
+            {
+                sign = "-";
+            }
+            else if (!unary.IsKind(SyntaxKind.UnaryPlusExpression))
+            {
+                return false;
+            }
+
+            expression = unary.Operand;
+        }
+
+        if (expression is not LiteralExpressionSyntax literal || !literal.IsKind(SyntaxKind.NumericLiteralExpression))
+        {
+            return false;
+        }
+
+        var token = literal.Token.Text;
+
+        if (token.Length > 1 && token[0] == '0' && (token[1] is 'x' or 'X' or 'b' or 'B'))
+        {
+            return false;
+        }
+
+        if (token.Length > 0 && (token[token.Length - 1] is 'd' or 'D' or 'f' or 'F' or 'm' or 'M'))
+        {
+            token = token.Substring(0, token.Length - 1);
+        }
+
+        // Anything other than a digit left at the end is an integral suffix (L, U, UL, ...).
+        if (token.Length == 0 || !char.IsDigit(token[token.Length - 1]))
+        {
+            return false;
+        }
+
+        decimalLiteral = $"{sign}{token}m";
+        return true;
     }
 
     private static void GenerateMethodDataSourceAttribute(CodeWriter writer, AttributeData attr, INamedTypeSymbol typeSymbol)
@@ -2614,17 +2753,16 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         writer.AppendLine("},");
     }
 
-    private static void GenerateConcreteTestInvokerBody(
-        CodeWriter writer,
-        string methodName,
-        TestReturnPattern returnPattern,
-        bool hasCancellationToken,
-        IParameterSymbol[] parametersFromArgs)
+    private static void GenerateConcreteTestInvokerBody(CodeWriter writer, string methodName, TestReturnPattern returnPattern, bool hasCancellationToken, IParameterSymbol[] parametersFromArgs, bool wrapInTryCatch = true)
     {
-        // Wrap entire body in try-catch to handle synchronous exceptions
-        writer.AppendLine("try");
-        writer.AppendLine("{");
-        writer.Indent();
+        // Wrap entire body in try-catch to handle synchronous exceptions. The class-level
+        // __Invoke switch opts out and wraps the whole switch in a single handler instead.
+        if (wrapInTryCatch)
+        {
+            writer.AppendLine("try");
+            writer.AppendLine("{");
+            writer.Indent();
+        }
 
         // Only declare context if it's needed (when hasCancellationToken is true and there are parameters)
         if (hasCancellationToken && parametersFromArgs.Length > 0)
@@ -2775,8 +2913,16 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             writer.AppendLine("}");
         }
 
-        writer.Unindent();
-        writer.AppendLine("}");
+        if (wrapInTryCatch)
+        {
+            writer.Unindent();
+            writer.AppendLine("}");
+            WriteSynchronousExceptionHandler(writer);
+        }
+    }
+
+    private static void WriteSynchronousExceptionHandler(CodeWriter writer)
+    {
         writer.AppendLine("catch (global::System.Exception ex)");
         writer.AppendLine("{");
         writer.Indent();
@@ -3127,7 +3273,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         writer.AppendLine($"case {methodIndex}:");
         writer.AppendLine("{");
         writer.Indent();
-        GenerateConcreteTestInvokerBody(writer, testMethod.MethodSymbol.Name, returnPattern, hasCancellationToken, parametersFromArgs);
+        GenerateConcreteTestInvokerBody(writer, testMethod.MethodSymbol.Name, returnPattern, hasCancellationToken, parametersFromArgs, wrapInTryCatch: false);
         writer.Unindent();
         writer.AppendLine("}");
 
@@ -3230,12 +3376,34 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     }
 
     /// <summary>
-    /// Pre-generates a MethodMetadataFactory.Create(...) expression for one method.
+    /// Pre-generates the named arguments that let TestEntryFactory.CreateWithClassMetadata build the method's
+    /// MethodMetadata itself (return type, generic arity, parameters), omitting factory defaults.
     /// Called during the transform step where ISymbol is available.
     /// </summary>
-    private static string PreGenerateMethodMetadataExpression(TestMethodMetadata testMethod)
+    private static string PreGenerateMethodMetadataArguments(IMethodSymbol methodSymbol)
     {
-        return GenerateMethodMetadataFactoryCall(testMethod.MethodSymbol);
+        var writer = new CodeWriter(includeHeader: false);
+
+        if (!methodSymbol.ReturnsVoid)
+        {
+            writer.AppendLine($"returnType: typeof({methodSymbol.ReturnType.GloballyQualified()}),");
+        }
+
+        if (methodSymbol.TypeParameters.Length > 0)
+        {
+            writer.AppendLine($"genericTypeCount: {methodSymbol.TypeParameters.Length},");
+        }
+
+        if (methodSymbol.Parameters.Length > 0)
+        {
+            var paramExpr = MetadataGenerationHelper.GenerateParameterMetadataArrayForMethodExpression(methodSymbol);
+            if (paramExpr != null)
+            {
+                writer.AppendLine($"parameters: {paramExpr},");
+            }
+        }
+
+        return writer.ToString();
     }
 
     /// <summary>
@@ -3530,7 +3698,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                         MethodId = methodId,
                         MethodIndex = i,
                         AttributeGroupIndex = attrIndexMap[i],
-                        MethodMetadataCode = PreGenerateMethodMetadataExpression(m),
+                        MethodMetadataArgumentsCode = PreGenerateMethodMetadataArguments(m.MethodSymbol),
                         InvokeSwitchCaseCode = PreGenerateInvokeSwitchCase(m, i),
                         CatalogGeneratedCaseDataCode = catalogOnly
                             ? PreGenerateCatalogGeneratedCaseData(
@@ -3603,12 +3771,6 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
             // Shared ClassMetadata + classType as static fields (no separate method needed)
             writer.AppendRaw(classGroup.SharedFieldsCode);
-            // Per-method MethodMetadata as individual static fields (inlined, no array)
-            foreach (var method in classGroup.Methods)
-            {
-                writer.AppendLine($"private static readonly global::TUnit.Core.MethodMetadata __mm_{method.MethodIndex} = {method.MethodMetadataCode};");
-            }
-
             // CreateInstance — shared across all entries (1 per class)
             writer.AppendLine($"private static {classGroup.ClassFullyQualified} __CreateInstance(global::System.Type[] typeArgs, object?[] args)");
             writer.AppendLine("{");
@@ -3618,6 +3780,11 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             writer.AppendLine("}");
             // Consolidated __Invoke switch — 1 method for ALL tests in this class
             writer.AppendLine($"private static global::System.Threading.Tasks.ValueTask __Invoke({classGroup.ClassFullyQualified} instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)");
+            writer.AppendLine("{");
+            writer.Indent();
+            // One exception handler around the whole switch: a handler per case multiplies the
+            // method's IL and exception clauses by the number of tests in the class.
+            writer.AppendLine("try");
             writer.AppendLine("{");
             writer.Indent();
             writer.AppendLine("switch (methodIndex)");
@@ -3633,6 +3800,9 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             writer.Unindent();
             writer.Unindent();
             writer.AppendLine("}");
+            writer.Unindent();
+            writer.AppendLine("}");
+            WriteSynchronousExceptionHandler(writer);
             writer.Unindent();
             writer.AppendLine("}");
 
@@ -3669,15 +3839,22 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             writer.Unindent();
             writer.AppendLine("}");
 
+            // The three class-shared delegates are created once. Converting the method groups at each
+            // entry would allocate three delegates per test and emit a ldftn/newobj pair for each in
+            // the static constructor, which dominated its JIT cost for large classes.
+            writer.AppendLine($"private static readonly global::System.Func<global::System.Type[], object?[], {classGroup.ClassFullyQualified}> __createInstance = __CreateInstance;");
+            writer.AppendLine($"private static readonly global::System.Func<{classGroup.ClassFullyQualified}, int, object?[], global::System.Threading.CancellationToken, global::System.Threading.Tasks.ValueTask> __invoke = __Invoke;");
+            writer.AppendLine("private static readonly global::System.Func<int, global::System.Attribute[]> __attributes = __Attributes;");
+
             // TestEntry<T>[] array — all entries share the same 3 delegates and are built via the
             // shared TestEntryFactory so each call site is a single factory call instead of a
-            // large object initializer (#6227)
+            // large object initializer (#6227). The factory also builds each entry's MethodMetadata.
             writer.AppendLine($"public static readonly global::TUnit.Core.TestEntry<{classGroup.ClassFullyQualified}>[] Entries = new global::TUnit.Core.TestEntry<{classGroup.ClassFullyQualified}>[]");
             writer.AppendLine("{");
             writer.Indent();
             foreach (var method in classGroup.Methods)
             {
-                writer.AppendLine($"global::TUnit.Core.TestEntryFactory.Create<{classGroup.ClassFullyQualified}>(");
+                writer.AppendLine($"global::TUnit.Core.TestEntryFactory.CreateWithClassMetadata<{classGroup.ClassFullyQualified}>(");
                 writer.Indent();
                 writer.AppendRaw(method.TestEntryDataFieldsCode);
                 if (method.TestDataSourcesCode != null)
@@ -3692,11 +3869,12 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 {
                     writer.AppendLine($"dependencies: {method.DependenciesCode},");
                 }
-                writer.AppendLine($"methodMetadata: __mm_{method.MethodIndex},");
-                writer.AppendLine($"createInstance: __CreateInstance,");
-                writer.AppendLine($"invokeBody: __Invoke,");
+                writer.AppendRaw(method.MethodMetadataArgumentsCode);
+                writer.AppendLine("classMetadata: __classMetadata,");
+                writer.AppendLine("createInstance: __createInstance,");
+                writer.AppendLine("invokeBody: __invoke,");
                 writer.AppendLine($"methodIndex: {method.MethodIndex},");
-                writer.AppendLine($"createAttributes: __Attributes,");
+                writer.AppendLine("createAttributes: __attributes,");
                 writer.AppendLine($"attributeGroupIndex: {method.AttributeGroupIndex}),");
                 writer.Unindent();
             }
