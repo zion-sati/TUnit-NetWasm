@@ -2,9 +2,9 @@
   "schemaVersion": 2,
   "repository": "zion-sati/TUnit-NetWasm",
   "repositoryUrl": "https://github.com/zion-sati/TUnit-NetWasm",
-  "releaseVersion": "0.4.2-preview.1",
-  "releaseTag": "netwasm-v0.4.2-preview.1",
-  "sourceCommit": "5a8399e1c4f42cd7d196f5df7b89beec709530b9",
+  "releaseVersion": "0.4.2",
+  "releaseTag": "netwasm-v0.4.2",
+  "sourceCommit": "4974c03935f6fbe8995a1dc7aabe333dced78548",
   "dependencyVersions": {
     "NetWasm.Sdk": "0.4.2",
     "NetWasm.Testing.VSTest": "0.4.2"
