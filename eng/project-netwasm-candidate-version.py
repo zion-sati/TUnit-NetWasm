@@ -34,27 +34,36 @@ def project(source_root: Path, candidate: str, receipt_path: Path) -> dict[str, 
     )
     if match is None or not VERSION_PATTERN.fullmatch(match.group(2)):
         raise ValueError(f"Unable to read NetWasmPackageVersion from {PROPS_PATH}")
-    source_version = match.group(2)
+    configured_version = match.group(2)
     changed_files: list[str] = []
-    if source_version != candidate:
+    if configured_version != candidate:
         props_path.write_text(
             props[: match.start(2)] + candidate + props[match.end(2) :],
             encoding="utf-8",
         )
         changed_files.append(PROPS_PATH.as_posix())
 
+    source_version: str | None = None
     for relative_path in GLOBAL_JSON_PATHS:
         path = source_root / relative_path
         document = json.loads(path.read_text(encoding="utf-8"))
         sdk_version = document.get("msbuild-sdks", {}).get("NetWasm.Sdk")
-        if sdk_version != source_version:
+        if not isinstance(sdk_version, str) or not VERSION_PATTERN.fullmatch(sdk_version):
+            raise ValueError(
+                f"{relative_path} selects invalid NetWasm.Sdk version {sdk_version!r}"
+            )
+        if source_version is None:
+            source_version = sdk_version
+        elif sdk_version != source_version:
             raise ValueError(
                 f"{relative_path} selects {sdk_version!r}, expected {source_version!r}"
             )
-        if source_version != candidate:
+        if sdk_version != candidate:
             document["msbuild-sdks"]["NetWasm.Sdk"] = candidate
             path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
             changed_files.append(relative_path.as_posix())
+
+    assert source_version is not None
 
     receipt = {
         "schemaVersion": 1,

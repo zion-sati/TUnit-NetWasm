@@ -297,7 +297,7 @@ internal sealed class ClosedWorldCatalogActorContractTests
         var grouped = collection.Emit(new CatalogCollectionRequest(
             ImmutableArray.Create(new CatalogCollectionGroup(0, ImmutableArray.Create("cases.Add(3);")))));
         await Assert.That(grouped).Contains("GetGeneratedCases_0");
-        await Assert.That(grouped).Contains("cases.AddRange(GetGeneratedCases_0())");
+        await Assert.That(grouped).Contains("cases.AddRange(await GetGeneratedCases_0Async(cancellationToken))");
         var flat = collection.Emit(new CatalogCollectionRequest(
             ImmutableArray.Create(new CatalogCollectionGroup(0, ImmutableArray.Create("cases.Add(4);"))),
             IncludeGroupMethods: false));
@@ -307,7 +307,7 @@ internal sealed class ClosedWorldCatalogActorContractTests
         IEntryPointSourceEmitter root = new EntryPointSourceEmitter();
         await Assert.That(() => root.Emit(null!)).Throws<ArgumentNullException>();
         var rootSource = root.Emit(new EntryPointSourceRequest(ImmutableArray.Create("FixtureSource", "MethodSource")));
-        await Assert.That(rootSource).Contains("cases.AddRange(FixtureSource.GetGeneratedCases())");
+        await Assert.That(rootSource).Contains("cases.AddRange(await FixtureSource.GetGeneratedCasesAsync(cancellationToken))");
         await Assert.That(rootSource).Contains("GetCatalog");
 
         await Assert.That(() => perClass.Emit(null!)).Throws<ArgumentNullException>();
