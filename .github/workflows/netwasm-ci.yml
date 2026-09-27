@@ -58,7 +58,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: zion-sati/NetWasm
-          ref: 45c94f6a9655e733b7a00ebe2f9be1bcad4d9a33
+          ref: 400676d82248ba03454c36c176ffcbfda95c1cf0
           path: netwasm-core
           persist-credentials: false
 
@@ -113,7 +113,7 @@ jobs:
         shell: bash
         working-directory: netwasm-core
         run: |
-          version="0.4.2-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          version="0.4.3-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
           echo "value=$version" >> "$GITHUB_OUTPUT"
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           bash eng/build-packages.sh --version "$version" --output "$RUNNER_TEMP/netwasm-packages"
@@ -154,7 +154,7 @@ jobs:
               'consumer': revision('tunit-source'),
               'workflowRunId': os.environ['GITHUB_RUN_ID'],
               'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
-              'candidateVersion': '0.4.2-ci.' + os.environ['GITHUB_RUN_ID'] + '.' + os.environ['GITHUB_RUN_ATTEMPT'],
+              'candidateVersion': '0.4.3-ci.' + os.environ['GITHUB_RUN_ID'] + '.' + os.environ['GITHUB_RUN_ATTEMPT'],
               'packages': packages,
           }
           Path(os.environ['RUNNER_TEMP'], 'netwasm-packages', 'netwasm-core-receipt.json').write_text(
@@ -189,7 +189,7 @@ jobs:
           SDK_MAJOR: ${{ matrix.sdk-major }}
           SDK11_VERSION: ${{ needs.core-candidate.outputs.sdk11 }}
         run: |
-          if [[ "$SDK_MAJOR" == 10 ]]; then sdk_version=10.0.300; else sdk_version="$SDK11_VERSION"; fi
+          if [[ "$SDK_MAJOR" == 10 ]]; then sdk_version=10.0.303; else sdk_version="$SDK11_VERSION"; fi
           curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
             --output "$RUNNER_TEMP/dotnet-install.sh" https://dot.net/v1/dotnet-install.sh
           bash "$RUNNER_TEMP/dotnet-install.sh" \
@@ -240,7 +240,7 @@ jobs:
           NETWASM_CI_PACKAGE_SOURCE="$RUNNER_TEMP/netwasm-packages" \
           NETWASM_CORE_CANDIDATE_VERSION="${{ needs.core-candidate.outputs.version }}" \
           NETWASM_TUNIT_BUILD_SDK_VERSION="${{ steps.isolated-dotnet.outputs.sdk-version }}" \
-          NETWASM_TUNIT_TEST_VERSION="0.4.2-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}" \
+          NETWASM_TUNIT_TEST_VERSION="0.4.3-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}" \
             bash eng/netwasm-test.sh
 
       - name: Record TUnit candidate packages and analyzer closure
@@ -266,7 +266,7 @@ jobs:
               'workflowRunId': os.environ['GITHUB_RUN_ID'],
               'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
               'sdkVersion': os.environ['SDK_VERSION'],
-              'candidateVersion': '0.4.2-ci.' + os.environ['GITHUB_RUN_ID'] + '.' + os.environ['GITHUB_RUN_ATTEMPT'],
+              'candidateVersion': '0.4.3-ci.' + os.environ['GITHUB_RUN_ID'] + '.' + os.environ['GITHUB_RUN_ATTEMPT'],
               'packages': packages,
               'analyzers': analyzers,
           }, indent=2) + '\n')
