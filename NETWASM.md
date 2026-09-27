@@ -9,7 +9,7 @@ sequential runner and VSTest adapter.
 ## Prerequisites
 
 Follow the [NetWasm SDK quickstart](https://github.com/zion-sati/netwasm/blob/main/docs/sdk-quickstart.md).
-Install .NET SDK 10.0.300 or newer. Restoring the NetWasm packages supplies
+Install .NET SDK 10.0.303 or newer. Restoring the NetWasm packages supplies
 the pinned native build tools for supported development hosts.
 
 ## Create and run a test project
@@ -44,7 +44,7 @@ dotnet test --filter "Category=smoke"
 - `NetWasm.TUnit.Templates` supplies `dotnet new netwasm-tunit`.
 
 All five packages use one coordinated NetWasm release version. This release is
-based on upstream TUnit `v1.69.0`; that upstream version is source provenance
+based on upstream TUnit `v1.70.1`; that upstream version is source provenance
 and does not dictate the downstream package version.
 
 ## Maintainer releases
