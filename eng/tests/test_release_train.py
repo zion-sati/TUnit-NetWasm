@@ -229,6 +229,46 @@ class ReleaseTrainTests(unittest.TestCase):
         )
 
 
+
+class ReleaseTrainStateTests(unittest.TestCase):
+    def test_first_preview_builds_when_no_train_is_bound(self) -> None:
+        self.assertEqual("build", MODULE.effective_mode("build", 0))
+
+    def test_preview_retry_resumes_when_train_is_bound(self) -> None:
+        self.assertEqual("resume", MODULE.effective_mode("build", 1))
+
+    def test_stable_promotes_when_preview_train_is_bound(self) -> None:
+        self.assertEqual("promote", MODULE.effective_mode("promote", 1))
+
+    def test_stable_fails_closed_without_preview_train(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires the retained preview"):
+            MODULE.effective_mode("promote", 0)
+
+    def test_duplicate_manifest_identity_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            MODULE.effective_mode("build", 2)
+
+    def test_state_command_writes_effective_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "github-output"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "state",
+                    "--resolved-mode", "build",
+                    "--retained-manifest-count", "1",
+                    "--github-output", str(output),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual("mode=resume\n", output.read_text(encoding="utf-8"))
+
+
 class ReleaseWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -242,7 +282,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
             "Build and qualify preview and stable packages",
         ):
             self.assertIn(
-                "if: steps.release.outputs.mode == 'build'",
+                "if: steps.train-state.outputs.mode == 'build'",
                 workflow_step(self.document, name),
             )
 
@@ -250,8 +290,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         coordinates = workflow_step(
             self.document, "Resolve retained release train coordinates"
         )
-        promotion = workflow_step(
-            self.document, "Resolve and verify retained stable candidate"
+        retained = workflow_step(
+            self.document, "Resolve and verify retained candidate"
         )
         for contract in (
             'gh release download "$PREVIEW_TAG"',
@@ -263,12 +303,25 @@ class ReleaseWorkflowTests(unittest.TestCase):
             'gh run download "${{ steps.retained-train.outputs.producing_run_id }}"',
             'cmp --silent "$train" "$downloaded/$ARTIFACT_NAME.json"',
             "release-train.py verify",
-            "--channel stable",
+            '--channel "$channel"',
             "release-train.py extract",
             "verify-release-packages.py",
         ):
-            self.assertIn(contract, promotion)
-        self.assertNotIn("netwasm-test.sh", promotion)
+            self.assertIn(contract, retained)
+        self.assertNotIn("netwasm-test.sh", retained)
+
+    def test_preview_retry_selects_retained_preview_without_building(self) -> None:
+        state = workflow_step(self.document, "Resolve release train state")
+        retained = workflow_step(
+            self.document, "Resolve and verify retained candidate"
+        )
+        self.assertIn("release-train.py state", state)
+        self.assertIn("steps.train-state.outputs.mode", self.document)
+        self.assertIn('if [[ "$RELEASE_MODE" == "resume" ]]; then', retained)
+        self.assertIn("channel=preview", retained)
+        self.assertIn('version="$PREVIEW_VERSION"', retained)
+        self.assertIn('release_tag="$PREVIEW_TAG"', retained)
+        self.assertIn("if: needs.build.outputs.mode != 'build'", self.document)
 
     def test_publication_has_preflight_and_topological_parallel_waves(self) -> None:
         self.assertEqual(1, self.document.count("uses: NuGet/login@"))

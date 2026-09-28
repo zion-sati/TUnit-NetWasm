@@ -30,7 +30,7 @@ jobs:
       source_commit: ${{ steps.release.outputs.source_commit }}
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
-      mode: ${{ steps.release.outputs.mode }}
+      mode: ${{ steps.train-state.outputs.mode }}
       preview_version: ${{ steps.release.outputs.preview_version }}
       preview_tag: ${{ steps.release.outputs.preview_tag }}
       stable_version: ${{ steps.release.outputs.stable_version }}
@@ -82,13 +82,28 @@ jobs:
             --github-output "${GITHUB_OUTPUT}"
           infrastructure_commit="$(git -C infrastructure rev-parse HEAD)"
           printf 'infrastructure_commit=%s\n' "${infrastructure_commit}" >> "${GITHUB_OUTPUT}"
+      - name: Resolve release train state
+        id: train-state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESOLVED_MODE: ${{ steps.release.outputs.mode }}
+          PREVIEW_TAG: ${{ steps.release.outputs.preview_tag }}
+          ARTIFACT_NAME: ${{ steps.release.outputs.artifact_name }}
+        run: |
+          asset_count="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${PREVIEW_TAG}" \
+            --jq "[.assets[] | select(.name == \"$ARTIFACT_NAME.json\")] | length")"
+          python3 infrastructure/eng/release-train.py state \
+            --resolved-mode "$RESOLVED_MODE" \
+            --retained-manifest-count "$asset_count" \
+            --github-output "$GITHUB_OUTPUT"
       - name: Install .NET SDK
-        if: steps.release.outputs.mode == 'build'
+        if: steps.train-state.outputs.mode == 'build'
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           global-json-file: source/global.json
       - name: Build and qualify preview and stable packages
-        if: steps.release.outputs.mode == 'build'
+        if: steps.train-state.outputs.mode == 'build'
         shell: bash
         env:
           PREVIEW_VERSION: ${{ steps.release.outputs.preview_version }}
@@ -112,7 +127,7 @@ jobs:
               --receipt "$candidate/release-package-receipt.json"
           done
       - name: Create immutable preview and stable train
-        if: steps.release.outputs.mode == 'build'
+        if: steps.train-state.outputs.mode == 'build'
         shell: bash
         env:
           PREVIEW_VERSION: ${{ steps.release.outputs.preview_version }}
@@ -144,7 +159,7 @@ jobs:
             --stable-bundle "artifacts/train/netwasm-tunit-stable-$STABLE_VERSION.zip" \
             --output "artifacts/train/$ARTIFACT_NAME.json"
       - name: Retain verified preview and stable train
-        if: steps.release.outputs.mode == 'build'
+        if: steps.train-state.outputs.mode == 'build'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ steps.release.outputs.artifact_name }}
@@ -154,7 +169,7 @@ jobs:
           retention-days: 90
           overwrite: true
       - name: Bind retained train manifest to preview GitHub Release
-        if: steps.release.outputs.mode == 'build'
+        if: steps.train-state.outputs.mode == 'build'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -174,7 +189,7 @@ jobs:
             gh release upload "$RELEASE_TAG" "$asset" --repo "$GITHUB_REPOSITORY"
           fi
       - name: Resolve retained release train coordinates
-        if: steps.release.outputs.mode == 'promote'
+        if: steps.train-state.outputs.mode != 'build'
         id: retained-train
         shell: bash
         env:
@@ -199,11 +214,14 @@ jobs:
             --stable-tag "$STABLE_TAG" \
             --artifact-name "$ARTIFACT_NAME" \
             --github-output "$GITHUB_OUTPUT"
-      - name: Resolve and verify retained stable candidate
-        if: steps.release.outputs.mode == 'promote'
+      - name: Resolve and verify retained candidate
+        if: steps.train-state.outputs.mode != 'build'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ steps.train-state.outputs.mode }}
+          PREVIEW_TAG: ${{ steps.release.outputs.preview_tag }}
+          PREVIEW_VERSION: ${{ steps.release.outputs.preview_version }}
           STABLE_TAG: ${{ steps.release.outputs.stable_tag }}
           STABLE_VERSION: ${{ steps.release.outputs.stable_version }}
           SOURCE_COMMIT: ${{ steps.release.outputs.source_commit }}
@@ -211,7 +229,15 @@ jobs:
         run: |
           retained="artifacts/retained-train"
           downloaded="artifacts/downloaded-train"
-          candidate="artifacts/candidates/stable"
+          channel=stable
+          version="$STABLE_VERSION"
+          release_tag="$STABLE_TAG"
+          if [[ "$RELEASE_MODE" == "resume" ]]; then
+            channel=preview
+            version="$PREVIEW_VERSION"
+            release_tag="$PREVIEW_TAG"
+          fi
+          candidate="artifacts/candidates/$channel"
           mkdir -p "$downloaded"
           train="$retained/$ARTIFACT_NAME.json"
           gh run download "${{ steps.retained-train.outputs.producing_run_id }}" \
@@ -219,20 +245,20 @@ jobs:
             --name "${{ steps.retained-train.outputs.artifact_name }}" \
             --dir "$downloaded"
           cmp --silent "$train" "$downloaded/$ARTIFACT_NAME.json"
-          bundle="$downloaded/netwasm-tunit-stable-$STABLE_VERSION.zip"
+          bundle="$downloaded/netwasm-tunit-$channel-$version.zip"
           python3 infrastructure/eng/release-train.py verify \
             --train "$train" \
             --bundle "$bundle" \
-            --channel stable \
+            --channel "$channel" \
             --repository "$GITHUB_REPOSITORY" \
             --source-commit "$SOURCE_COMMIT" \
-            --release-tag "$STABLE_TAG"
+            --release-tag "$release_tag"
           python3 infrastructure/eng/release-train.py extract \
             --bundle "$bundle" \
             --output "$candidate"
           python3 infrastructure/eng/resolve-release.py \
             --manifest infrastructure/eng/release-manifest.json \
-            --tag "$STABLE_TAG" \
+            --tag "$release_tag" \
             --tag-prefix "netwasm-v" \
             --source-commit "$SOURCE_COMMIT" \
             --output "$candidate/release-manifest.json"
@@ -242,12 +268,12 @@ jobs:
             --source-root source \
             --allowed-signers infrastructure/eng/release-signers \
             --receipt "$candidate/release-package-receipt.json"
-      - name: Retain stable promotion artifacts
-        if: steps.release.outputs.mode == 'promote'
+      - name: Retain resolved release artifacts
+        if: steps.train-state.outputs.mode != 'build'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: netwasm-tunit-${{ steps.release.outputs.stable_version }}
-          path: artifacts/candidates/stable/
+          name: netwasm-tunit-${{ steps.release.outputs.version }}
+          path: artifacts/candidates/${{ steps.train-state.outputs.mode == 'resume' && 'preview' || 'stable' }}/
           compression-level: 0
           if-no-files-found: error
           retention-days: 90
@@ -284,11 +310,11 @@ jobs:
         with:
           name: ${{ needs.build.outputs.artifact_name }}
           path: artifacts/train
-      - name: Download verified stable promotion artifacts
-        if: needs.build.outputs.mode == 'promote'
+      - name: Download verified retained release artifacts
+        if: needs.build.outputs.mode != 'build'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: netwasm-tunit-${{ needs.build.outputs.stable_version }}
+          name: netwasm-tunit-${{ needs.build.outputs.version }}
           path: artifacts/publish
       - name: Select preview candidate from release train
         if: needs.build.outputs.mode == 'build'
