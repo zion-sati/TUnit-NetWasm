@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/netwasm-ci.yml
+      - .github/workflows/netwasm-release.yml
       - Directory.Build.props
       - global.json
       - eng/NetWasm.ReleaseVersion.txt
@@ -17,6 +18,8 @@ on:
       - eng/test-project-release-version.py
       - eng/resolve-release.py
       - eng/release-train.py
+      - eng/release-coordinator.py
+      - eng/release-receiver.py
       - eng/publish-release-packages.py
       - eng/release-manifest.json
       - eng/release-signers
