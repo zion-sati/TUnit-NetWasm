@@ -40,7 +40,7 @@ on:
         required: true
         type: string
 
-run-name: NetWasm Release ${{ inputs.coordinated_stage }} ${{ inputs.stage_identity }}
+run-name: Release ${{ inputs.coordinated_stage }} ${{ inputs.stage_identity }}
 
 permissions:
   contents: read
@@ -69,11 +69,12 @@ jobs:
       stable_tag: ${{ steps.release.outputs.stable_tag }}
       artifact_name: ${{ steps.release.outputs.artifact_name }}
     steps:
-      - name: Check out release infrastructure
+      - name: Check out trusted receiver
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ inputs.infrastructure_commit }}
-          path: infrastructure
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          path: bootstrap
       - name: Check out release source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -126,7 +127,7 @@ jobs:
         env:
           APPROVED_ACTOR_ID: ${{ vars.RELEASE_APP_ACTOR_ID }}
         run: |
-          python3 infrastructure/eng/release-receiver.py \
+          python3 bootstrap/eng/release-receiver.py \
             --inputs artifacts/dispatch/inputs.json \
             --preparation artifacts/dispatch/release-preparation.json \
             --release artifacts/dispatch/release.json \
@@ -142,6 +143,12 @@ jobs:
             --tag-commit "$(git -C source rev-parse HEAD)" \
             --output artifacts/dispatch/receiver.json \
             --github-output "$GITHUB_OUTPUT"
+      - name: Check out approved release infrastructure
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.receiver.outputs.infrastructure_commit }}
+          persist-credentials: false
+          path: infrastructure
       - name: Resolve GitHub Release
         id: release
         shell: bash
@@ -453,6 +460,30 @@ jobs:
             --packages artifacts/publish/packages \
             --preflight \
             --timing-output artifacts/publish/timings/feed-preflight.json
+      - name: Verify coordinated publication approval
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+          UPSTREAM_RECEIPTS: ${{ inputs.upstream_receipts }}
+        run: |
+          train="artifacts/train/$ARTIFACT_NAME.json"
+          if [[ ! -f "$train" ]]; then
+            train=artifacts/publish/release-train.json
+          fi
+          upstream_args=()
+          while IFS= read -r coordinate; do
+            name="$(jq -r '.fileName' <<< "$coordinate")"
+            digest="$(jq -r '.sha256' <<< "$coordinate")"
+            upstream_args+=(
+              --upstream-receipt "artifacts/dispatch/upstream/$name"
+              --upstream-receipt-sha256 "$digest"
+            )
+          done < <(jq -c '.[]' <<< "$UPSTREAM_RECEIPTS")
+          python3 infrastructure/eng/release-train.py approval \
+            --preparation artifacts/dispatch/release-preparation.json \
+            --stage '${{ inputs.coordinated_stage }}' \
+            --train "$train" \
+            "${upstream_args[@]}"
       - name: Request temporary NuGet.org credential
         id: login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1

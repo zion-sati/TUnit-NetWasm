@@ -388,17 +388,17 @@ def validate_publication_receipt(
             raise ValueError("Publication receipt upstream coordinates are invalid.")
 
 
-def create_publication_receipt(
+def validate_publication_approval(
     *,
     preparation_path: Path,
     stage_name: str,
     train_path: Path,
-    feed_receipt_path: Path,
-    publication_run_id: str,
-    publication_run_attempt: str,
     upstream_receipt_paths: list[Path],
     upstream_receipt_sha256: list[str],
-) -> dict[str, object]:
+) -> tuple[
+    dict[str, object], str, dict[str, object], dict[str, object],
+    dict[str, object], list[dict[str, object]],
+]:
     if stage_name not in {item[0] for item in PREPARATION_STAGES[:6]}:
         raise ValueError("Only package stages produce NuGet publication receipts.")
     preparation, preparation_digest = read_preparation(preparation_path)
@@ -436,14 +436,6 @@ def create_publication_receipt(
     candidate = train.get(channel)
     if not isinstance(candidate, dict) or candidate.get("releaseTag") != stage.get("ref"):
         raise ValueError("Candidate train does not target the approved release.")
-    feed_receipt = read_json(feed_receipt_path)
-    packages = validate_feed_receipt(
-        feed_receipt,
-        repository=str(stage["repository"]),
-        source_commit=str(stage["sourceCommit"]),
-        release_tag=str(stage["ref"]),
-        candidate=candidate,
-    )
     expected_upstream = stage.get("upstreamStages")
     assert isinstance(expected_upstream, list)
     if (
@@ -485,6 +477,43 @@ def create_publication_receipt(
             "releaseTag": value["releaseTag"],
             "sha256": sha256(path),
         })
+    return preparation, preparation_digest, stage, train, candidate, upstream
+
+
+def create_publication_receipt(
+    *,
+    preparation_path: Path,
+    stage_name: str,
+    train_path: Path,
+    feed_receipt_path: Path,
+    publication_run_id: str,
+    publication_run_attempt: str,
+    upstream_receipt_paths: list[Path],
+    upstream_receipt_sha256: list[str],
+) -> dict[str, object]:
+    (
+        preparation,
+        preparation_digest,
+        stage,
+        train,
+        candidate,
+        upstream,
+    ) = validate_publication_approval(
+        preparation_path=preparation_path,
+        stage_name=stage_name,
+        train_path=train_path,
+        upstream_receipt_paths=upstream_receipt_paths,
+        upstream_receipt_sha256=upstream_receipt_sha256,
+    )
+    current_train_digest = sha256(train_path)
+    feed_receipt = read_json(feed_receipt_path)
+    packages = validate_feed_receipt(
+        feed_receipt,
+        repository=str(stage["repository"]),
+        source_commit=str(stage["sourceCommit"]),
+        release_tag=str(stage["ref"]),
+        candidate=candidate,
+    )
     if not publication_run_id.isdigit() or not publication_run_attempt.isdigit():
         raise ValueError("Publication workflow run coordinates are invalid.")
     result = {
@@ -1010,6 +1039,16 @@ def main() -> int:
         "--upstream-receipt-sha256", action="append", default=[]
     )
     publication.add_argument("--output", type=Path, required=True)
+    approval = subparsers.add_parser("approval")
+    approval.add_argument("--preparation", type=Path, required=True)
+    approval.add_argument("--stage", required=True)
+    approval.add_argument("--train", type=Path, required=True)
+    approval.add_argument(
+        "--upstream-receipt", type=Path, action="append", default=[]
+    )
+    approval.add_argument(
+        "--upstream-receipt-sha256", action="append", default=[]
+    )
     extract = subparsers.add_parser("extract")
     extract.add_argument("--bundle", type=Path, required=True)
     extract.add_argument("--output", type=Path, required=True)
@@ -1093,6 +1132,16 @@ def main() -> int:
             f"Recorded publication receipt for {receipt['stage']} "
             f"at {sha256(arguments.output)}."
         )
+        return 0
+    if arguments.command == "approval":
+        validate_publication_approval(
+            preparation_path=arguments.preparation,
+            stage_name=arguments.stage,
+            train_path=arguments.train,
+            upstream_receipt_paths=arguments.upstream_receipt,
+            upstream_receipt_sha256=arguments.upstream_receipt_sha256,
+        )
+        print(f"Verified coordinated publication approval for {arguments.stage}.")
         return 0
     train = read_json(arguments.train)
     if arguments.command == "identity":

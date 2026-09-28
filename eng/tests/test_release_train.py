@@ -329,6 +329,15 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("--publish", self.document)
         self.assertIn("Retain release timing evidence", self.document)
 
+    def test_coordinated_approval_precedes_nuget_credentials(self) -> None:
+        approval = self.document.index("Verify coordinated publication approval")
+        credential = self.document.index("Request temporary NuGet.org credential")
+        self.assertLess(approval, credential)
+        self.assertIn(
+            "release-train.py approval",
+            workflow_step(self.document, "Verify coordinated publication approval"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
