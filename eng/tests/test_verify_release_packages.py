@@ -103,6 +103,17 @@ class VerifyReleasePackagesTests(unittest.TestCase):
         self.assertEqual(1, receipt["packageCount"])
         self.assertEqual(64, len(receipt["packages"][0]["sha256"]))
 
+    def test_writes_local_verification_timing(self) -> None:
+        timing_path = self.root / "timings" / "local.json"
+
+        MODULE.write_timing(timing_path, self.manifest, 5, 1.23456)
+
+        timing = json.loads(timing_path.read_text(encoding="utf-8"))
+        self.assertEqual("local-verification", timing["operation"])
+        self.assertEqual("0.1.0-rc.1", timing["version"])
+        self.assertEqual(5, timing["packageCount"])
+        self.assertEqual(1.235, timing["durationSeconds"])
+
     def test_accepts_github_release_lightweight_tag_without_signer_policy(self) -> None:
         source = self.root / "source"
         source.mkdir()

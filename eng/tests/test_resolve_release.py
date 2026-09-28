@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -34,6 +36,38 @@ class ResolveReleaseTests(unittest.TestCase):
         self.assertEqual("v0.2.0-preview.1", resolved["releaseTag"])
         self.assertEqual("b" * 40, resolved["sourceCommit"])
         self.assertEqual(["NetWasm.Example"], resolved["packages"])
+
+    def test_preview_build_creates_stable_candidate_for_same_source_and_dependencies(self) -> None:
+        resolved = MODULE.resolve_manifest(
+            self.manifest, "netwasm-v0.5.0-preview.1", "b" * 40, "netwasm-v"
+        )
+        identity = MODULE.resolve_train_identity(
+            str(resolved["releaseVersion"]), "netwasm-v"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            MODULE.write_train_manifests(root, resolved, identity)
+            preview = json.loads((root / "preview-manifest.json").read_text())
+            stable = json.loads((root / "stable-manifest.json").read_text())
+
+        self.assertEqual("build", identity["mode"])
+        self.assertEqual("netwasm-tunit-release-train-0.5.0", identity["artifactName"])
+        self.assertEqual("0.5.0-preview.1", preview["releaseVersion"])
+        self.assertEqual("0.5.0", stable["releaseVersion"])
+        self.assertEqual("netwasm-v0.5.0-preview.1", stable["releaseTag"])
+        self.assertEqual(preview["sourceCommit"], stable["sourceCommit"])
+        self.assertEqual(preview["dependencyVersions"], stable["dependencyVersions"])
+
+    def test_stable_release_promotes_preview_train(self) -> None:
+        identity = MODULE.resolve_train_identity("0.5.0", "netwasm-v")
+
+        self.assertEqual("promote", identity["mode"])
+        self.assertEqual("netwasm-v0.5.0-preview.1", identity["previewTag"])
+        self.assertEqual("netwasm-v0.5.0", identity["stableTag"])
+
+    def test_rejects_unpaired_prerelease_train(self) -> None:
+        with self.assertRaisesRegex(ValueError, "start at preview.1"):
+            MODULE.resolve_train_identity("0.5.0-preview.2", "netwasm-v")
 
     def test_supports_repository_specific_tag_prefix(self) -> None:
         resolved = MODULE.resolve_manifest(
