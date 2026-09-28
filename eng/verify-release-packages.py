@@ -8,8 +8,7 @@ import argparse
 import hashlib
 import json
 import subprocess
-import urllib.error
-import urllib.request
+import time
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
@@ -209,26 +208,6 @@ def validate_packages(
     return sorted(packages, key=lambda package: str(package["id"]))
 
 
-def require_absent_from_nuget(packages: list[dict[str, object]]) -> None:
-    for package in packages:
-        package_id = str(package["id"])
-        version = str(package["version"])
-        url = (
-            "https://api.nuget.org/v3-flatcontainer/"
-            f"{package_id.lower()}/index.json"
-        )
-        try:
-            with urllib.request.urlopen(url, timeout=30) as response:
-                versions = json.load(response).get("versions", [])
-        except urllib.error.HTTPError as error:
-            if error.code == 404:
-                versions = []
-            else:
-                raise
-        if version in versions:
-            raise ValueError(f"{package_id} {version} already exists on NuGet.org.")
-
-
 def write_receipt(
     path: Path, manifest: dict[str, object], packages: list[dict[str, object]]
 ) -> None:
@@ -246,6 +225,26 @@ def write_receipt(
     path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
 
 
+def write_timing(
+    path: Path, manifest: dict[str, object], package_count: int, seconds: float
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "operation": "local-verification",
+                "version": manifest["releaseVersion"],
+                "packageCount": package_count,
+                "durationSeconds": round(seconds, 3),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -253,8 +252,9 @@ def main() -> int:
     parser.add_argument("--source-root", type=Path)
     parser.add_argument("--allowed-signers", type=Path)
     parser.add_argument("--receipt", type=Path)
-    parser.add_argument("--require-absent-on-nuget", action="store_true")
+    parser.add_argument("--timing-output", type=Path)
     arguments = parser.parse_args()
+    started = time.monotonic()
 
     manifest = read_manifest(arguments.manifest)
     if arguments.allowed_signers is not None and arguments.source_root is None:
@@ -262,10 +262,15 @@ def main() -> int:
     if arguments.source_root is not None:
         verify_source(arguments.source_root, manifest, arguments.allowed_signers)
     packages = validate_packages(arguments.packages, manifest)
-    if arguments.require_absent_on_nuget:
-        require_absent_from_nuget(packages)
     if arguments.receipt is not None:
         write_receipt(arguments.receipt, manifest, packages)
+    if arguments.timing_output is not None:
+        write_timing(
+            arguments.timing_output,
+            manifest,
+            len(packages),
+            time.monotonic() - started,
+        )
     print(
         f"Validated {len(packages)} packages for "
         f"{manifest['repository']} {manifest['releaseVersion']}."

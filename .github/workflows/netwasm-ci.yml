@@ -16,10 +16,14 @@ on:
       - eng/project-release-version.py
       - eng/test-project-release-version.py
       - eng/resolve-release.py
+      - eng/release-train.py
+      - eng/publish-release-packages.py
       - eng/release-manifest.json
       - eng/release-signers
       - eng/verify-release-packages.py
       - eng/tests/test_resolve_release.py
+      - eng/tests/test_release_train.py
+      - eng/tests/test_publish_release_packages.py
       - eng/tests/test_verify_release_packages.py
       - packaging/**
       - src/TUnit.Analyzers/PsvmAnalyzer.cs
@@ -236,6 +240,8 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 eng/test-project-release-version.py
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
             eng/tests/test_resolve_release.py \
+            eng/tests/test_release_train.py \
+            eng/tests/test_publish_release_packages.py \
             eng/tests/test_verify_release_packages.py
           NETWASM_CI_PACKAGE_SOURCE="$RUNNER_TEMP/netwasm-packages" \
           NETWASM_CORE_CANDIDATE_VERSION="${{ needs.core-candidate.outputs.version }}" \
