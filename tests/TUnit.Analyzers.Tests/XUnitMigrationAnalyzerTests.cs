@@ -31,6 +31,47 @@ public class XUnitMigrationAnalyzerTests
             );
     }
 
+    // The compilation-start gate and the semantic checks must use the same (ordinal) namespace comparison.
+    // These names are chosen so a culture-sensitive StartsWith("Xunit") disagrees with ordinal: a combining
+    // mark after "Xunit" (U+0301) makes it a non-match, and an ignorable U+034F inside "Xunit" makes it a match.
+    // No xUnit reference is added, so the gate's outcome depends only on these source namespaces.
+    [Test]
+    public async Task Xunit_Prefixed_Namespace_With_Trailing_Combining_Mark_Flagged()
+    {
+        await Verifier
+            .VerifyAnalyzerAsync(
+                """
+                {|#0:namespace Xunit\u0301Extras
+                {
+                    public interface IMarker { }
+                }
+
+                public class MyClass : Xunit\u0301Extras.IMarker
+                {
+                }|}
+                """,
+                Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0)
+            );
+    }
+
+    [Test]
+    public async Task Namespace_Matching_Xunit_Only_Culturally_Not_Flagged()
+    {
+        await Verifier
+            .VerifyAnalyzerAsync(
+                """
+                namespace Xu\u034Fnit
+                {
+                    public interface IMarker { }
+                }
+
+                public class MyClass : Xu\u034Fnit.IMarker
+                {
+                }
+                """
+            );
+    }
+
     [Arguments("Fact", "Test")]
     [Arguments("Theory", "Test")]
     [Arguments("InlineData", "Arguments")]
@@ -2815,6 +2856,40 @@ public class XUnitMigrationAnalyzerTests
                 }
                 """,
             ConfigureXUnitTest
+        );
+    }
+
+    [Test]
+    public async Task Xunit_Using_Flagged_When_Xunit_Is_Not_Referenced()
+    {
+        // Without an xUnit reference the analyzer skips all semantic checks; a leftover using must still be reported.
+        await Verifier.VerifyAnalyzerAsync(
+            """
+            {|#0:using Xunit;
+
+            public class MyClass
+            {
+                public void MyMethod() { }
+            }|}
+            """,
+            test => test.CompilerDiagnostics = CompilerDiagnostics.None,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0)
+        );
+    }
+
+    [Test]
+    public async Task No_Diagnostic_When_Xunit_Is_Not_Referenced_And_Not_Used()
+    {
+        await Verifier.VerifyAnalyzerAsync(
+            """
+            using System;
+
+            public class MyClass
+            {
+                [TUnit.Core.Test]
+                public void MyMethod() => Console.WriteLine();
+            }
+            """
         );
     }
 

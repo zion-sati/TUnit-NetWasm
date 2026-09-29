@@ -47,6 +47,8 @@ public class InfrastructureGenerator : IIncrementalGenerator
         "TUnit_DynamicTestRegistration",
     ];
 
+    public const string ExtractAssemblyInfoStep = "ExtractAssemblyInfo";
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
@@ -57,6 +59,7 @@ public class InfrastructureGenerator : IIncrementalGenerator
         var assemblyInfoProvider = context.CompilationProvider
             .WithComparer(new PreventCompilationTriggerOnEveryKeystrokeComparer())
             .Select((compilation, _) => ExtractAssemblyInfo(compilation))
+            .WithTrackingName(ExtractAssemblyInfoStep)
             .Combine(enabledProvider);
 
         context.RegisterSourceOutput(assemblyInfoProvider, (sourceContext, data) =>

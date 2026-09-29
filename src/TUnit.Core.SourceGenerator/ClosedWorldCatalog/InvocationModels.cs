@@ -55,4 +55,5 @@ internal sealed class ConcreteInstantiation
     public required string TestName { get; init; }
     public required string MethodName { get; init; }
     public AttributeData? SpecificArgumentsAttribute { get; init; }
+    public bool HasParameterizedConstructor { get; init; }
 }

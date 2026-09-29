@@ -6,6 +6,7 @@ namespace TUnit.Core.SourceGenerator.Models;
 /// </summary>
 public sealed record ClassTestGroup
 {
+    public required bool IsCatalogOnly { get; init; }
     public required string ClassFullyQualified { get; init; }
     public required string TestSourceName { get; init; }
     public required EquatableArray<TestMethodSourceCode> Methods { get; init; }
@@ -17,7 +18,6 @@ public sealed record ClassTestGroup
 
     public required string InstanceFactoryBodyCode { get; init; }
     public required string ReflectionFieldAccessorsCode { get; init; }
-    public required string SharedLocalsCode { get; init; }
 
     /// <summary>
     /// Pre-generated static readonly field declarations for ClassMetadata and classType.

@@ -28,6 +28,45 @@ public class NUnitMigrationAnalyzerTests
         );
     }
     
+    // The compilation-start gate and the semantic checks must use the same (ordinal) namespace comparison.
+    // These names are chosen so a culture-sensitive StartsWith("NUnit") disagrees with ordinal: a combining
+    // mark after "NUnit" (U+0301) makes it a non-match, and an ignorable U+034F inside "NUnit" makes it a match.
+    // No NUnit reference is added, so the gate's outcome depends only on these source namespaces.
+    [Test]
+    public async Task NUnit_Prefixed_Namespace_With_Trailing_Combining_Mark_Flagged()
+    {
+        await Verifier.VerifyAnalyzerAsync(
+            """
+                namespace NUnit\u0301Extras
+                {
+                    public interface IMarker { }
+                }
+
+                {|#0:public class MyClass : NUnit\u0301Extras.IMarker
+                {
+                }|}
+                """,
+            Verifier.Diagnostic(Rules.NUnitMigration).WithLocation(0)
+        );
+    }
+
+    [Test]
+    public async Task Namespace_Matching_NUnit_Only_Culturally_Not_Flagged()
+    {
+        await Verifier.VerifyAnalyzerAsync(
+            """
+                namespace NU\u034Fnit
+                {
+                    public interface IMarker { }
+                }
+
+                public class MyClass : NU\u034Fnit.IMarker
+                {
+                }
+                """
+        );
+    }
+
     [Test]
     [Arguments("NUnit.Framework.Test", "Test")]
     [Arguments("NUnit.Framework.SetUp", "Before(HookType.Test)")]
@@ -5734,16 +5773,78 @@ public class NUnitMigrationAnalyzerTests
         );
     }
 
+    [Test]
+    public async Task NUnit_Using_Flagged_When_NUnit_Is_Not_Referenced()
+    {
+        // Without an NUnit reference the analyzer skips all semantic checks; a leftover using must still be reported.
+        await Verifier.VerifyAnalyzerAsync(
+            """
+            {|#0:using NUnit.Framework;|}
+
+            public class MyClass
+            {
+                public void MyMethod() { }
+            }
+            """,
+            test => test.CompilerDiagnostics = CompilerDiagnostics.None,
+            Verifier.Diagnostic(Rules.NUnitMigration).WithLocation(0)
+        );
+    }
+
+    [Test]
+    public async Task NUnit_Global_Using_Flagged_When_NUnit_Is_Not_Referenced()
+    {
+        await Verifier.VerifyAnalyzerAsync(
+            """
+            {|#0:global using NUnit.Framework;|}
+            """,
+            test => test.CompilerDiagnostics = CompilerDiagnostics.None,
+            Verifier.Diagnostic(Rules.NUnitMigration).WithLocation(0)
+        );
+    }
+
+    [Test]
+    public async Task No_Diagnostic_When_NUnit_Is_Not_Referenced_And_Not_Used()
+    {
+        await Verifier.VerifyAnalyzerAsync(
+            """
+            using System;
+
+            public class MyClass
+            {
+                [TUnit.Core.Test]
+                public void MyMethod() => Console.WriteLine();
+            }
+            """
+        );
+    }
+
+    // NUnit 5 ships a net10.0 build referencing System.Runtime 10.0, which raises CS1705 against the
+    // verifiers' Net90 reference assemblies when the test runs on net10.0. The csproj copies NUnit's
+    // net8.0 build into the output directory; reference that instead of the runtime-loaded assembly.
+    private static string GetNUnitDllPath(string assemblyName)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, $"{assemblyName}.net8.0.dll");
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException(
+                $"net8.0 build of {assemblyName} not found at '{path}'. Run 'dotnet build' before running analyzer tests.",
+                path);
+        }
+
+        return path;
+    }
+
     private static void ConfigureNUnitTest(Verifier.Test test)
     {
-        test.TestState.AdditionalReferences.Add(typeof(NUnit.Framework.TestAttribute).Assembly);
+        test.TestState.AdditionalReferences.Add(GetNUnitDllPath("nunit.framework"));
     }
 
     private static void ConfigureNUnitTest(CodeFixer.Test test)
     {
         // Add NUnit assemblies to TestState (for input code compilation)
-        test.TestState.AdditionalReferences.Add(typeof(NUnit.Framework.TestAttribute).Assembly);
-        test.TestState.AdditionalReferences.Add(typeof(NUnit.Framework.Legacy.ClassicAssert).Assembly);
+        test.TestState.AdditionalReferences.Add(GetNUnitDllPath("nunit.framework"));
+        test.TestState.AdditionalReferences.Add(GetNUnitDllPath("nunit.framework.legacy"));
 
         // FixedState: TUnit assemblies only (NO NUnit inheritance)
         // Use Explicit inheritance mode to prevent NUnit references from being inherited

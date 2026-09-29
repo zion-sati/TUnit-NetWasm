@@ -16,6 +16,11 @@ namespace TUnit.Core.SourceGenerator.Generators;
 [Generator]
 public class HookMetadataGenerator : IIncrementalGenerator
 {
+    public const string ExtractBeforeHooks = "ExtractBeforeHooks";
+    public const string ExtractAfterHooks = "ExtractAfterHooks";
+    public const string ExtractBeforeEveryHooks = "ExtractBeforeEveryHooks";
+    public const string ExtractAfterEveryHooks = "ExtractAfterEveryHooks";
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
@@ -27,6 +32,7 @@ public class HookMetadataGenerator : IIncrementalGenerator
                 predicate: static (node, _) => node is MethodDeclarationSyntax,
                 transform: static (ctx, _) => ExtractHookModel(ctx, "Before"))
             .Where(static m => m is not null)
+            .WithTrackingName(ExtractBeforeHooks)
             .Combine(enabledProvider);
 
         var afterHooks = context.SyntaxProvider
@@ -35,6 +41,7 @@ public class HookMetadataGenerator : IIncrementalGenerator
                 predicate: static (node, _) => node is MethodDeclarationSyntax,
                 transform: static (ctx, _) => ExtractHookModel(ctx, "After"))
             .Where(static m => m is not null)
+            .WithTrackingName(ExtractAfterHooks)
             .Combine(enabledProvider);
 
         var beforeEveryHooks = context.SyntaxProvider
@@ -43,6 +50,7 @@ public class HookMetadataGenerator : IIncrementalGenerator
                 predicate: static (node, _) => node is MethodDeclarationSyntax,
                 transform: static (ctx, _) => ExtractHookModel(ctx, "BeforeEvery"))
             .Where(static m => m is not null)
+            .WithTrackingName(ExtractBeforeEveryHooks)
             .Combine(enabledProvider);
 
         var afterEveryHooks = context.SyntaxProvider
@@ -51,6 +59,7 @@ public class HookMetadataGenerator : IIncrementalGenerator
                 predicate: static (node, _) => node is MethodDeclarationSyntax,
                 transform: static (ctx, _) => ExtractHookModel(ctx, "AfterEvery"))
             .Where(static m => m is not null)
+            .WithTrackingName(ExtractAfterEveryHooks)
             .Combine(enabledProvider);
 
         context.RegisterSourceOutput(beforeHooks, GenerateHookFile);
