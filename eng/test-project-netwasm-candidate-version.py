@@ -25,6 +25,12 @@ class ProjectNetWasmCandidateVersionTests(unittest.TestCase):
             "</PropertyGroup></Project>\n",
             encoding="utf-8",
         )
+        dependencies = self.root / MODULE.DEPENDENCIES_PATH
+        dependencies.parent.mkdir(parents=True, exist_ok=True)
+        dependencies.write_text(
+            json.dumps({"schemaVersion": 1, "netwasm": "0.4.0"}, indent=2) + "\n",
+            encoding="utf-8",
+        )
         for relative_path in MODULE.GLOBAL_JSON_PATHS:
             path = self.root / relative_path
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -32,6 +38,13 @@ class ProjectNetWasmCandidateVersionTests(unittest.TestCase):
                 json.dumps({"msbuild-sdks": {"NetWasm.Sdk": "0.4.0"}}, indent=2) + "\n",
                 encoding="utf-8",
             )
+        manifest = self.root / MODULE.RELEASE_MANIFEST_PATH
+        manifest.write_text(json.dumps({
+            "dependencyVersions": {
+                "NetWasm.Sdk": "0.4.0",
+                "NetWasm.Testing.VSTest": "0.4.0",
+            }
+        }, indent=2) + "\n", encoding="utf-8")
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -46,7 +59,7 @@ class ProjectNetWasmCandidateVersionTests(unittest.TestCase):
         )
 
         self.assertEqual("0.4.0", receipt["sourceVersion"])
-        self.assertEqual(3, len(receipt["changedFiles"]))
+        self.assertEqual(5, len(receipt["changedFiles"]))
         self.assertIn(
             "<NetWasmPackageVersion>0.4.0-local.20260921.17</NetWasmPackageVersion>",
             (self.root / MODULE.PROPS_PATH).read_text(encoding="utf-8"),
@@ -57,6 +70,13 @@ class ProjectNetWasmCandidateVersionTests(unittest.TestCase):
                 "0.4.0-local.20260921.17",
                 document["msbuild-sdks"]["NetWasm.Sdk"],
             )
+        manifest = json.loads(
+            (self.root / MODULE.RELEASE_MANIFEST_PATH).read_text(encoding="utf-8")
+        )
+        self.assertEqual({
+            "NetWasm.Sdk": "0.4.0-local.20260921.17",
+            "NetWasm.Testing.VSTest": "0.4.0-local.20260921.17",
+        }, manifest["dependencyVersions"])
         self.assertEqual(receipt, json.loads(receipt_path.read_text(encoding="utf-8")))
 
     def test_rejects_disagreeing_sdk_version(self) -> None:
@@ -66,7 +86,7 @@ class ProjectNetWasmCandidateVersionTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        with self.assertRaisesRegex(ValueError, "expected '0.4.0'"):
+        with self.assertRaisesRegex(ValueError, "expected one of"):
             MODULE.project(self.root, "0.4.0-local.1", self.root / "receipt.json")
 
     def test_accepts_release_version_already_projected_to_candidate(self) -> None:

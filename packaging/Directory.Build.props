@@ -8,7 +8,7 @@
          version is provenance, not the downstream NuGet package version. -->
     <NetWasmTUnitPackageVersion>0.4.2</NetWasmTUnitPackageVersion>
     <NetWasmTUnitUpstreamVersion>1.71.0</NetWasmTUnitUpstreamVersion>
-    <NetWasmPackageVersion>0.4.3</NetWasmPackageVersion>
+    <NetWasmPackageVersion>0.5.0</NetWasmPackageVersion>
     <Version>$(NetWasmTUnitPackageVersion)</Version>
     <PackageVersion>$(NetWasmTUnitPackageVersion)</PackageVersion>
     <!-- TUnit's strong-named desktop assemblies intentionally retain the

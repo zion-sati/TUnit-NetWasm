@@ -6,6 +6,6 @@
     "allowPrerelease": false
   },
   "msbuild-sdks": {
-      "NetWasm.Sdk": "0.4.3"
+    "NetWasm.Sdk": "0.5.0"
   }
 }

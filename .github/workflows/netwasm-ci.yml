@@ -10,6 +10,7 @@ on:
       - Directory.Build.props
       - global.json
       - eng/NetWasm.ReleaseVersion.txt
+      - eng/dependencies.json
       - eng/netwasm-build-packages.sh
       - eng/netwasm-test.sh
       - eng/project-netwasm-candidate-version.py
@@ -18,8 +19,6 @@ on:
       - eng/test-project-release-version.py
       - eng/resolve-release.py
       - eng/release-train.py
-      - eng/release-coordinator.py
-      - eng/release-receiver.py
       - eng/publish-release-packages.py
       - eng/release-manifest.json
       - eng/release-signers
@@ -61,18 +60,28 @@ jobs:
       version: ${{ steps.version.outputs.value }}
       sdk11: ${{ steps.toolchain.outputs.sdk11 }}
     steps:
-      - name: Check out pinned NetWasm source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          repository: zion-sati/NetWasm
-          ref: 400676d82248ba03454c36c176ffcbfda95c1cf0
-          path: netwasm-core
-          persist-credentials: false
-
       - name: Check out TUnit candidate source for provenance
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: tunit-source
+          persist-credentials: false
+
+      - name: Read dependency pins
+        id: dependencies
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          print(f"netwasm={json.loads(Path('tunit-source/eng/dependencies.json').read_text())['netwasm']}")
+          PY
+
+      - name: Check out pinned NetWasm source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: zion-sati/NetWasm
+          ref: v${{ steps.dependencies.outputs.netwasm }}
+          path: netwasm-core
           persist-credentials: false
 
       - name: Install .NET SDK
@@ -120,7 +129,8 @@ jobs:
         shell: bash
         working-directory: netwasm-core
         run: |
-          version="0.4.3-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          base='${{ steps.dependencies.outputs.netwasm }}'
+          version="${base}-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
           echo "value=$version" >> "$GITHUB_OUTPUT"
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           bash eng/build-packages.sh --version "$version" --output "$RUNNER_TEMP/netwasm-packages"
@@ -136,6 +146,8 @@ jobs:
 
       - name: Record Core candidate provenance
         shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ steps.version.outputs.value }}
         run: |
           python3 - <<'PY'
           import hashlib, json, os, subprocess
@@ -161,7 +173,7 @@ jobs:
               'consumer': revision('tunit-source'),
               'workflowRunId': os.environ['GITHUB_RUN_ID'],
               'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
-              'candidateVersion': '0.4.3-ci.' + os.environ['GITHUB_RUN_ID'] + '.' + os.environ['GITHUB_RUN_ATTEMPT'],
+              'candidateVersion': os.environ['CANDIDATE_VERSION'],
               'packages': packages,
           }
           Path(os.environ['RUNNER_TEMP'], 'netwasm-packages', 'netwasm-core-receipt.json').write_text(
@@ -249,7 +261,7 @@ jobs:
           NETWASM_CI_PACKAGE_SOURCE="$RUNNER_TEMP/netwasm-packages" \
           NETWASM_CORE_CANDIDATE_VERSION="${{ needs.core-candidate.outputs.version }}" \
           NETWASM_TUNIT_BUILD_SDK_VERSION="${{ steps.isolated-dotnet.outputs.sdk-version }}" \
-          NETWASM_TUNIT_TEST_VERSION="0.4.3-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}" \
+          NETWASM_TUNIT_TEST_VERSION="${{ needs.core-candidate.outputs.version }}" \
             bash eng/netwasm-test.sh
 
       - name: Record TUnit candidate packages and analyzer closure
@@ -257,6 +269,7 @@ jobs:
         shell: bash
         env:
           SDK_VERSION: ${{ steps.isolated-dotnet.outputs.sdk-version }}
+          CANDIDATE_VERSION: ${{ needs.core-candidate.outputs.version }}
         run: |
           python3 - <<'PY'
           import hashlib, json, os, zipfile
@@ -275,7 +288,7 @@ jobs:
               'workflowRunId': os.environ['GITHUB_RUN_ID'],
               'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
               'sdkVersion': os.environ['SDK_VERSION'],
-              'candidateVersion': '0.4.3-ci.' + os.environ['GITHUB_RUN_ID'] + '.' + os.environ['GITHUB_RUN_ATTEMPT'],
+              'candidateVersion': os.environ['CANDIDATE_VERSION'],
               'packages': packages,
               'analyzers': analyzers,
           }, indent=2) + '\n')
