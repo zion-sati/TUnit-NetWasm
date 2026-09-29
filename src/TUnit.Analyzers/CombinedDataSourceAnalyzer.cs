@@ -31,13 +31,24 @@ public class CombinedDataSourceAnalyzer : ConcurrentDiagnosticAnalyzer
             return;
         }
 
+        var attributes = namedTypeSymbol.GetAttributes();
+        var constructorParameters = namedTypeSymbol.InstanceConstructors.FirstOrDefault()?.Parameters ?? ImmutableArray<IParameterSymbol>.Empty;
+
+        // Every class-level rule in CheckCombinedDataSourceErrors inspects either the class attributes or the constructor
+        // parameters, so with neither no rule can fire. This is cheaper than IsTestClass, so test it first.
+        // Any code after this return is skipped when both inputs are empty, so a new class-level rule that needs
+        // neither input must run before this early return (or this early return must be removed).
+        if (constructorParameters.IsEmpty && attributes.IsEmpty)
+        {
+            return;
+        }
+
         if (!namedTypeSymbol.IsTestClass(context.Compilation))
         {
             return;
         }
 
-        CheckCombinedDataSourceErrors(context, namedTypeSymbol.GetAttributes(),
-            namedTypeSymbol.InstanceConstructors.FirstOrDefault()?.Parameters ?? ImmutableArray<IParameterSymbol>.Empty);
+        CheckCombinedDataSourceErrors(context, attributes, constructorParameters);
     }
 
     private void AnalyzeMethod(SymbolAnalysisContext context)

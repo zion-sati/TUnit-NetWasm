@@ -350,7 +350,6 @@ internal sealed class ClosedWorldCatalogActorContractTests
             .WithReferences(ReferencesHelper.References);
         var type = compilation.GetTypeByMetadataName("TestProject.Fixture")!;
         var method = type.GetMembers(methodName).OfType<IMethodSymbol>().Single();
-        var testAttribute = method.GetAttributes().Single(attribute => attribute.AttributeClass?.Name == "TestAttribute");
         return new TestMethodMetadata
         {
             MethodSymbol = method,
@@ -360,12 +359,10 @@ internal sealed class ClosedWorldCatalogActorContractTests
             StartColumnNumber = 1,
             EndLineNumber = 1,
             EndColumnNumber = 1,
-            TestAttribute = testAttribute,
             CompilationContext = new CompilationContext(
                 compilation,
                 new AttributeWriter(compilation),
                 new WellKnownTypes(compilation)),
-            MethodSyntax = null,
             MethodAttributes = method.GetAttributes(),
         };
     }

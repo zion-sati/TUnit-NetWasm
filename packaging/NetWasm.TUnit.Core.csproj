@@ -35,7 +35,7 @@
 
   <ItemGroup Condition="'$(TargetFramework)' != 'netwasm0.1'">
     <Compile Include="..\src\TUnit.Core\**\*.cs"
-             Exclude="..\src\TUnit.Core\IClassDataSourceAttribute.cs;..\src\TUnit.Core\Interfaces\INestedClassDataSourceInitializer.cs;..\src\TUnit.Core\obj\**\*;..\src\TUnit.Core\bin\**\*" />
+             Exclude="..\src\TUnit.Core\IClassDataSourceAttribute.cs;..\src\TUnit.Core\Interfaces\INestedClassDataSourceInitializer.cs;..\src\TUnit.Core\TUnit.Core.GeneratedNamespace.cs;..\src\TUnit.Core\obj\**\*;..\src\TUnit.Core\bin\**\*" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
@@ -95,6 +95,10 @@
           PackagePath="buildTransitive/net10.0/NetWasm.TUnit.Core.props" Visible="false" />
     <None Include="..\src\TUnit.Core\TUnit.Core.targets" Pack="true"
           PackagePath="buildTransitive/net10.0/NetWasm.TUnit.Core.targets" Visible="false" />
+    <None Include="..\src\TUnit.Core\TUnit.Core.GeneratedNamespace.cs" Pack="true"
+          PackagePath="build/net10.0/TUnit.Core.GeneratedNamespace.cs" Visible="false" />
+    <None Include="..\src\TUnit.Core\TUnit.Core.GeneratedNamespace.cs" Pack="true"
+          PackagePath="buildTransitive/net10.0/TUnit.Core.GeneratedNamespace.cs" Visible="false" />
     <None Include="NetWasmTarget\Build\TUnit.Core.props" Pack="true"
           PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Core.props" Visible="false"
           Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
