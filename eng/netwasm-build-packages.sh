@@ -103,6 +103,10 @@ if [[ -n "${NETWASM_CANDIDATE_VERSION}" ]]; then
     --source-root "${source_root}" \
     --version "${NETWASM_CANDIDATE_VERSION}" \
     --receipt "${OUTPUT_DIR}/NetWasm.TUnit.netwasm-candidate-projection.json"
+else
+  python3 "${source_root}/eng/project-netwasm-candidate-version.py" \
+    --source-root "${source_root}" \
+    --check
 fi
 if [[ -n "${BUILD_SDK_VERSION}" ]]; then
   python3 - "${source_root}" "${BUILD_SDK_VERSION}" <<'PY'
