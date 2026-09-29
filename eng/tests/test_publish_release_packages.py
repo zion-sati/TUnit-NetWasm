@@ -179,30 +179,6 @@ class PublishReleasePackagesTests(unittest.TestCase):
                 finally:
                     error.close()
 
-    def test_waits_for_every_package_before_next_stage(self) -> None:
-        observed = []
-
-        def probe(package_id: str, version: str, base: str) -> bool:
-            observed.append(package_id)
-            return package_id != "NetWasm.TUnit.Engine" or observed.count(package_id) > 1
-
-        MODULE.wait_for_feed(
-            ("NetWasm.TUnit.Engine", "NetWasm.TUnit.Assertions"),
-            "0.3.0-preview.1", "https://example.invalid/packages/",
-            clock=lambda: 0.0, sleep=lambda seconds: None, probe=probe,
-        )
-        self.assertEqual(2, observed.count("NetWasm.TUnit.Engine"))
-        self.assertEqual(1, observed.count("NetWasm.TUnit.Assertions"))
-
-    def test_feed_wait_times_out_with_unavailable_id(self) -> None:
-        times = iter((0.0, 31.0))
-        with self.assertRaisesRegex(TimeoutError, "NetWasm.TUnit.Core"):
-            MODULE.wait_for_feed(
-                ("NetWasm.TUnit.Core",), "0.3.0-preview.1",
-                "https://example.invalid/packages/", timeout_seconds=30,
-                clock=lambda: next(times), sleep=lambda seconds: None,
-                probe=lambda package_id, version, base: False,
-            )
 
     def test_accepts_only_repository_signature_difference(self) -> None:
         local = [
@@ -254,37 +230,29 @@ class PublishReleasePackagesTests(unittest.TestCase):
         available = {"NetWasm.TUnit.Core"}
 
         def probe(package_id: str, version: str, base: str) -> bool:
+            events.append(("probe", package_id))
             return package_id in available
 
         def push(command: list[str], *, check: bool, timeout: float) -> object:
             self.assertFalse(check)
             self.assertEqual("dotnet", command[0])
             self.assertEqual("secret", command[command.index("--api-key") + 1])
+            self.assertEqual(MODULE.PUSH_TIMEOUT_SECONDS, timeout)
             package_id = Path(command[3]).name.removesuffix(".0.3.0-preview.1.nupkg")
             available.add(package_id)
             events.append(("push", package_id))
             return mock.Mock(returncode=0)
 
-        def wait(package_ids: tuple[str, ...], version: str, base: str,
-                 *, timeout_seconds: float) -> None:
-            self.assertTrue(set(package_ids) <= available)
-            events.append(("wait", tuple(package_ids)))
-
         with mock.patch.object(MODULE, "package_base_address", return_value="https://example.invalid/"), \
              mock.patch.object(MODULE, "available_on_feed", side_effect=probe), \
              mock.patch.object(MODULE, "verify_feed_payload", side_effect=lambda package_id, *args: events.append(("verify", package_id))), \
-             mock.patch.object(MODULE.subprocess, "run", side_effect=push), \
-             mock.patch.object(MODULE, "wait_for_feed", side_effect=wait):
+             mock.patch.object(MODULE.subprocess, "run", side_effect=push):
             with mock.patch.dict(MODULE.os.environ, {"NUGET_API_KEY": "secret"}):
-                for index in range(len(MODULE.publication_stages(self.manifest, self.root))):
+                wave_count = len(MODULE.publication_stages(self.manifest, self.root))
+                for index in range(wave_count):
                     MODULE.publish_wave(self.manifest, self.root, index)
+                    events.append(("complete", index))
 
-        first_wait = events.index((
-            "wait",
-            ("NetWasm.TUnit.Assertions", "NetWasm.TUnit.Core", "NetWasm.TUnit.Templates"),
-        ))
-        second_wait = events.index(("wait", ("NetWasm.TUnit.Engine",)))
-        self.assertLess(first_wait, second_wait)
         self.assertEqual(
             {
                 "NetWasm.TUnit.Assertions", "NetWasm.TUnit.Engine",
@@ -292,11 +260,14 @@ class PublishReleasePackagesTests(unittest.TestCase):
             },
             {value for operation, value in events if operation == "push"},
         )
-        self.assertLess(events.index(("push", "NetWasm.TUnit.Assertions")), first_wait)
-        self.assertLess(events.index(("push", "NetWasm.TUnit.Templates")), first_wait)
-        self.assertLess(first_wait, events.index(("push", "NetWasm.TUnit.Engine")))
-        self.assertIn(("verify", "NetWasm.TUnit.Core"), events[:first_wait])
-
+        first_complete = events.index(("complete", 0))
+        second_complete = events.index(("complete", 1))
+        self.assertLess(first_complete, events.index(("push", "NetWasm.TUnit.Engine")))
+        self.assertLess(second_complete, events.index(("push", "NetWasm.TUnit")))
+        self.assertEqual(
+            [("verify", "NetWasm.TUnit.Core")],
+            [event for event in events if event[0] == "verify"],
+        )
     def test_prerequisites_use_bounded_parallel_pushes(self) -> None:
         for index in range(8):
             package_id = f"NetWasm.Independent{index}"
@@ -317,9 +288,7 @@ class PublishReleasePackagesTests(unittest.TestCase):
             return False
 
         with mock.patch.object(MODULE, "package_base_address", return_value="https://example.invalid/"), \
-             mock.patch.object(MODULE, "push_or_reconcile", side_effect=push), \
-             mock.patch.object(MODULE, "wait_for_feed"), \
-             mock.patch.object(MODULE, "verify_feed_payload"):
+             mock.patch.object(MODULE, "push_or_reconcile", side_effect=push):
             MODULE.publish_wave(self.manifest, self.root, 0)
 
         self.assertGreater(maximum, 1)
@@ -340,7 +309,6 @@ class PublishReleasePackagesTests(unittest.TestCase):
         with mock.patch.object(MODULE, "package_base_address", return_value="https://example.invalid/"), \
              mock.patch.object(MODULE, "available_on_feed", return_value=True), \
              mock.patch.object(MODULE, "verify_feed_payload", side_effect=lambda package_id, *args: verified.append(package_id)), \
-             mock.patch.object(MODULE, "wait_for_feed"), \
              mock.patch.object(MODULE.subprocess, "run") as push:
             for index in range(len(MODULE.publication_stages(self.manifest, self.root))):
                 MODULE.publish_wave(self.manifest, self.root, index)
@@ -356,35 +324,29 @@ class PublishReleasePackagesTests(unittest.TestCase):
                 MODULE.push_or_reconcile(
                     "NetWasm.TUnit", "0.3.0-preview.1",
                     self.root / "NetWasm.TUnit.0.3.0-preview.1.nupkg",
-                    "https://example.invalid/", deadline=100,
-                    clock=lambda: 0,
+                    "https://example.invalid/",
                 )
         push.assert_not_called()
 
-    def test_ambiguous_upload_reconciles_remote_package(self) -> None:
-        with mock.patch.object(MODULE, "available_on_feed", side_effect=(False, True)), \
+    def test_timed_out_push_fails_without_polling_the_feed(self) -> None:
+        probe = mock.Mock(return_value=False)
+        with mock.patch.object(MODULE, "available_on_feed", probe), \
              mock.patch.object(MODULE, "verify_feed_payload") as verify, \
              mock.patch.object(MODULE.subprocess, "run", side_effect=subprocess.TimeoutExpired("dotnet", 10)), \
              mock.patch.dict(MODULE.os.environ, {"NUGET_API_KEY": "secret"}):
-            reused = MODULE.push_or_reconcile(
-                "NetWasm.TUnit", "0.3.0-preview.1",
-                self.root / "NetWasm.TUnit.0.3.0-preview.1.nupkg",
-                "https://example.invalid/", deadline=100,
-                clock=lambda: 0,
-            )
-        self.assertTrue(reused)
-        verify.assert_called_once()
+            with self.assertRaisesRegex(TimeoutError, "Retry the release"):
+                MODULE.push_or_reconcile(
+                    "NetWasm.TUnit", "0.3.0-preview.1",
+                    self.root / "NetWasm.TUnit.0.3.0-preview.1.nupkg",
+                    "https://example.invalid/",
+                )
+        probe.assert_called_once()
+        verify.assert_not_called()
 
-    def test_unavailable_dependency_wave_blocks_dependants(self) -> None:
-        with mock.patch.object(MODULE, "package_base_address", return_value="https://example.invalid/"), \
-             mock.patch.object(MODULE, "push_or_reconcile", return_value=False), \
-             mock.patch.object(MODULE, "wait_for_feed", side_effect=TimeoutError("feed unavailable")):
-            with self.assertRaisesRegex(TimeoutError, "feed unavailable"):
-                MODULE.publish_wave(self.manifest, self.root, 0)
-
-    def test_failed_push_reconciles_after_bounded_retries(self) -> None:
+    def test_failed_push_is_not_retried_or_reconciled(self) -> None:
         run = mock.Mock(return_value=mock.Mock(returncode=1))
-        with mock.patch.object(MODULE, "available_on_feed", return_value=False), \
+        probe = mock.Mock(return_value=False)
+        with mock.patch.object(MODULE, "available_on_feed", probe), \
              mock.patch.object(MODULE, "verify_feed_payload") as verify, \
              mock.patch.object(MODULE.subprocess, "run", run), \
              mock.patch.dict(MODULE.os.environ, {"NUGET_API_KEY": "secret"}):
@@ -392,12 +354,11 @@ class PublishReleasePackagesTests(unittest.TestCase):
                 MODULE.push_or_reconcile(
                     "NetWasm.TUnit", "0.3.0-preview.1",
                     self.root / "NetWasm.TUnit.0.3.0-preview.1.nupkg",
-                    "https://example.invalid/", deadline=100,
-                    clock=lambda: 0, sleep=lambda seconds: None,
+                    "https://example.invalid/",
                 )
-        self.assertEqual(3, run.call_count)
+        self.assertEqual(1, run.call_count)
+        probe.assert_called_once()
         verify.assert_not_called()
-
 
 if __name__ == "__main__":
     unittest.main()
