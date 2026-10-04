@@ -7,11 +7,11 @@
     <PackageVersion Include="MassTransit" Version="9.2.2" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageVersion Include="Serilog.Sinks.Seq" Version="9.1.0" />
-    <PackageVersion Include="AWSSDK.SQS" Version="4.0.100.14" />
-    <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.5.4" />
-    <PackageVersion Include="Aspire.Hosting.Testing" Version="13.5.4" />
+    <PackageVersion Include="AWSSDK.SQS" Version="4.0.100.15" />
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.6.0" />
+    <PackageVersion Include="Aspire.Hosting.Testing" Version="13.6.0" />
     <PackageVersion Include="Azure.Data.Tables" Version="12.13.0" />
-    <PackageVersion Include="Azure.Storage.Blobs" Version="12.29.2" />
+    <PackageVersion Include="Azure.Storage.Blobs" Version="12.30.0" />
     <PackageVersion Include="AutoFixture" Version="4.18.1" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="BenchmarkDotNet.Annotations" Version="0.15.8" />
@@ -61,7 +61,7 @@
     <PackageVersion Include="Microsoft.Testing.Platform" Version="2.4.1" />
     <PackageVersion Include="Microsoft.Testing.Platform.MSBuild" Version="2.4.1" />
     <PackageVersion Include="Imposter" Version="0.1.11"/>
-    <PackageVersion Include="Mockolate" Version="3.5.1" />
+    <PackageVersion Include="Mockolate" Version="3.5.2" />
     <PackageVersion Include="Mono.Cecil" Version="0.11.6" />
     <PackageVersion Include="Moq" Version="4.21.0" />
     <PackageVersion Include="System.Threading.Channels" Version="9.0.0" />
@@ -113,15 +113,15 @@
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
     <PackageVersion Include="Testcontainers.Redis" Version="4.15.0" />
     <PackageVersion Include="trxparser" Version="0.5.0" />
-    <PackageVersion Include="TUnit.Assertions.FSharp" Version="1.70.1" />
-    <PackageVersion Include="Verify" Version="33.1.5" />
-    <PackageVersion Include="Verify.NUnit" Version="33.1.5" />
-    <PackageVersion Include="TUnit" Version="1.70.1" />
-    <PackageVersion Include="TUnit.AspNetCore" Version="1.70.1" />
-    <PackageVersion Include="TUnit.Core" Version="1.70.1" />
-    <PackageVersion Include="TUnit.Engine" Version="1.70.1" />
-    <PackageVersion Include="TUnit.Assertions" Version="1.70.1" />
-    <PackageVersion Include="Verify.TUnit" Version="33.1.5" />
+    <PackageVersion Include="TUnit.Assertions.FSharp" Version="1.72.10" />
+    <PackageVersion Include="Verify" Version="33.2.0" />
+    <PackageVersion Include="Verify.NUnit" Version="33.2.0" />
+    <PackageVersion Include="TUnit" Version="1.72.10" />
+    <PackageVersion Include="TUnit.AspNetCore" Version="1.72.10" />
+    <PackageVersion Include="TUnit.Core" Version="1.72.10" />
+    <PackageVersion Include="TUnit.Engine" Version="1.72.10" />
+    <PackageVersion Include="TUnit.Assertions" Version="1.72.10" />
+    <PackageVersion Include="Verify.TUnit" Version="33.2.0" />
     <PackageVersion Include="Vogen" Version="8.0.6" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.assert" Version="2.9.3" />
