@@ -212,86 +212,67 @@ internal static class MetadataGenerationHelper
     }
 
     /// <summary>
-    /// Generates code for creating a ParameterMetadata instance (generic version).
-    /// Delegates to <see cref="WriteParameterMetadata"/> for consistency.
-    /// </summary>
-    public static void WriteParameterMetadataGeneric(ICodeWriter writer, IParameterSymbol parameter, IMethodSymbol? containingMethod = null)
-    {
-        WriteParameterMetadata(writer, parameter, containingMethod);
-    }
-
-    /// <summary>
     /// Generates code for creating a ParameterMetadata instance via ParameterMetadataFactory.Create().
+    /// Reflection info is attached per method/constructor by <see cref="WriteReflectionInfoAttachStart"/>.
     /// </summary>
-    public static void WriteParameterMetadata(ICodeWriter writer, IParameterSymbol parameter, IMethodSymbol? containingMethod = null)
+    private static void WriteParameterMetadata(ICodeWriter writer, IParameterSymbol parameter)
     {
         var safeType = CodeGenerationHelpers.ContainsTypeParameter(parameter.Type) ? "object" : parameter.Type.GloballyQualified();
-        var reflectionInfoExpr = GenerateReflectionInfoForParameter(parameter, containingMethod);
 
-        writer.Append($"global::TUnit.Core.ParameterMetadataFactory.Create(typeof({safeType}), \"{parameter.Name}\", {CodeGenerationHelpers.GenerateTypeInfo(parameter.Type)}, {parameter.Type.IsNullable().ToString().ToLowerInvariant()}, reflectionInfoFactory: static () => {reflectionInfoExpr})");
+        writer.Append($"global::TUnit.Core.ParameterMetadataFactory.Create(typeof({safeType}), \"{parameter.Name}\", {CodeGenerationHelpers.GenerateTypeInfo(parameter.Type)}, {parameter.Type.IsNullable().ToString().ToLowerInvariant()})");
     }
 
     /// <summary>
-    /// Generates reflection info code for a parameter.
-    /// Delegates to <see cref="GenerateParameterInfoArrayExpression"/> to avoid duplicating the reflection lookup logic.
+    /// Writes the opening of a ParameterMetadataFactory.ForMethod/ForGenericMethod/ForConstructor call, which lazily
+    /// resolves the ParameterInfo of every parameter from a single shared method lookup on first access.
+    /// Must be followed by the ParameterMetadata[] array expression and a closing parenthesis.
     /// </summary>
-    private static string GenerateReflectionInfoForParameter(IParameterSymbol parameter, IMethodSymbol? providedMethod = null)
+    private static void WriteReflectionInfoAttachStart(ICodeWriter writer, IMethodSymbol method)
     {
-        var method = providedMethod ?? parameter.ContainingSymbol as IMethodSymbol;
-
-        if (method == null)
-        {
-            return "null!";
-        }
-
-        var parameterIndex = method.Parameters.IndexOf(parameter);
-        if (parameterIndex == -1)
-        {
-            return "null!";
-        }
-
         var containingType = method.ContainingType.GloballyQualified();
+        var usesTypeParameters = method.Parameters.Any(p => CodeGenerationHelpers.ContainsTypeParameter(p.Type));
 
         if (method.MethodKind == MethodKind.Constructor)
         {
-            if (method.Parameters.Any(p => CodeGenerationHelpers.ContainsTypeParameter(p.Type)))
-            {
-                return $@"global::System.Linq.Enumerable.FirstOrDefault(typeof({containingType}).GetConstructors(), c => c.GetParameters().Length == {method.Parameters.Length})?.GetParameters()[{parameterIndex}]!";
-            }
-
-            var paramTypes = GenerateParameterTypesArrayForReflection(method);
-            return $@"typeof({containingType}).GetConstructor({paramTypes})!.GetParameters()[{parameterIndex}]";
+            writer.Append($"global::TUnit.Core.ParameterMetadataFactory.ForConstructor(typeof({containingType}), {usesTypeParameters.ToString().ToLowerInvariant()}, ");
         }
-
-        if (method.TypeParameters.Length > 0 || method.Parameters.Any(p => CodeGenerationHelpers.ContainsTypeParameter(p.Type)))
+        else if (method.DeclaredAccessibility != Accessibility.Public)
         {
-            return $@"global::System.Linq.Enumerable.FirstOrDefault(typeof({containingType}).GetMethods(global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.Static), m => m.Name == ""{method.Name}"" && m.GetParameters().Length == {method.Parameters.Length})?.GetParameters()[{parameterIndex}]!";
+            // The factory's declaring-type annotation only keeps public methods, so trimming stays limited to what
+            // ClassMetadata.Type already keeps. A non-public method is kept instead by a no-op delegate carrying
+            // [DynamicDependency] with its exact signature. Annotating the type with NonPublicMethods would keep
+            // every private helper, and a GetMethod(name, ...) intrinsic would keep every same-name overload; both
+            // report IL2111 for helpers with [DynamicallyAccessedMembers] parameters. The attribute is emitted for every
+            // target: a .NET Standard test library can end up in a trimmed app, and DynamicDependencyPolyfillGenerator
+            // declares the attribute where the framework lacks it.
+            writer.Append($"global::TUnit.Core.ParameterMetadataFactory.ForNonPublicMethod(typeof({containingType}), \"{method.Name}\", {method.IsStatic.ToString().ToLowerInvariant()}, {method.TypeParameters.Length}, [global::System.Diagnostics.CodeAnalysis.DynamicDependency(\"{GetDynamicDependencySignature(method)}\", typeof({containingType}))] static () => {{ }}, ");
         }
-
+        else if (method.TypeParameters.Length > 0 || usesTypeParameters)
         {
-            var bindingFlags = method.IsStatic
-                ? "global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Static"
-                : "global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Instance";
-            var paramTypes = GenerateParameterTypesArrayForReflection(method);
-            return $@"typeof({containingType}).GetMethod(""{method.Name}"", {bindingFlags}, null, {paramTypes}, null)!.GetParameters()[{parameterIndex}]";
+            writer.Append($"global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof({containingType}), \"{method.Name}\", {method.IsStatic.ToString().ToLowerInvariant()}, {method.TypeParameters.Length}, ");
+        }
+        else
+        {
+            writer.Append($"global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof({containingType}), \"{method.Name}\", {method.IsStatic.ToString().ToLowerInvariant()}, ");
         }
     }
 
-
-    private static string GenerateParameterTypesArrayForReflection(IMethodSymbol method)
+    /// <summary>
+    /// Returns the method's signature in the documentation-comment ID form that
+    /// <see cref="System.Diagnostics.CodeAnalysis.DynamicDependencyAttribute"/> expects, e.g.
+    /// <c>Run``1(``0,System.Int32)</c>: the member's doc ID without its "M:" prefix and declaring type.
+    /// </summary>
+    private static string GetDynamicDependencySignature(IMethodSymbol method)
     {
-        if (method.Parameters.Length == 0)
+        var methodId = method.OriginalDefinition.GetDocumentationCommentId();
+        var typeId = method.ContainingType.OriginalDefinition.GetDocumentationCommentId();
+
+        if (methodId is null || typeId is null || !methodId.StartsWith("M:" + typeId.Substring(2) + ".", StringComparison.Ordinal))
         {
-            return "global::System.Type.EmptyTypes";
+            return method.Name;
         }
 
-        var paramTypes = method.Parameters.Select(p =>
-        {
-            var safeTypeName = p.Type.GloballyQualified();
-            return $"typeof({safeTypeName})";
-        });
-
-        return $"new global::System.Type[] {{ {string.Join(", ", paramTypes)} }}";
+        return methodId.Substring(typeId.Length + 1);
     }
 
     /// <summary>
@@ -369,6 +350,7 @@ internal static class MetadataGenerationHelper
             return;
         }
 
+        WriteReflectionInfoAttachStart(writer, method);
         writer.AppendLine("new global::TUnit.Core.ParameterMetadata[]");
         writer.AppendLine("{");
 
@@ -379,7 +361,7 @@ internal static class MetadataGenerationHelper
         for (var i = 0; i < method.Parameters.Length; i++)
         {
             var param = method.Parameters[i];
-            WriteParameterMetadata(writer, param, method);
+            WriteParameterMetadata(writer, param);
 
             if (i < method.Parameters.Length - 1)
             {
@@ -390,7 +372,7 @@ internal static class MetadataGenerationHelper
         // Manually restore indent level
         writer.SetIndentLevel(currentIndent);
         writer.AppendLine();
-        writer.Append("}");
+        writer.Append("})");
     }
 
     /// <summary>
@@ -414,6 +396,7 @@ internal static class MetadataGenerationHelper
             return;
         }
 
+        WriteReflectionInfoAttachStart(writer, constructor);
         writer.AppendLine("new global::TUnit.Core.ParameterMetadata[]");
         writer.AppendLine("{");
 
@@ -424,7 +407,7 @@ internal static class MetadataGenerationHelper
         for (var i = 0; i < constructor.Parameters.Length; i++)
         {
             var param = constructor.Parameters[i];
-            WriteParameterMetadata(writer, param, constructor);
+            WriteParameterMetadata(writer, param);
 
             if (i < constructor.Parameters.Length - 1)
             {
@@ -435,7 +418,7 @@ internal static class MetadataGenerationHelper
         // Manually restore indent level
         writer.SetIndentLevel(currentIndent);
         writer.AppendLine();
-        writer.Append("}");
+        writer.Append("})");
     }
 
     /// <summary>
@@ -449,6 +432,7 @@ internal static class MetadataGenerationHelper
         }
 
         var writer = new CodeWriter("", includeHeader: false).SetIndentLevel(currentIndentLevel);
+        WriteReflectionInfoAttachStart(writer, constructor);
         writer.AppendLine("new global::TUnit.Core.ParameterMetadata[]");
         writer.AppendLine("{");
         writer.Indent();
@@ -456,7 +440,7 @@ internal static class MetadataGenerationHelper
         for (var i = 0; i < constructor.Parameters.Length; i++)
         {
             var param = constructor.Parameters[i];
-            WriteParameterMetadata(writer, param, constructor);
+            WriteParameterMetadata(writer, param);
 
             if (i < constructor.Parameters.Length - 1)
             {
@@ -465,7 +449,7 @@ internal static class MetadataGenerationHelper
         }
 
         writer.Unindent();
-        writer.Append("}");
+        writer.Append("})");
 
         return writer.ToString();
     }
