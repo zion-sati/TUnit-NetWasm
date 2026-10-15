@@ -15,7 +15,8 @@ public class TestAttributeEnsurer : CSharpSyntaxRewriter
         "Arguments",
         "MethodDataSource",
         "ClassDataSource",
-        "MatrixDataSource"
+        "MatrixDataSource",
+        "PairwiseDataSource"
     ];
 
     public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
@@ -78,7 +79,7 @@ public class TestAttributeEnsurer : CSharpSyntaxRewriter
         var name = attribute.Name.ToString();
 
         // Remove "Attribute" suffix if present
-        if (name.EndsWith("Attribute"))
+        if (name.EndsWith("Attribute", StringComparison.Ordinal))
         {
             name = name[..^9];
         }

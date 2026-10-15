@@ -78,14 +78,14 @@ Source generation shifts work from run time to build time: you pay a little up f
 <!-- benchmarks:start -->
 | Scenario | TUnit (AOT) | TUnit | xUnit v3 | NUnit | MSTest |
 |----------|---|---|---|---|---|
-| Data-driven tests | 20.71 ms | 385.93 ms | 809.83 ms | 707.18 ms | 653.38 ms |
-| Async-heavy tests | 131.1 ms | 592.2 ms | 1,275.6 ms | 879.4 ms | 996.2 ms |
-| Matrix combinations | 122.7 ms | 550.5 ms | 1,083.5 ms | 1,693.0 ms | 1,660.5 ms |
-| Large suites (scale) | 24.10 ms | 401.48 ms | 803.38 ms | 699.73 ms | 644.21 ms |
-| Massive parallelism | 224.8 ms | 626.4 ms | 1,487.4 ms | 1,374.7 ms | 3,174.2 ms |
-| Setup/teardown lifecycle | 78.89 ms | 430.30 ms | 1,226.54 ms | 1,456.47 ms | 1,516.00 ms |
+| Data-driven tests | 21.49 ms | 332.65 ms | 693.60 ms | 641.95 ms | 640.79 ms |
+| Async-heavy tests | 120.7 ms | 406.2 ms | 801.1 ms | 785.1 ms | 737.3 ms |
+| Matrix combinations | 126.2 ms | 540.4 ms | 1,202.0 ms | 1,794.5 ms | 1,830.4 ms |
+| Large suites (scale) | 29.56 ms | 372.95 ms | 1,044.30 ms | 786.49 ms | 738.51 ms |
+| Massive parallelism | 233.1 ms | 628.2 ms | 1,642.0 ms | 1,409.4 ms | 3,093.7 ms |
+| Setup/teardown lifecycle | 65.34 ms | 338.59 ms | 771.67 ms | 1,149.55 ms | 1,120.93 ms |
 
-<sub>Mean wall-clock time to run the same test suite. TUnit (AOT) 1.72.0 · TUnit 1.72.0 · xUnit v3 4.0.1 · NUnit 5.0.0 · MSTest 4.4.1. .NET SDK 10.0.401, .NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v4. Updated 2026-09-29 — regenerated weekly by the [Speed Comparison workflow](https://github.com/thomhurst/TUnit/actions/workflows/speed-comparison.yml). Full results and methodology: [tunit.dev/docs/benchmarks](https://tunit.dev/docs/benchmarks/).</sub>
+<sub>Mean wall-clock time to run the same test suite. TUnit (AOT) 1.73.19 · TUnit 1.73.19 · xUnit v3 4.0.2 · NUnit 5.0.0 · MSTest 4.5.1. .NET SDK 10.0.401, .NET 10.0.12 (10.0.12, 10.0.1226.42308), X64 RyuJIT x86-64-v4. Updated 2026-10-11 — regenerated weekly by the [Speed Comparison workflow](https://github.com/thomhurst/TUnit/actions/workflows/speed-comparison.yml). Full results and methodology: [tunit.dev/docs/benchmarks](https://tunit.dev/docs/benchmarks/).</sub>
 <!-- benchmarks:end -->
 
 ## Getting Started
@@ -208,7 +208,7 @@ public static async Task TearDownDatabase(ClassHookContext context) { ... }
 `TUnit.Mocks` is a source-generated, Native AOT-compatible mocking library — no runtime proxies, no `Castle.Core`. It works with any test framework:
 
 ```csharp
-var gateway = IPaymentGateway.Mock();   // or Mock.Of<IPaymentGateway>()
+var gateway = IPaymentGateway.Mock();
 
 gateway.ChargeAsync(Any<decimal>()).Returns(new ChargeResult(Success: true));
 

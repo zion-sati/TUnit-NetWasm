@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using TUnit.Core.SourceGenerator.Models;
@@ -532,7 +533,7 @@ public class InfrastructureGenerator : IIncrementalGenerator
                     sourceBuilder.AppendLine("try");
                     sourceBuilder.AppendLine("{");
                     sourceBuilder.Indent();
-                    sourceBuilder.AppendLine($"global::TUnit.Core.GlobalContext.Current.GlobalLogger.LogTrace(\"[ModuleInitializer:{model.AssemblyName}] Loading {model.TypesToReference.Length} assembly reference(s)...\");");
+                    sourceBuilder.AppendLine($"global::TUnit.Core.GlobalContext.Current.GlobalLogger.LogTrace(\"[ModuleInitializer:{model.AssemblyName}] Loading {model.TypesToReference.Length.ToString(CultureInfo.InvariantCulture)} assembly reference(s)...\");");
                     sourceBuilder.Unindent();
                     sourceBuilder.AppendLine("}");
                     sourceBuilder.AppendLine("catch { /* TUnit.Core not available - skip logging */ }");
@@ -551,10 +552,10 @@ public class InfrastructureGenerator : IIncrementalGenerator
                     sourceBuilder.Unindent();
                     sourceBuilder.AppendLine("}");
                     sourceBuilder.AppendLine("catch { /* TUnit.Core not available - skip logging */ }");
-                    sourceBuilder.AppendLine($"var type_{i} = typeof({typeName});");
+                    sourceBuilder.AppendLine($"var type_{i.ToString(CultureInfo.InvariantCulture)} = typeof({typeName});");
                     sourceBuilder.AppendLine("// Force module initializer to complete before proceeding");
                     sourceBuilder.AppendLine("// RunClassConstructor triggers static constructor, which can only run AFTER module initializer completes");
-                    sourceBuilder.AppendLine($"global::System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(type_{i}.TypeHandle);");
+                    sourceBuilder.AppendLine($"global::System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(type_{i.ToString(CultureInfo.InvariantCulture)}.TypeHandle);");
                     sourceBuilder.AppendLine("try");
                     sourceBuilder.AppendLine("{");
                     sourceBuilder.Indent();

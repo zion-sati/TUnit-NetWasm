@@ -448,23 +448,16 @@ internal sealed class HtmlReporter(IExtension extension) : IDataConsumer, IDataP
         }
     }
 
-    // The truthy vocabulary shared by the TUNIT_DISABLE_* switches.
-    private static bool IsTruthyEnv(string? value)
-        => value is not null &&
-           (value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
-            value.Equals("1", StringComparison.Ordinal) ||
-            value.Equals("yes", StringComparison.OrdinalIgnoreCase));
-
     internal static bool IsHtmlReportEnabled()
-        => !IsTruthyEnv(Environment.GetEnvironmentVariable(EnvironmentConstants.DisableHtmlReporter))
+        => !EnvironmentFlags.IsSet(EnvironmentConstants.DisableHtmlReporter)
            && TUnitSettings.Default.Reporting.HtmlReportEnabled;
 
     internal static bool IsJsonReportEnabled()
-        => !IsTruthyEnv(Environment.GetEnvironmentVariable(EnvironmentConstants.DisableJsonReport))
+        => !EnvironmentFlags.IsSet(EnvironmentConstants.DisableJsonReport)
            && TUnitSettings.Default.Reporting.JsonReportEnabled;
 
     internal static bool IsArtifactUploadEnabled()
-        => !IsTruthyEnv(Environment.GetEnvironmentVariable(EnvironmentConstants.DisableArtifactUpload))
+        => !EnvironmentFlags.IsSet(EnvironmentConstants.DisableArtifactUpload)
            && TUnitSettings.Default.Reporting.ArtifactUploadEnabled;
 
     internal bool IsHtmlReportEnabledForRun()
@@ -729,7 +722,10 @@ internal sealed class HtmlReporter(IExtension extension) : IDataConsumer, IDataP
             var timingProperty = testNode.Properties.AsEnumerable()
                 .OfType<TimingProperty>()
                 .FirstOrDefault();
-            if (timingProperty?.GlobalTiming is { } globalTiming)
+            // Tests that never started (e.g. skipped before execution) carry a default
+            // TimingInfo whose StartTime is 0001-01-01; including it would stretch the
+            // run duration back two millennia.
+            if (timingProperty?.GlobalTiming is { } globalTiming && globalTiming.StartTime != default)
             {
                 var startMs = globalTiming.StartTime.ToUnixTimeMilliseconds();
                 var endMs = (globalTiming.StartTime + globalTiming.Duration).ToUnixTimeMilliseconds();
@@ -938,7 +934,7 @@ internal sealed class HtmlReporter(IExtension extension) : IDataConsumer, IDataP
         var (status, exception, skipReason) = ExtractStatus(stateProperty);
 
         var durationMs = timingProperty?.GlobalTiming.Duration.TotalMilliseconds ?? 0;
-        var startTime = timingProperty?.GlobalTiming.StartTime;
+        var startTime = timingProperty?.GlobalTiming.StartTime is { } started && started != default ? started : (DateTimeOffset?)null;
         var endTime = startTime.HasValue ? startTime.Value + timingProperty!.GlobalTiming.Duration : (DateTimeOffset?)null;
 
         return new ReportTestResult
@@ -1119,7 +1115,7 @@ internal sealed class HtmlReporter(IExtension extension) : IDataConsumer, IDataP
                 Console.WriteLine($"HTML test report written to: {path}");
                 return true;
             }
-            catch (IOException ex) when (attempt < maxAttempts && IsFileLocked(ex))
+            catch (IOException ex) when (attempt < maxAttempts && FileLockDetection.IsFileLocked(ex))
             {
                 var baseDelay = EngineDefaults.BaseRetryDelayMs * Math.Pow(2, attempt - 1);
                 var jitter = Random.Shared.Next(0, EngineDefaults.MaxRetryJitterMs);
@@ -1132,19 +1128,6 @@ internal sealed class HtmlReporter(IExtension extension) : IDataConsumer, IDataP
 
         Console.WriteLine($"Failed to write HTML test report to: {path} after {maxAttempts} attempts");
         return false;
-    }
-
-    private static bool IsFileLocked(IOException exception)
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            var errorCode = exception.HResult & 0xFFFF;
-            return errorCode is 0x20 or 0x21; // ERROR_SHARING_VIOLATION / ERROR_LOCK_VIOLATION
-        }
-
-        // On POSIX, concurrent writers are less common; fallback to message heuristic
-        return exception.Message.Contains("being used by another process") ||
-               exception.Message.Contains("access denied", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <returns>The uploaded artifact's URL, when the in-process upload succeeded.</returns>

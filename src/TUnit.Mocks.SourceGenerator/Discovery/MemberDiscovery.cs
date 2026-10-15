@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using TUnit.Mocks.SourceGenerator.Extensions;
 using TUnit.Mocks.SourceGenerator.Models;
@@ -733,6 +734,7 @@ internal static class MemberDiscovery
             IsValueTask = isValueTask,
             IsProperty = false,
             IsGenericMethod = method.IsGenericMethod,
+            IsObjectMethodOverride = IsObjectMethodOverride(method),
             Parameters = new EquatableArray<MockParameterModel>(
                 method.Parameters.Select(p => new MockParameterModel
                 {
@@ -778,6 +780,27 @@ internal static class MemberDiscovery
             SpanReturnElementType = returnType.IsRefLikeType ? GetSpanElementType(returnType) : null,
             ObsoleteAttribute = GetObsoleteAttributeSyntax(method)
         };
+    }
+
+    /// <summary>
+    /// True when <paramref name="method"/> overrides <c>Equals(object)</c>, <c>GetHashCode()</c> or
+    /// <c>ToString()</c> of <see cref="object"/>. Resolved by symbol, so same-named overloads don't count.
+    /// </summary>
+    private static bool IsObjectMethodOverride(IMethodSymbol method)
+    {
+        if (!method.IsOverride)
+        {
+            return false;
+        }
+
+        var root = method;
+        while (root.OverriddenMethod is { } overridden)
+        {
+            root = overridden;
+        }
+
+        return root.ContainingType.SpecialType == SpecialType.System_Object
+            && root.Name is "Equals" or "GetHashCode" or "ToString";
     }
 
     private static bool IsMethodSignatureAccessibleFromAssembly(IMethodSymbol method, Compilation compilation)
@@ -1042,9 +1065,9 @@ internal static class MemberDiscovery
             return null;
 
         var namespaceName = namedType.ContainingNamespace?.ToDisplayString() ?? "";
-        if (namespaceName == "System" || namespaceName.StartsWith("System.")
-            || namespaceName == "Microsoft" || namespaceName.StartsWith("Microsoft.")
-            || namespaceName == "Windows" || namespaceName.StartsWith("Windows."))
+        if (namespaceName == "System" || namespaceName.StartsWith("System.", StringComparison.Ordinal)
+            || namespaceName == "Microsoft" || namespaceName.StartsWith("Microsoft.", StringComparison.Ordinal)
+            || namespaceName == "Windows" || namespaceName.StartsWith("Windows.", StringComparison.Ordinal))
         {
             return null;
         }
@@ -1171,7 +1194,7 @@ internal static class MemberDiscovery
     {
         var paramTypes = string.Join(',', method.Parameters.Select(p =>
             p.Type.GetFullyQualifiedName() + (p.RefKind != RefKind.None ? "&" : "")));
-        var typeParams = method.TypeParameters.Length > 0 ? $"`{method.TypeParameters.Length}" : "";
+        var typeParams = method.TypeParameters.Length > 0 ? $"`{method.TypeParameters.Length.ToString(CultureInfo.InvariantCulture)}" : "";
         return $"M:{method.Name}{typeParams}({paramTypes})";
     }
 
