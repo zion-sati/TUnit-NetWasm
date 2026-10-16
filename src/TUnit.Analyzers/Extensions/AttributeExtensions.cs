@@ -10,7 +10,7 @@ public static class AttributeExtensions
 {
     public static AttributeData? Get(this ImmutableArray<AttributeData> attributeDatas, string fullyQualifiedName)
     {
-        if (!fullyQualifiedName.StartsWith("global::"))
+        if (!fullyQualifiedName.StartsWith("global::", StringComparison.Ordinal))
         {
             fullyQualifiedName = $"global::{fullyQualifiedName}";
         }
@@ -95,6 +95,22 @@ public static class AttributeExtensions
     {
         return SymbolEqualityComparer.Default.Equals(attributeData.AttributeClass,
             TUnitSymbols.For(compilation).MatrixDataSourceAttribute);
+    }
+
+    public static bool IsPairwiseDataSourceAttribute(this AttributeData attributeData, Compilation compilation)
+    {
+        return SymbolEqualityComparer.Default.Equals(attributeData.AttributeClass,
+            TUnitSymbols.For(compilation).PairwiseDataSourceAttribute);
+    }
+
+    /// <summary>
+    /// Returns true for data sources that generate test cases from the [Matrix] values on parameters
+    /// ([MatrixDataSource] and [PairwiseDataSource]).
+    /// </summary>
+    public static bool IsMatrixValuesDataSourceAttribute(this AttributeData attributeData, Compilation compilation)
+    {
+        return attributeData.IsMatrixDataSourceAttribute(compilation)
+            || attributeData.IsPairwiseDataSourceAttribute(compilation);
     }
 
     public static bool IsCombinedDataSourceAttribute(this AttributeData attributeData, Compilation compilation)

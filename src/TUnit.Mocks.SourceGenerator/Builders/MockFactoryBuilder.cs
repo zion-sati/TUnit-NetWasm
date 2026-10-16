@@ -1,3 +1,4 @@
+using System.Globalization;
 using TUnit.Mocks.SourceGenerator.Models;
 
 namespace TUnit.Mocks.SourceGenerator.Builders;
@@ -113,8 +114,8 @@ internal static class MockFactoryBuilder
             var map = GetSecondaryMap(model, i);
             var arrayExpr = map.Length == 0
                 ? "global::System.Array.Empty<int>()"
-                : $"new int[] {{ {string.Join(", ", map)} }}";
-            writer.AppendLine($"private static readonly int[] _secondaryMap{i} = {arrayExpr};");
+                : $"new int[] {{ {string.Join(", ", map.Select(id => id.ToString(CultureInfo.InvariantCulture)))} }}";
+            writer.AppendLine($"private static readonly int[] _secondaryMap{i.ToString(CultureInfo.InvariantCulture)} = {arrayExpr};");
         }
         writer.AppendLine();
     }
@@ -128,7 +129,7 @@ internal static class MockFactoryBuilder
     {
         for (int i = 0; i < model.AdditionalInterfaceNames.Length; i++)
         {
-            writer.AppendLine($"engine.RegisterSecondaryInterface(typeof({model.AdditionalInterfaceNames[i]}), _secondaryMap{i});");
+            writer.AppendLine($"engine.RegisterSecondaryInterface(typeof({model.AdditionalInterfaceNames[i]}), _secondaryMap{i.ToString(CultureInfo.InvariantCulture)});");
         }
     }
 
@@ -169,6 +170,7 @@ internal static class MockFactoryBuilder
             {
                 writer.AppendLine($"var engine = new global::TUnit.Mocks.MockEngine<{model.FullyQualifiedName}>(behavior);");
                 writer.AppendLine("engine.IsWrapMock = true;");
+                EmitObjectMethodMemberIds(writer, model);
                 EmitConstructionScope(writer, model, safeName, () =>
                 {
                     writer.AppendLine($"var impl = new {safeName}WrapMockImpl(engine, instance);");
@@ -210,6 +212,7 @@ internal static class MockFactoryBuilder
             {
                 writer.AppendLine($"var engine = new global::TUnit.Mocks.MockEngine<{model.FullyQualifiedName}>(behavior);");
                 EmitSecondaryInterfaceRegistrations(writer, model);
+                EmitObjectMethodMemberIds(writer, model);
 
                 EmitConstructionScope(writer, model, safeName, () =>
                 {
@@ -220,6 +223,21 @@ internal static class MockFactoryBuilder
                     writer.AppendLine("return mock;");
                 });
             }
+        }
+    }
+
+    /// <summary>
+    /// Tells the engine which members override <c>Equals(object)</c> / <c>GetHashCode()</c> / <c>ToString()</c>,
+    /// so they keep their base implementation when <c>PassThrough</c> is false. No-op when the class overrides none.
+    /// </summary>
+    private static void EmitObjectMethodMemberIds(CodeWriter writer, MockTypeModel model)
+    {
+        var ids = model.Methods.Where(m => m.IsObjectMethodOverride)
+            .Select(m => m.MemberId.ToString(CultureInfo.InvariantCulture))
+            .ToArray();
+        if (ids.Length > 0)
+        {
+            writer.AppendLine($"engine.ObjectMethodMemberIds = new int[] {{ {string.Join(", ", ids)} }};");
         }
     }
 
@@ -295,7 +313,7 @@ internal static class MockFactoryBuilder
             else
             {
                 // Type-check dispatch — handles both single and multiple constructors at this arity
-                using (writer.Block($"{keyword} (constructorArgs.Length == {group.Key})"))
+                using (writer.Block($"{keyword} (constructorArgs.Length == {group.Key.ToString(CultureInfo.InvariantCulture)})"))
                 {
                     bool innerFirst = true;
                     foreach (var ctor in ctorsInGroup)
@@ -316,9 +334,9 @@ internal static class MockFactoryBuilder
                             // either null or a boxed T — so match the underlying type and null.
                             var acceptsNull = !p.IsValueType || patternType.Length != p.FullyQualifiedType.Length;
                             typeChecks.Add(acceptsNull
-                                ? $"(constructorArgs[{i}] is null or {patternType})"
-                                : $"constructorArgs[{i}] is {patternType}");
-                            castArgs.Add($"({p.FullyQualifiedType})constructorArgs[{i}]");
+                                ? $"(constructorArgs[{i.ToString(CultureInfo.InvariantCulture)}] is null or {patternType})"
+                                : $"constructorArgs[{i.ToString(CultureInfo.InvariantCulture)}] is {patternType}");
+                            castArgs.Add($"({p.FullyQualifiedType})constructorArgs[{i.ToString(CultureInfo.InvariantCulture)}]");
                         }
                         var condition = string.Join(" && ", typeChecks);
                         var argList = string.Join(", ", castArgs);

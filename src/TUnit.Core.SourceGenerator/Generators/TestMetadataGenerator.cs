@@ -622,7 +622,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             var groupIndex = registrationIndex;
 
             // CreateInstance for this concrete type
-            writer.AppendLine($"private static {concreteClassName} __CreateInstance_{groupIndex}(global::System.Type[] typeArgs, object?[] args)");
+            writer.AppendLine($"private static {concreteClassName} __CreateInstance_{groupIndex.ToString(CultureInfo.InvariantCulture)}(global::System.Type[] typeArgs, object?[] args)");
             writer.AppendLine("{");
             writer.Indent();
             EmitConcreteInstanceCreation(writer, testMethod, concreteClassName, entries[0]);
@@ -630,7 +630,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             writer.AppendLine("}");
 
             // Invoke switch for this concrete type
-            writer.AppendLine($"private static global::System.Threading.Tasks.ValueTask __Invoke_{groupIndex}({concreteClassName} instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)");
+            writer.AppendLine($"private static global::System.Threading.Tasks.ValueTask __Invoke_{groupIndex.ToString(CultureInfo.InvariantCulture)}({concreteClassName} instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)");
             writer.AppendLine("{");
             writer.Indent();
             if (entries.Count == 1)
@@ -644,7 +644,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 writer.Indent();
                 for (var i = 0; i < entries.Count; i++)
                 {
-                    writer.AppendLine($"case {i}:");
+                    writer.AppendLine($"case {i.ToString(CultureInfo.InvariantCulture)}:");
                     writer.AppendLine("{");
                     writer.Indent();
                     EmitConcreteInvokeBody(writer, testMethod, entries[i]);
@@ -662,7 +662,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             writer.AppendLine("}");
 
             // Attributes switch for this group
-            writer.AppendLine($"private static global::System.Attribute[] __Attributes_{groupIndex}(int groupIndex)");
+            writer.AppendLine($"private static global::System.Attribute[] __Attributes_{groupIndex.ToString(CultureInfo.InvariantCulture)}(int groupIndex)");
             writer.AppendLine("{");
             writer.Indent();
             if (entries.Count == 1)
@@ -676,7 +676,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 writer.Indent();
                 for (var i = 0; i < entries.Count; i++)
                 {
-                    writer.AppendLine($"case {i}:");
+                    writer.AppendLine($"case {i.ToString(CultureInfo.InvariantCulture)}:");
                     writer.AppendLine("{");
                     writer.Indent();
                     EmitConcreteAttributeFactory(writer, testMethod, entries[i]);
@@ -695,7 +695,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
             // TestEntry array — entries built via the shared TestEntryFactory so each call site
             // is a single factory call instead of a large object initializer (#6227)
-            writer.AppendLine($"public static readonly global::TUnit.Core.TestEntry<{concreteClassName}>[] Entries_{groupIndex} = new global::TUnit.Core.TestEntry<{concreteClassName}>[]");
+            writer.AppendLine($"public static readonly global::TUnit.Core.TestEntry<{concreteClassName}>[] Entries_{groupIndex.ToString(CultureInfo.InvariantCulture)} = new global::TUnit.Core.TestEntry<{concreteClassName}>[]");
             writer.AppendLine("{");
             writer.Indent();
             for (var i = 0; i < entries.Count; i++)
@@ -719,8 +719,8 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         foreach (var group in groupedByConcreteClass)
         {
             var concreteClassName = group.Key;
-            EmitRegistrationField(writer, $"{uniqueClassName}_{registrationIndex}",
-                $"global::TUnit.Core.SourceRegistrar.RegisterEntries<{concreteClassName}>(static () => {uniqueClassName}.Entries_{registrationIndex})");
+            EmitRegistrationField(writer, $"{uniqueClassName}_{registrationIndex.ToString(CultureInfo.InvariantCulture)}",
+                $"global::TUnit.Core.SourceRegistrar.RegisterEntries<{concreteClassName}>(static () => {uniqueClassName}.Entries_{registrationIndex.ToString(CultureInfo.InvariantCulture)})");
             registrationIndex++;
         }
     }
@@ -1183,7 +1183,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 else
                 {
                     var paramType = SubstituteTypeParameters(param.Type, testMethod, entry.ClassTypeArgs, entry.MethodTypeArgs);
-                    parameterCasts.Add($"global::TUnit.Core.Helpers.CastHelper.Cast<{paramType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(args[{i}])");
+                    parameterCasts.Add($"global::TUnit.Core.Helpers.CastHelper.Cast<{paramType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(args[{i.ToString(CultureInfo.InvariantCulture)}])");
                 }
             }
 
@@ -1317,11 +1317,11 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         }
 
         writer.AppendLine($"methodMetadata: __mm_0,");
-        writer.AppendLine($"createInstance: __CreateInstance_{groupIndex},");
-        writer.AppendLine($"invokeBody: __Invoke_{groupIndex},");
-        writer.AppendLine($"methodIndex: {entryIndex},");
-        writer.AppendLine($"createAttributes: __Attributes_{groupIndex},");
-        writer.AppendLine($"attributeGroupIndex: {entryIndex}),");
+        writer.AppendLine($"createInstance: __CreateInstance_{groupIndex.ToString(CultureInfo.InvariantCulture)},");
+        writer.AppendLine($"invokeBody: __Invoke_{groupIndex.ToString(CultureInfo.InvariantCulture)},");
+        writer.AppendLine($"methodIndex: {entryIndex.ToString(CultureInfo.InvariantCulture)},");
+        writer.AppendLine($"createAttributes: __Attributes_{groupIndex.ToString(CultureInfo.InvariantCulture)},");
+        writer.AppendLine($"attributeGroupIndex: {entryIndex.ToString(CultureInfo.InvariantCulture)}),");
     }
 
     /// <summary>
@@ -1350,7 +1350,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         var repeatCount = ExtractRepeatCount(testMethod);
         if (repeatCount != 0)
         {
-            writer.AppendLine($"repeatCount: {repeatCount},");
+            writer.AppendLine($"repeatCount: {repeatCount.ToString(CultureInfo.InvariantCulture)},");
         }
 
         var dependsOn = ExtractDependsOn(testMethod);
@@ -1470,7 +1470,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         var repeatCount = ExtractRepeatCount(methodSymbol, testMethod.TypeSymbol);
         if (repeatCount.HasValue)
         {
-            writer.AppendLine($"RepeatCount = {repeatCount.Value},");
+            writer.AppendLine($"RepeatCount = {repeatCount.Value.ToString(CultureInfo.InvariantCulture)},");
         }
 
         GenerateDataSources(writer, testMethod);
@@ -1478,7 +1478,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         GeneratePropertyInjections(writer, testMethod.TypeSymbol, testMethod.TypeSymbol.GloballyQualified());
 
         // Inheritance depth
-        writer.AppendLine($"InheritanceDepth = {testMethod.InheritanceDepth},");
+        writer.AppendLine($"InheritanceDepth = {testMethod.InheritanceDepth.ToString(CultureInfo.InvariantCulture)},");
 
         WriteSourceLocationMetadata(writer, testMethod);
 
@@ -1495,10 +1495,10 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         // source-link resolution couldn't map back to a repo-relative path. FormatLiteral handles
         // backslashes, quotes and control chars correctly and emits the surrounding quotes.
         writer.AppendLine($"FilePath = {SymbolDisplay.FormatLiteral(testMethod.FilePath ?? "", quote: true)},");
-        writer.AppendLine($"LineNumber = {testMethod.LineNumber},");
-        writer.AppendLine($"StartColumnNumber = {testMethod.StartColumnNumber},");
-        writer.AppendLine($"EndLineNumber = {testMethod.EndLineNumber},");
-        writer.AppendLine($"EndColumnNumber = {testMethod.EndColumnNumber},");
+        writer.AppendLine($"LineNumber = {testMethod.LineNumber.ToString(CultureInfo.InvariantCulture)},");
+        writer.AppendLine($"StartColumnNumber = {testMethod.StartColumnNumber.ToString(CultureInfo.InvariantCulture)},");
+        writer.AppendLine($"EndLineNumber = {testMethod.EndLineNumber.ToString(CultureInfo.InvariantCulture)},");
+        writer.AppendLine($"EndColumnNumber = {testMethod.EndColumnNumber.ToString(CultureInfo.InvariantCulture)},");
     }
 
     /// <summary>
@@ -1509,18 +1509,18 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     private static void WriteSourceLocationArguments(CodeWriter writer, TestMethodMetadata testMethod)
     {
         writer.AppendLine($"filePath: {SymbolDisplay.FormatLiteral(testMethod.FilePath ?? "", quote: true)},");
-        writer.AppendLine($"lineNumber: {testMethod.LineNumber},");
+        writer.AppendLine($"lineNumber: {testMethod.LineNumber.ToString(CultureInfo.InvariantCulture)},");
         if (testMethod.StartColumnNumber != 0)
         {
-            writer.AppendLine($"startColumnNumber: {testMethod.StartColumnNumber},");
+            writer.AppendLine($"startColumnNumber: {testMethod.StartColumnNumber.ToString(CultureInfo.InvariantCulture)},");
         }
         if (testMethod.EndLineNumber != 0)
         {
-            writer.AppendLine($"endLineNumber: {testMethod.EndLineNumber},");
+            writer.AppendLine($"endLineNumber: {testMethod.EndLineNumber.ToString(CultureInfo.InvariantCulture)},");
         }
         if (testMethod.EndColumnNumber != 0)
         {
-            writer.AppendLine($"endColumnNumber: {testMethod.EndColumnNumber},");
+            writer.AppendLine($"endColumnNumber: {testMethod.EndColumnNumber.ToString(CultureInfo.InvariantCulture)},");
         }
     }
 
@@ -1550,7 +1550,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         var repeatCount = ExtractRepeatCount(methodSymbol, testMethod.TypeSymbol);
         if (repeatCount.HasValue)
         {
-            writer.AppendLine($"RepeatCount = {repeatCount.Value},");
+            writer.AppendLine($"RepeatCount = {repeatCount.Value.ToString(CultureInfo.InvariantCulture)},");
         }
 
         // No data sources for concrete instantiations
@@ -1561,7 +1561,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         GeneratePropertyInjections(writer, testMethod.TypeSymbol, testMethod.TypeSymbol.GloballyQualified());
 
         // Inheritance depth
-        writer.AppendLine($"InheritanceDepth = {testMethod.InheritanceDepth},");
+        writer.AppendLine($"InheritanceDepth = {testMethod.InheritanceDepth.ToString(CultureInfo.InvariantCulture)},");
 
         WriteSourceLocationMetadata(writer, testMethod);
 
@@ -1943,12 +1943,12 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         {
             // MethodDataSource(Type, string) overload
             targetType = (ITypeSymbol?)attr.ConstructorArguments[0].Value;
-            methodName = attr.ConstructorArguments[1].Value?.ToString();
+            methodName = attr.ConstructorArguments[1].Value.ToInvariantString();
         }
         else if (attr.ConstructorArguments.Length >= 1)
         {
             // MethodDataSource(string) overload
-            methodName = attr.ConstructorArguments[0].Value?.ToString();
+            methodName = attr.ConstructorArguments[0].Value.ToInvariantString();
 
             // Check for MethodDataSource<T> generic variant - extract T from type arguments
             if (attr.AttributeClass is { IsGenericType: true })
@@ -2127,7 +2127,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         if (dataSourceMethod != null)
         {
             memberAccess = hasArguments
-                ? $"{dataSourceMethod.Name}({string.Join(", ", dataSourceMethod.Parameters.Select((p, i) => $"(({p.Type.GloballyQualified()})arguments[{i}])"))})"
+                ? $"{dataSourceMethod.Name}({string.Join(", ", dataSourceMethod.Parameters.Select((p, i) => $"(({p.Type.GloballyQualified()})arguments[{i.ToString(CultureInfo.InvariantCulture)}])"))})"
                 : $"{dataSourceMethod.Name}()";
         }
         else
@@ -2204,12 +2204,12 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
     private static bool IsValueTask(ITypeSymbol type)
     {
-        return type.ToDisplayString().StartsWith("System.Threading.Tasks.ValueTask");
+        return type.ToDisplayString().StartsWith("System.Threading.Tasks.ValueTask", StringComparison.Ordinal);
     }
 
     private static bool IsTask(ITypeSymbol type)
     {
-        return type.ToDisplayString().StartsWith("System.Threading.Tasks.Task");
+        return type.ToDisplayString().StartsWith("System.Threading.Tasks.Task", StringComparison.Ordinal);
     }
 
     private static bool IsEnumerable(ITypeSymbol type)
@@ -2231,7 +2231,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             case TypedConstantKind.Primitive:
                 if (constant.Type?.SpecialType == SpecialType.System_String)
                 {
-                    var stringValue = constant.Value?.ToString() ?? "";
+                    var stringValue = constant.Value.ToInvariantString() ?? "";
                     var escapedValue = stringValue
                         .Replace("\\", "\\\\")
                         .Replace("\"", "\\\"")
@@ -2242,7 +2242,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 }
                 else if (constant.Type?.SpecialType == SpecialType.System_Char)
                 {
-                    var charValue = constant.Value?.ToString() ?? "";
+                    var charValue = constant.Value.ToInvariantString() ?? "";
                     var escapedChar = charValue
                         .Replace("\\", "\\\\")
                         .Replace("'", "\\'")
@@ -2264,7 +2264,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     }
                     else
                     {
-                        writer.Append(constant.Value?.ToString() ?? "null");
+                        writer.Append(constant.Value.ToInvariantString() ?? "null");
                     }
                 }
                 break;
@@ -2558,7 +2558,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         // Don't generate for basic types, primitives, or system types
         if (type.TypeKind == TypeKind.Enum ||
             type.SpecialType != SpecialType.None ||
-            type.ToDisplayString().StartsWith("System."))
+            type.ToDisplayString().StartsWith("System.", StringComparison.Ordinal))
         {
             return false;
         }
@@ -2803,14 +2803,14 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             ])
         {
             writer.AppendLine("// Special handling for single tuple parameter");
-            writer.AppendLine($"if (args.Length == {singleTupleParam.TupleElements.Length})");
+            writer.AppendLine($"if (args.Length == {singleTupleParam.TupleElements.Length.ToString(CultureInfo.InvariantCulture)})");
             writer.AppendLine("{");
             writer.Indent();
             writer.AppendLine("// Arguments are unwrapped tuple elements, reconstruct the tuple");
 
             // Build tuple reconstruction with proper casting
             var tupleElements = singleTupleParam.TupleElements.Select((elem, i) =>
-                $"global::TUnit.Core.Helpers.CastHelper.Cast<{elem.Type.GloballyQualified()}>(args[{i}])");
+                $"global::TUnit.Core.Helpers.CastHelper.Cast<{elem.Type.GloballyQualified()}>(args[{i.ToString(CultureInfo.InvariantCulture)}])");
             var tupleConstruction = $"({string.Join(", ", tupleElements)})";
 
             var methodCallReconstructed = hasCancellationToken
@@ -2832,7 +2832,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             writer.AppendLine("else");
             writer.AppendLine("{");
             writer.Indent();
-            writer.AppendLine($"throw new global::System.ArgumentException($\"Expected {singleTupleParam.TupleElements.Length} unwrapped elements or 1 wrapped tuple, but got {{args.Length}} arguments\");");
+            writer.AppendLine($"throw new global::System.ArgumentException($\"Expected {singleTupleParam.TupleElements.Length.ToString(CultureInfo.InvariantCulture)} unwrapped elements or 1 wrapped tuple, but got {{args.Length}} arguments\");");
             writer.Unindent();
             writer.AppendLine("}");
         }
@@ -2875,7 +2875,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             for (var i = 0; i < casesToGenerate && requiredParamCount + i <= parametersFromArgs.Length + maxExtraTrailingArgs; i++)
             {
                 var argCount = requiredParamCount + i;
-                writer.AppendLine($"case {argCount}:");
+                writer.AppendLine($"case {argCount.ToString(CultureInfo.InvariantCulture)}:");
                 writer.Indent();
                 writer.AppendLine("{");
                 writer.Indent();
@@ -2900,7 +2900,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             writer.Indent();
             if (requiredParamCount == parametersFromArgs.Length && !hasParams)
             {
-                writer.AppendLine($"throw new global::System.ArgumentException($\"Expected exactly {parametersFromArgs.Length} argument{(parametersFromArgs.Length == 1 ? "" : "s")}, but got {{args.Length}}\");");
+                writer.AppendLine($"throw new global::System.ArgumentException($\"Expected exactly {parametersFromArgs.Length.ToString(CultureInfo.InvariantCulture)} argument{(parametersFromArgs.Length == 1 ? "" : "s")}, but got {{args.Length}}\");");
             }
             else if (hasParams)
             {
@@ -2910,10 +2910,10 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 // matches the reflection path (which has no such cap) — see issue #6120.
                 if (requiredParamCount > 0)
                 {
-                    writer.AppendLine($"if (args.Length < {requiredParamCount})");
+                    writer.AppendLine($"if (args.Length < {requiredParamCount.ToString(CultureInfo.InvariantCulture)})");
                     writer.AppendLine("{");
                     writer.Indent();
-                    writer.AppendLine($"throw new global::System.ArgumentException($\"Expected at least {requiredParamCount} argument{(requiredParamCount == 1 ? "" : "s")}, but got {{args.Length}}\");");
+                    writer.AppendLine($"throw new global::System.ArgumentException($\"Expected at least {requiredParamCount.ToString(CultureInfo.InvariantCulture)} argument{(requiredParamCount == 1 ? "" : "s")}, but got {{args.Length}}\");");
                     writer.Unindent();
                     writer.AppendLine("}");
                 }
@@ -2929,7 +2929,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             }
             else
             {
-                writer.AppendLine($"throw new global::System.ArgumentException($\"Expected between {requiredParamCount} and {parametersFromArgs.Length} arguments, but got {{args.Length}}\");");
+                writer.AppendLine($"throw new global::System.ArgumentException($\"Expected between {requiredParamCount.ToString(CultureInfo.InvariantCulture)} and {parametersFromArgs.Length.ToString(CultureInfo.InvariantCulture)} arguments, but got {{args.Length}}\");");
             }
             writer.Unindent();
 
@@ -3369,7 +3369,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
         if (methodSymbol.TypeParameters.Length > 0)
         {
-            writer.AppendLine($"genericTypeCount: {methodSymbol.TypeParameters.Length},");
+            writer.AppendLine($"genericTypeCount: {methodSymbol.TypeParameters.Length.ToString(CultureInfo.InvariantCulture)},");
         }
 
         if (methodSymbol.Parameters.Length > 0)
@@ -3395,7 +3395,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
         if (methodSymbol.TypeParameters.Length > 0)
         {
-            sb.Append($", genericTypeCount: {methodSymbol.TypeParameters.Length}");
+            sb.Append($", genericTypeCount: {methodSymbol.TypeParameters.Length.ToString(CultureInfo.InvariantCulture)}");
         }
 
         if (methodSymbol.Parameters.Length > 0)
@@ -3462,7 +3462,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         if (repeatCount.HasValue)
         {
             writer.AppendLine(",");
-            writer.Append($"repeatCount: {repeatCount.Value}");
+            writer.Append($"repeatCount: {repeatCount.Value.ToString(CultureInfo.InvariantCulture)}");
         }
     }
 
@@ -3785,7 +3785,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             writer.Indent();
             foreach (var method in classGroup.Methods)
             {
-                writer.AppendLine($"case {method.MethodIndex}:");
+                writer.AppendLine($"case {method.MethodIndex.ToString(CultureInfo.InvariantCulture)}:");
                 writer.AppendRaw(method.InvokeBodyCode);
             }
             writer.AppendLine("default:");
@@ -3812,7 +3812,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 writer.Indent();
                 for (int i = 0; i < classGroup.AttributeGroups.Length; i++)
                 {
-                    writer.AppendLine($"case {i}:");
+                    writer.AppendLine($"case {i.ToString(CultureInfo.InvariantCulture)}:");
                     writer.AppendLine("{");
                     writer.Indent();
                     writer.AppendRaw(classGroup.AttributeGroups[i]);
@@ -4000,10 +4000,10 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         writer.AppendLine($"private static {entryType}[] __CreateEntries()");
         writer.AppendLine("{");
         writer.Indent();
-        writer.AppendLine($"var entries = new {entryType}[{methods.Length}];");
+        writer.AppendLine($"var entries = new {entryType}[{methods.Length.ToString(CultureInfo.InvariantCulture)}];");
         for (var chunk = 0; chunk < chunkStarts.Count; chunk++)
         {
-            writer.AppendLine($"__FillEntries{chunk}(entries);");
+            writer.AppendLine($"__FillEntries{chunk.ToString(CultureInfo.InvariantCulture)}(entries);");
         }
         writer.AppendLine("return entries;");
         writer.Unindent();
@@ -4011,13 +4011,13 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
         for (var chunk = 0; chunk < chunkStarts.Count; chunk++)
         {
-            writer.AppendLine($"private static void __FillEntries{chunk}({entryType}[] entries)");
+            writer.AppendLine($"private static void __FillEntries{chunk.ToString(CultureInfo.InvariantCulture)}({entryType}[] entries)");
             writer.AppendLine("{");
             writer.Indent();
             var end = chunk + 1 < chunkStarts.Count ? chunkStarts[chunk + 1] : methods.Length;
             for (var i = chunkStarts[chunk]; i < end; i++)
             {
-                writer.Append($"entries[{i}] = ");
+                writer.Append($"entries[{i.ToString(CultureInfo.InvariantCulture)}] = ");
                 WriteTestEntryFactoryCall(writer, classGroup, methods[i], ";");
             }
             writer.Unindent();
@@ -4049,9 +4049,9 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         writer.AppendLine("classMetadata: __classMetadata,");
         writer.AppendLine("createInstance: __createInstance,");
         writer.AppendLine("invokeBody: __invoke,");
-        writer.AppendLine($"methodIndex: {method.MethodIndex},");
+        writer.AppendLine($"methodIndex: {method.MethodIndex.ToString(CultureInfo.InvariantCulture)},");
         writer.AppendLine("createAttributes: __attributes,");
-        writer.AppendLine($"attributeGroupIndex: {method.AttributeGroupIndex}){terminator}");
+        writer.AppendLine($"attributeGroupIndex: {method.AttributeGroupIndex.ToString(CultureInfo.InvariantCulture)}){terminator}");
         writer.Unindent();
     }
 
@@ -4078,13 +4078,13 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             return TestReturnPattern.ValueTask;
         }
 
-        if (returnTypeName.StartsWith("System.Threading.Tasks.ValueTask<"))
+        if (returnTypeName.StartsWith("System.Threading.Tasks.ValueTask<", StringComparison.Ordinal))
         {
             return TestReturnPattern.ValueTaskOfT;
         }
 
-        if (returnTypeName.StartsWith("System.Threading.Tasks.Task") ||
-            returnTypeName.StartsWith("Task<"))
+        if (returnTypeName.StartsWith("System.Threading.Tasks.Task", StringComparison.Ordinal) ||
+            returnTypeName.StartsWith("Task<", StringComparison.Ordinal))
         {
             return TestReturnPattern.Task;
         }
@@ -4187,14 +4187,14 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             var genericArity = genericTypeArgument is INamedTypeSymbol { IsGenericType: true } namedType
                 ? namedType.Arity
                 : 0;
-            writer.AppendLine($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity}, ProceedOnFailure = {proceedOnFailure.ToString().ToLower()} }}");
+            writer.AppendLine($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity.ToString(CultureInfo.InvariantCulture)}, ProceedOnFailure = {proceedOnFailure.ToString().ToLowerInvariant()} }}");
         }
         else if (constructorArgs.Length == 1)
         {
             var arg = constructorArgs[0];
             if (arg.Type?.Name == "String")
             {
-                var testName = arg.Value?.ToString() ?? "";
+                var testName = arg.Value.ToInvariantString() ?? "";
 
                 if (genericTypeArgument != null)
                 {
@@ -4203,12 +4203,12 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     var genericArity = genericTypeArgument is INamedTypeSymbol { IsGenericType: true } namedType
                         ? namedType.Arity
                         : 0;
-                    writer.AppendLine($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity}, MethodName = \"{testName}\", ProceedOnFailure = {proceedOnFailure.ToString().ToLower()} }}");
+                    writer.AppendLine($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity.ToString(CultureInfo.InvariantCulture)}, MethodName = \"{testName}\", ProceedOnFailure = {proceedOnFailure.ToString().ToLowerInvariant()} }}");
                 }
                 else
                 {
                     // DependsOnAttribute(string testName) - dependency on test in same class
-                    writer.AppendLine($"new global::TUnit.Core.TestDependency {{ MethodName = \"{testName}\", ProceedOnFailure = {proceedOnFailure.ToString().ToLower()} }}");
+                    writer.AppendLine($"new global::TUnit.Core.TestDependency {{ MethodName = \"{testName}\", ProceedOnFailure = {proceedOnFailure.ToString().ToLowerInvariant()} }}");
                 }
             }
             else if (arg.Type?.TypeKind == TypeKind.Class || arg.Type?.Name == "Type")
@@ -4220,7 +4220,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     var genericArity = classType is INamedTypeSymbol { IsGenericType: true } namedType
                         ? namedType.Arity
                         : 0;
-                    writer.AppendLine($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity}, ProceedOnFailure = {proceedOnFailure.ToString().ToLower()} }}");
+                    writer.AppendLine($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity.ToString(CultureInfo.InvariantCulture)}, ProceedOnFailure = {proceedOnFailure.ToString().ToLowerInvariant()} }}");
                 }
             }
         }
@@ -4231,7 +4231,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
             if (firstArg.Type?.Name == "String" && secondArg.Type is IArrayTypeSymbol)
             {
-                var testName = firstArg.Value?.ToString() ?? "";
+                var testName = firstArg.Value.ToInvariantString() ?? "";
 
                 if (genericTypeArgument != null)
                 {
@@ -4240,7 +4240,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     var genericArity = genericTypeArgument is INamedTypeSymbol { IsGenericType: true } namedType
                         ? namedType.Arity
                         : 0;
-                    writer.Append($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity}, MethodName = \"{testName}\"");
+                    writer.Append($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity.ToString(CultureInfo.InvariantCulture)}, MethodName = \"{testName}\"");
                 }
                 else
                 {
@@ -4266,13 +4266,13 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     writer.Append(" }");
                 }
 
-                writer.AppendLine($", ProceedOnFailure = {proceedOnFailure.ToString().ToLower()} }}");
+                writer.AppendLine($", ProceedOnFailure = {proceedOnFailure.ToString().ToLowerInvariant()} }}");
             }
             else if (firstArg.Type?.TypeKind == TypeKind.Class || firstArg.Type?.Name == "Type")
             {
                 // DependsOnAttribute(Type testClass, string testName)
                 var classType = firstArg.Value as ITypeSymbol;
-                var testName = secondArg.Value?.ToString() ?? "";
+                var testName = secondArg.Value.ToInvariantString() ?? "";
 
                 if (classType != null)
                 {
@@ -4280,7 +4280,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     var genericArity = classType is INamedTypeSymbol { IsGenericType: true } namedType
                         ? namedType.Arity
                         : 0;
-                    writer.AppendLine($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity}, MethodName = \"{testName}\", ProceedOnFailure = {proceedOnFailure.ToString().ToLower()} }}");
+                    writer.AppendLine($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity.ToString(CultureInfo.InvariantCulture)}, MethodName = \"{testName}\", ProceedOnFailure = {proceedOnFailure.ToString().ToLowerInvariant()} }}");
                 }
             }
         }
@@ -4288,7 +4288,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         {
             // DependsOnAttribute(Type testClass, string testName, Type[] parameterTypes)
             var classType = constructorArgs[0].Value as ITypeSymbol;
-            var testName = constructorArgs[1].Value?.ToString() ?? "";
+            var testName = constructorArgs[1].Value.ToInvariantString() ?? "";
 
             if (classType != null)
             {
@@ -4296,7 +4296,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 var genericArity = classType is INamedTypeSymbol { IsGenericType: true } namedType
                     ? namedType.Arity
                     : 0;
-                writer.Append($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity}, MethodName = \"{testName}\"");
+                writer.Append($"new global::TUnit.Core.TestDependency {{ ClassType = typeof({className}), ClassGenericArity = {genericArity.ToString(CultureInfo.InvariantCulture)}, MethodName = \"{testName}\"");
 
                 // Handle parameter types
                 var paramTypesArg = constructorArgs[2];
@@ -4317,7 +4317,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     writer.Append(" }");
                 }
 
-                writer.AppendLine($", ProceedOnFailure = {proceedOnFailure.ToString().ToLower()} }}");
+                writer.AppendLine($", ProceedOnFailure = {proceedOnFailure.ToString().ToLowerInvariant()} }}");
             }
         }
     }
@@ -4482,7 +4482,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         MethodDeclarationSyntax methodSyntax,
         AttributeData testAttribute)
     {
-        var attrFilePath = testAttribute.ConstructorArguments.ElementAtOrDefault(0).Value?.ToString();
+        var attrFilePath = testAttribute.ConstructorArguments.ElementAtOrDefault(0).Value.ToInvariantString();
         var attrLineNumber = (int?)testAttribute.ConstructorArguments.ElementAtOrDefault(1).Value ?? 0;
 
         var methodLocation = methodSyntax.GetLocation();
@@ -4503,7 +4503,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         AttributeData testAttribute,
         ClassDeclarationSyntax classSyntax)
     {
-        var attrFilePath = testAttribute.ConstructorArguments.ElementAtOrDefault(0).Value?.ToString();
+        var attrFilePath = testAttribute.ConstructorArguments.ElementAtOrDefault(0).Value.ToInvariantString();
         var attrLineNumber = (int?)testAttribute.ConstructorArguments.ElementAtOrDefault(1).Value ?? 0;
 
         var methodLocation = method.Locations.FirstOrDefault();
@@ -5251,8 +5251,8 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     foreach (var methodArgAttr in nonGenericMethodArguments)
                     {
                         // Generate a concrete test metadata for this combination
-                        writer.AppendLine($"// Class arguments: {string.Join(", ", classArgAttr.ConstructorArguments.SelectMany(a => a.Values.Select(v => v.Value?.ToString() ?? "null")))}");
-                        writer.AppendLine($"// Method arguments: {string.Join(", ", methodArgAttr.ConstructorArguments.SelectMany(a => a.Values.Select(v => v.Value?.ToString() ?? "null")))}");
+                        writer.AppendLine($"// Class arguments: {string.Join(", ", classArgAttr.ConstructorArguments.SelectMany(a => a.Values.Select(v => v.Value.ToInvariantString() ?? "null")))}");
+                        writer.AppendLine($"// Method arguments: {string.Join(", ", methodArgAttr.ConstructorArguments.SelectMany(a => a.Values.Select(v => v.Value.ToInvariantString() ?? "null")))}");
                         GenerateConcreteTestMetadataForNonGeneric(writer, testMethod, className, classArgAttr, methodArgAttr);
                         writer.AppendLine();
                     }
@@ -5263,7 +5263,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 // Only class arguments, no method arguments
                 foreach (var classArgAttr in nonGenericClassArguments)
                 {
-                    writer.AppendLine($"// Class arguments: {string.Join(", ", classArgAttr.ConstructorArguments.SelectMany(a => a.Values.Select(v => v.Value?.ToString() ?? "null")))}");
+                    writer.AppendLine($"// Class arguments: {string.Join(", ", classArgAttr.ConstructorArguments.SelectMany(a => a.Values.Select(v => v.Value.ToInvariantString() ?? "null")))}");
                     GenerateConcreteTestMetadataForNonGeneric(writer, testMethod, className, classArgAttr, null);
                     writer.AppendLine();
                 }
@@ -5273,7 +5273,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 // Only method arguments, no class arguments
                 foreach (var methodArgAttr in nonGenericMethodArguments)
                 {
-                    writer.AppendLine($"// Method arguments: {string.Join(", ", methodArgAttr.ConstructorArguments.SelectMany(a => a.Values.Select(v => v.Value?.ToString() ?? "null")))}");
+                    writer.AppendLine($"// Method arguments: {string.Join(", ", methodArgAttr.ConstructorArguments.SelectMany(a => a.Values.Select(v => v.Value.ToInvariantString() ?? "null")))}");
                     GenerateConcreteTestMetadataForNonGeneric(writer, testMethod, className, null, methodArgAttr);
                     writer.AppendLine();
                 }
@@ -6408,7 +6408,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             else
             {
                 var paramType = SubstituteTypeParameters(param.Type, testMethod, classTypeArgs, methodTypeArgs);
-                parameterCasts.Add($"({paramType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})args[{i}]!");
+                parameterCasts.Add($"({paramType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})args[{i.ToString(CultureInfo.InvariantCulture)}]!");
             }
         }
 
@@ -6552,7 +6552,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         var repeatCount = ExtractRepeatCount(methodSymbol, typeSymbol);
         if (repeatCount.HasValue)
         {
-            writer.AppendLine($"RepeatCount = {repeatCount.Value},");
+            writer.AppendLine($"RepeatCount = {repeatCount.Value.ToString(CultureInfo.InvariantCulture)},");
         }
 
         // Filter data sources based on the specific attribute
@@ -6639,7 +6639,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
         // Other metadata
         WriteSourceLocationMetadata(writer, testMethod);
-        writer.AppendLine($"InheritanceDepth = {testMethod.InheritanceDepth},");
+        writer.AppendLine($"InheritanceDepth = {testMethod.InheritanceDepth.ToString(CultureInfo.InvariantCulture)},");
         writer.AppendLine("TestSessionId = testSessionId,");
 
         // Method metadata
@@ -6879,7 +6879,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         var repeatCount = ExtractRepeatCount(testMethod.MethodSymbol, testMethod.TypeSymbol);
         if (repeatCount.HasValue)
         {
-            writer.AppendLine($"RepeatCount = {repeatCount.Value},");
+            writer.AppendLine($"RepeatCount = {repeatCount.Value.ToString(CultureInfo.InvariantCulture)},");
         }
 
         if (methodDataSourceAttribute == null)
@@ -6963,10 +6963,10 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 else
                 {
                     // Use the args parameter if no specific arguments are provided
-                    writer.AppendLine($"if (args.Length >= {constructorParamCount})");
+                    writer.AppendLine($"if (args.Length >= {constructorParamCount.ToString(CultureInfo.InvariantCulture)})");
                     writer.AppendLine("{");
                     writer.Indent();
-                    writer.AppendLine($"return new {className}({string.Join(", ", Enumerable.Range(0, constructorParamCount).Select(i => $"args[{i}]"))});");
+                    writer.AppendLine($"return new {className}({string.Join(", ", Enumerable.Range(0, constructorParamCount).Select(i => $"args[{i.ToString(CultureInfo.InvariantCulture)}]"))});");
                     writer.Unindent();
                     writer.AppendLine("}");
                     writer.AppendLine("throw new global::System.InvalidOperationException(\"Not enough arguments provided for class constructor\");");

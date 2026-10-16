@@ -1,3 +1,5 @@
+using TUnit.Core.SourceGenerator.Extensions;
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using TUnit.Core.SourceGenerator.Helpers;
@@ -62,7 +64,7 @@ public class DynamicTestsGenerator : IIncrementalGenerator
         var testAttribute = methodSymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name == "DynamicTestBuilderAttribute");
 
-        var filePath = testAttribute?.ConstructorArguments.ElementAtOrDefault(0).Value?.ToString() ?? string.Empty;
+        var filePath = testAttribute?.ConstructorArguments.ElementAtOrDefault(0).Value.ToInvariantString() ?? string.Empty;
         var lineNumber = testAttribute?.ConstructorArguments.ElementAtOrDefault(1).Value as int? ?? 0;
 
         // Extract ALL data as primitives - no symbols escape this method
@@ -87,7 +89,7 @@ public class DynamicTestsGenerator : IIncrementalGenerator
             // different namespaces, or same-named overloads on different lines — get unique generated
             // file names AND unique fields on the shared registration partial. FNV-1a (not
             // string.GetHashCode) so the file/field names stay stable across compiler restarts.
-            var uniqueSuffix = FileNameHelper.GetStableHashCode($"{model.FullyQualifiedTypeName}.{model.MethodName}#{model.LineNumber}").ToString("x8");
+            var uniqueSuffix = FileNameHelper.GetStableHashCode($"{model.FullyQualifiedTypeName}.{model.MethodName}#{model.LineNumber.ToString(CultureInfo.InvariantCulture)}").ToString("x8", CultureInfo.InvariantCulture);
 
             using var sourceBuilder = new CodeWriter();
 
@@ -109,7 +111,7 @@ public class DynamicTestsGenerator : IIncrementalGenerator
                         {
                             sourceBuilder.AppendLine(
                                 $"""
-                                 var context = new global::TUnit.Core.DynamicTestBuilderContext({SymbolDisplay.FormatLiteral(model.FilePath, quote: true)}, {model.LineNumber});
+                                 var context = new global::TUnit.Core.DynamicTestBuilderContext({SymbolDisplay.FormatLiteral(model.FilePath, quote: true)}, {model.LineNumber.ToString(CultureInfo.InvariantCulture)});
                                  """);
 
                             var receiver = model.IsStatic
@@ -166,7 +168,7 @@ public class DynamicTestsGenerator : IIncrementalGenerator
                               {
                                   MethodName = "{{model.MethodName}}",
                                   TestFilePath = {{SymbolDisplay.FormatLiteral(model.FilePath, quote: true)}},
-                                  TestLineNumber = {{model.LineNumber}},
+                                  TestLineNumber = {{model.LineNumber.ToString(CultureInfo.InvariantCulture)}},
                                   Exception = exception
                               }
                           };
