@@ -131,8 +131,16 @@ nuget_config="${build_root}/NuGet.Config"
 xml_escape() {
   printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/"/\&quot;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
-output_dir_xml="$(xml_escape "${OUTPUT_DIR}")"
-ci_package_source_xml="$(xml_escape "${NETWASM_CI_PACKAGE_SOURCE:-}")"
+# dotnet on Windows reads NuGet.Config paths natively, not as Git Bash paths.
+native_path() {
+  if [[ -n "$1" ]] && command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+output_dir_xml="$(xml_escape "$(native_path "${OUTPUT_DIR}")")"
+ci_package_source_xml="$(xml_escape "$(native_path "${NETWASM_CI_PACKAGE_SOURCE:-}")")"
 {
   printf '%s\n' \
     '<?xml version="1.0" encoding="utf-8"?>' \

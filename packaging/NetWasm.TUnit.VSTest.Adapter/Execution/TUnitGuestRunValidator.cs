@@ -49,10 +49,13 @@ internal static class TUnitGuestRunValidator
         if (run.Execution.CompletionKind != NetWasmCompletionKind.Normal)
         {
             var failure = run.Execution.PrimaryFailure;
-            var detail = failure is null
-                ? run.Execution.CompletionKind.ToString()
-                : $"{failure.Code}: {failure.Message}";
-            throw new InvalidDataException($"NetWasm test infrastructure failed: {detail}");
+            var reason = failure switch
+            {
+                null => run.Execution.CompletionKind.ToString(),
+                { Detail: null } => $"{failure.Code}: {failure.Message}",
+                _ => $"{failure.Code}: {failure.Message} Detail: {failure.Detail}",
+            };
+            throw new InvalidDataException($"NetWasm test infrastructure failed: {reason}");
         }
     }
 

@@ -130,19 +130,10 @@ jobs:
         working-directory: netwasm-core
         run: |
           base='${{ steps.dependencies.outputs.netwasm }}'
-          version="${base}-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          version="${base}-ci.${GITHUB_RUN_ID}"
           echo "value=$version" >> "$GITHUB_OUTPUT"
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           bash eng/build-packages.sh --version "$version" --output "$RUNNER_TEMP/netwasm-packages"
-          sudo apt-get update -qq
-          sudo apt-get install -y patchelf=0.18.0-1.1build1
-          python3 eng/build-host-tools-package.py \
-            --rid linux-x64 \
-            --version "$version" \
-            --output "$RUNNER_TEMP/netwasm-host-tools-packages" \
-            --cache "$RUNNER_TEMP/netwasm-host-tools-inputs"
-          cp "$RUNNER_TEMP/netwasm-host-tools-packages"/*.nupkg \
-            "$RUNNER_TEMP/netwasm-packages/"
 
       - name: Record Core candidate provenance
         shell: bash
@@ -188,20 +179,143 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  core-host-tools:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    name: NetWasm host tools / ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: linux-x64
+            runner: ubuntu-24.04
+            rid: linux-x64
+            architecture: x64
+          - host: linux-arm64
+            runner: ubuntu-24.04-arm
+            rid: linux-arm64
+            architecture: arm64
+          - host: macos-arm64
+            runner: macos-14
+            rid: osx-arm64
+            architecture: arm64
+          - host: windows-x64
+            runner: windows-2025
+            rid: win-x64
+            architecture: x64
+          - host: windows-arm64
+            runner: windows-11-vs2026-arm
+            rid: win-arm64
+            architecture: arm64
+    steps:
+      - name: Check out TUnit candidate source for provenance
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: tunit-source
+          persist-credentials: false
+
+      - name: Read dependency pins
+        id: dependencies
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          print(f"netwasm={json.loads(Path('tunit-source/eng/dependencies.json').read_text())['netwasm']}")
+          PY
+
+      - name: Check out pinned NetWasm source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: zion-sati/NetWasm
+          ref: v${{ steps.dependencies.outputs.netwasm }}
+          path: netwasm-core
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: netwasm-core/global.json
+
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Install pinned Linux Node patcher
+        if: startsWith(matrix.rid, 'linux-')
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y patchelf=0.18.0-1.1build1
+
+      - name: Build NetWasm host tools package
+        shell: bash
+        working-directory: netwasm-core
+        env:
+          NETWASM_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          version='${{ steps.dependencies.outputs.netwasm }}'"-ci.${GITHUB_RUN_ID}"
+          python eng/build-host-tools-package.py \
+            --rid "${{ matrix.rid }}" \
+            --version "$version" \
+            --output "$RUNNER_TEMP/netwasm-host-tools" \
+            --cache "$RUNNER_TEMP/netwasm-host-tools-inputs"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'], 'netwasm-host-tools')
+          packages = {path.name: {'bytes': path.stat().st_size,
+                                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+                      for path in sorted(root.glob('*.nupkg'))}
+          (root / 'host-tools-receipt.json').write_text(json.dumps({'packages': packages}, indent=2) + '\n')
+          PY
+
+      - name: Retain NetWasm host tools package
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: netwasm-host-tools-${{ matrix.rid }}
+          path: ${{ runner.temp }}/netwasm-host-tools/*
+          if-no-files-found: error
+          retention-days: 14
+
   test:
-    needs: core-candidate
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    name: test / isolated SDK ${{ matrix.sdk-major }}
+    needs: [core-candidate, core-host-tools]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    name: test / ${{ matrix.host }} / isolated SDK ${{ matrix.sdk-major }}
     strategy:
       fail-fast: false
       matrix:
         sdk-major: [10, 11]
+        host: [linux-x64, linux-arm64, macos-arm64, windows-x64, windows-arm64]
+        include:
+          - host: linux-x64
+            runner: ubuntu-24.04
+            rid: linux-x64
+            architecture: x64
+          - host: linux-arm64
+            runner: ubuntu-24.04-arm
+            rid: linux-arm64
+            architecture: arm64
+          - host: macos-arm64
+            runner: macos-14
+            rid: osx-arm64
+            architecture: arm64
+          - host: windows-x64
+            runner: windows-2025
+            rid: win-x64
+            architecture: x64
+          - host: windows-arm64
+            runner: windows-11-vs2026-arm
+            rid: win-arm64
+            architecture: arm64
     steps:
       - name: Check out source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Install one isolated .NET SDK and runtime
+      - name: Choose the isolated .NET SDK version
         id: isolated-dotnet
         shell: bash
         env:
@@ -209,20 +323,48 @@ jobs:
           SDK11_VERSION: ${{ needs.core-candidate.outputs.sdk11 }}
         run: |
           if [[ "$SDK_MAJOR" == 10 ]]; then sdk_version=10.0.303; else sdk_version="$SDK11_VERSION"; fi
+          echo "sdk-version=$sdk_version" >> "$GITHUB_OUTPUT"
+
+      - name: Install one isolated .NET SDK and runtime (Unix)
+        if: ${{ !startsWith(matrix.rid, 'win-') }}
+        shell: bash
+        env:
+          SDK_VERSION: ${{ steps.isolated-dotnet.outputs.sdk-version }}
+          DOTNET_ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
           curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
             --output "$RUNNER_TEMP/dotnet-install.sh" https://dot.net/v1/dotnet-install.sh
           bash "$RUNNER_TEMP/dotnet-install.sh" \
-            --version "$sdk_version" --architecture x64 \
+            --version "$SDK_VERSION" --architecture "$DOTNET_ARCHITECTURE" \
             --install-dir "$RUNNER_TEMP/dotnet-isolated" --no-path
           echo "$RUNNER_TEMP/dotnet-isolated" >> "$GITHUB_PATH"
           {
             echo "DOTNET_ROOT=$RUNNER_TEMP/dotnet-isolated"
             echo "DOTNET_MULTILEVEL_LOOKUP=0"
             echo "NETWASM_TUNIT_EXPECT_DOTNET_ROOT=$RUNNER_TEMP/dotnet-isolated"
-            echo "NETWASM_TUNIT_EXPECT_SDK_VERSION=$sdk_version"
-            if [[ "$SDK_MAJOR" == 11 ]]; then echo "DOTNET_ROLL_FORWARD=Major"; fi
+            echo "NETWASM_TUNIT_EXPECT_SDK_VERSION=$SDK_VERSION"
+            if [[ "${{ matrix.sdk-major }}" == 11 ]]; then echo "DOTNET_ROLL_FORWARD=Major"; fi
           } >> "$GITHUB_ENV"
-          echo "sdk-version=$sdk_version" >> "$GITHUB_OUTPUT"
+
+      - name: Install one isolated .NET SDK and runtime (Windows)
+        if: ${{ startsWith(matrix.rid, 'win-') }}
+        shell: pwsh
+        env:
+          SDK_VERSION: ${{ steps.isolated-dotnet.outputs.sdk-version }}
+          DOTNET_ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          $script = Join-Path $env:RUNNER_TEMP 'dotnet-install.ps1'
+          Invoke-WebRequest -UseBasicParsing https://dot.net/v1/dotnet-install.ps1 -OutFile $script
+          $root = Join-Path $env:RUNNER_TEMP 'dotnet-isolated'
+          & $script -Version $env:SDK_VERSION -Architecture $env:DOTNET_ARCHITECTURE -InstallDir $root -NoPath
+          $root | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "DOTNET_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "DOTNET_MULTILEVEL_LOOKUP=0" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "NETWASM_TUNIT_EXPECT_DOTNET_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "NETWASM_TUNIT_EXPECT_SDK_VERSION=$env:SDK_VERSION" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          if ('${{ matrix.sdk-major }}' -eq '11') {
+            "DOTNET_ROLL_FORWARD=Major" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
 
       - name: Download NetWasm candidate packages
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -230,22 +372,35 @@ jobs:
           name: netwasm-core-candidate
           path: ${{ runner.temp }}/netwasm-packages
 
+      - name: Download NetWasm host tools for this host
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: netwasm-host-tools-${{ matrix.rid }}
+          path: ${{ runner.temp }}/netwasm-host-tools
+
       - name: Verify Core candidate provenance
         shell: bash
         env:
           EXPECTED_VERSION: ${{ needs.core-candidate.outputs.version }}
         run: |
           python3 - <<'PY'
-          import hashlib, json, os
+          import hashlib, json, os, shutil
           from pathlib import Path
           root = Path(os.environ['RUNNER_TEMP'], 'netwasm-packages')
           receipt = json.loads((root / 'netwasm-core-receipt.json').read_text())
           if receipt['candidateVersion'] != os.environ['EXPECTED_VERSION']:
               raise SystemExit('Core candidate version does not match its receipt.')
-          for path in sorted(root.glob('*.nupkg')):
-              expected = receipt['packages'].get(path.name)
-              if expected is None or expected['bytes'] != path.stat().st_size or expected['sha256'] != hashlib.sha256(path.read_bytes()).hexdigest():
-                  raise SystemExit(f'Core candidate package does not match its receipt: {path.name}')
+          host_root = Path(os.environ['RUNNER_TEMP'], 'netwasm-host-tools')
+          host_receipt = json.loads((host_root / 'host-tools-receipt.json').read_text())
+          for directory, packages in [(root, receipt['packages']), (host_root, host_receipt['packages'])]:
+              for path in sorted(directory.glob('*.nupkg')):
+                  expected = packages.get(path.name)
+                  if expected is None or expected['bytes'] != path.stat().st_size or expected['sha256'] != hashlib.sha256(path.read_bytes()).hexdigest():
+                      raise SystemExit(f'Core candidate package does not match its receipt: {path.name}')
+                  if directory == host_root and not path.name.endswith(f".{os.environ['EXPECTED_VERSION']}.nupkg"):
+                      raise SystemExit(f'Host tools package is not from this candidate: {path.name}')
+          for path in sorted(host_root.glob('*.nupkg')):
+              shutil.copy2(path, root / path.name)
           PY
 
       - name: Build and test NetWasm packages
@@ -298,7 +453,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: tunit-candidate-sdk-${{ matrix.sdk-major }}
+          name: tunit-candidate-${{ matrix.host }}-sdk-${{ matrix.sdk-major }}
           path: |
             artifacts/netwasm-packages/*.nupkg
             artifacts/tunit-candidate-receipt.json
