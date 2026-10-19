@@ -5,10 +5,13 @@ namespace NetWasm.TUnit.Runner.Tests;
 
 public sealed class ConsoleTestEventSinkTests
 {
+    // The guest's Console.WriteLine ends lines with \n on every host.
+    private static StringWriter CreateWriter() => new() { NewLine = "\n" };
+
     [Fact]
     public void WriteEmitsEscapedMachineRecordsToTheProvidedWriter()
     {
-        using var writer = new StringWriter();
+        using var writer = CreateWriter();
         var sink = new ConsoleTestEventSink(writer.WriteLine);
 
         sink.Write(new TestCompletedEvent(
@@ -29,7 +32,7 @@ public sealed class ConsoleTestEventSinkTests
     [Fact]
     public void WriteEmitsRunDurationAndCounts()
     {
-        using var writer = new StringWriter();
+        using var writer = CreateWriter();
         var sink = new ConsoleTestEventSink(writer.WriteLine);
         var result = new TestRunResult([
             new TestCaseResult("passed", "passed", TestOutcome.Passed, null),
@@ -47,7 +50,7 @@ public sealed class ConsoleTestEventSinkTests
     [Fact]
     public void WriteEmitsStartedRecordsWithTheirDeclaredArity()
     {
-        using var writer = new StringWriter();
+        using var writer = CreateWriter();
         var sink = new ConsoleTestEventSink(writer.WriteLine);
 
         sink.Write(new RunStartedEvent(2));
@@ -61,7 +64,7 @@ public sealed class ConsoleTestEventSinkTests
     [Fact]
     public void WriteEmitsCatalogAndHostResultWithTheirDeclaredArity()
     {
-        using var writer = new StringWriter();
+        using var writer = CreateWriter();
         var sink = new ConsoleTestEventSink(writer.WriteLine);
 
         sink.Write(new ProtocolVersionEvent(2));

@@ -70,7 +70,7 @@ build_root="$(cd "${build_root}" && pwd -P)"
 source_root="${build_root}/source"
 cleanup() {
   if [[ -d "${source_root}" ]]; then
-    git -C "${REPOSITORY_ROOT}" worktree remove --force "${source_root}" >/dev/null 2>&1 || true
+    git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree remove --force "${source_root}" >/dev/null 2>&1 || true
   fi
   rm -rf "${build_root}"
 }
@@ -93,7 +93,9 @@ done
 }
 
 repository_commit="$(git -C "${REPOSITORY_ROOT}" rev-parse HEAD)"
-git -C "${REPOSITORY_ROOT}" worktree add --quiet --detach "${source_root}" "${repository_commit}"
+# Upstream template snapshots exceed Windows' 260-character path limit under a
+# temporary directory; Git for Windows needs core.longpaths to write them.
+git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree add --quiet --detach "${source_root}" "${repository_commit}"
 python3 "${source_root}/eng/project-release-version.py" \
   --source-root "${source_root}" \
   --version "${RELEASE_VERSION}" \
@@ -131,8 +133,16 @@ nuget_config="${build_root}/NuGet.Config"
 xml_escape() {
   printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/"/\&quot;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
-output_dir_xml="$(xml_escape "${OUTPUT_DIR}")"
-ci_package_source_xml="$(xml_escape "${NETWASM_CI_PACKAGE_SOURCE:-}")"
+# dotnet on Windows reads NuGet.Config paths natively, not as Git Bash paths.
+native_path() {
+  if [[ -n "$1" ]] && command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+output_dir_xml="$(xml_escape "$(native_path "${OUTPUT_DIR}")")"
+ci_package_source_xml="$(xml_escape "$(native_path "${NETWASM_CI_PACKAGE_SOURCE:-}")")"
 {
   printf '%s\n' \
     '<?xml version="1.0" encoding="utf-8"?>' \

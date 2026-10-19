@@ -39,7 +39,26 @@ public sealed class TUnitGuestRunValidatorTests
                 "NW-HOST",
                 "failed"));
 
-        XunitAssert.Throws<InvalidDataException>(() => TUnitGuestRunValidator.ValidateExecution(run, 0));
+        var error = XunitAssert.Throws<InvalidDataException>(() => TUnitGuestRunValidator.ValidateExecution(run, 0));
+        XunitAssert.Equal("NetWasm test infrastructure failed: NW-HOST: failed", error.Message);
+    }
+
+    [Fact]
+    public void InfrastructureFailureReportsTheCaughtCause()
+    {
+        var run = CreateRun(
+            exitCode: null,
+            completionKind: NetWasmCompletionKind.HostFailure,
+            failure: new NetWasmExecutionFailure(
+                NetWasmFailurePhase.Execution,
+                "NW-HOST",
+                "failed",
+                "RangeError: Maximum call stack size exceeded"));
+
+        var error = XunitAssert.Throws<InvalidDataException>(() => TUnitGuestRunValidator.ValidateExecution(run, 0));
+        XunitAssert.Equal(
+            "NetWasm test infrastructure failed: NW-HOST: failed Detail: RangeError: Maximum call stack size exceeded",
+            error.Message);
     }
 
     private static TUnitGuestRun CreateRun(
