@@ -70,7 +70,7 @@ build_root="$(cd "${build_root}" && pwd -P)"
 source_root="${build_root}/source"
 cleanup() {
   if [[ -d "${source_root}" ]]; then
-    git -C "${REPOSITORY_ROOT}" worktree remove --force "${source_root}" >/dev/null 2>&1 || true
+    git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree remove --force "${source_root}" >/dev/null 2>&1 || true
   fi
   rm -rf "${build_root}"
 }
@@ -93,7 +93,9 @@ done
 }
 
 repository_commit="$(git -C "${REPOSITORY_ROOT}" rev-parse HEAD)"
-git -C "${REPOSITORY_ROOT}" worktree add --quiet --detach "${source_root}" "${repository_commit}"
+# Upstream template snapshots exceed Windows' 260-character path limit under a
+# temporary directory; Git for Windows needs core.longpaths to write them.
+git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree add --quiet --detach "${source_root}" "${repository_commit}"
 python3 "${source_root}/eng/project-release-version.py" \
   --source-root "${source_root}" \
   --version "${RELEASE_VERSION}" \
