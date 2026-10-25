@@ -152,13 +152,70 @@ public sealed class TestCaseResolver : ITestCaseResolver
         return new ReadOnlyCollection<GeneratedTestCase>(ordered);
     }
 
+    // Ready tests run in upstream TUnit's execution phases: unconstrained tests,
+    // keyed [NotInParallel], [ParallelGroup] groups, groups whose tests are also
+    // [NotInParallel], and global [NotInParallel] last. Within a phase a group
+    // runs by group then Order, and NotInParallel tests by class, priority and
+    // Order. Running one test at a time satisfies every constraint.
     private static int CompareReadyCases(GeneratedTestCase left, GeneratedTestCase right)
     {
+        var phase = Phase(left).CompareTo(Phase(right));
+        if (phase != 0)
+        {
+            return phase;
+        }
+
+        if (left.ParallelConstraint is { } leftConstraint && right.ParallelConstraint is { } rightConstraint)
+        {
+            var group = StringComparer.Ordinal.Compare(leftConstraint.ParallelGroup, rightConstraint.ParallelGroup);
+            if (group != 0)
+            {
+                return group;
+            }
+
+            var groupOrder = leftConstraint.ParallelGroupOrder.CompareTo(rightConstraint.ParallelGroupOrder);
+            if (groupOrder != 0)
+            {
+                return groupOrder;
+            }
+
+            if (leftConstraint.NotInParallel)
+            {
+                var className = StringComparer.Ordinal.Compare(left.GroupIdentity, right.GroupIdentity);
+                if (className != 0)
+                {
+                    return className;
+                }
+
+                var notInParallelPriority = right.ExecutionPriority.CompareTo(left.ExecutionPriority);
+                if (notInParallelPriority != 0)
+                {
+                    return notInParallelPriority;
+                }
+
+                var order = leftConstraint.NotInParallelOrder.CompareTo(rightConstraint.NotInParallelOrder);
+                if (order != 0)
+                {
+                    return order;
+                }
+            }
+        }
+
         var priority = right.ExecutionPriority.CompareTo(left.ExecutionPriority);
         return priority != 0
             ? priority
             : StringComparer.Ordinal.Compare(left.StableId, right.StableId);
     }
+
+    private static int Phase(GeneratedTestCase testCase) => testCase.ParallelConstraint switch
+    {
+        null => 0,
+        { ParallelGroup: not null, NotInParallel: true } => 3,
+        { ParallelGroup: not null } => 2,
+        { NotInParallel: true, ConstraintKeys.Count: > 0 } => 1,
+        { NotInParallel: true } => 4,
+        _ => 0,
+    };
 
     private static IReadOnlyList<GeneratedTestCase> ResolveDependencies(
         GeneratedTestCase testCase,

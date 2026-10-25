@@ -11,4 +11,8 @@
   <ItemGroup>
     <PackageReference Include="NetWasm.TUnit" Version="[$(NetWasmTUnitPackageVersion)]" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../Conformance/*.cs" Link="Conformance/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

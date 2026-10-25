@@ -43,6 +43,8 @@
     <Compile Include="NetWasmTarget\TUnitCoreAuthoringContracts.cs" />
     <Compile Include="NetWasmTarget\TUnitCoreDataSourceContracts.cs" />
     <Compile Include="NetWasmTarget\TUnitCoreMetadataContracts.cs" />
+    <Compile Include="NetWasmTarget\TUnitCoreParallelContracts.cs" />
+    <Compile Include="..\src\TUnit.Core\GeneratedParallelConstraint.cs" />
     <Compile Include="..\src\TUnit.Core\GeneratedCompletionPolicy.cs" />
     <Compile Include="..\src\TUnit.Core\GeneratedInvocationKind.cs" />
     <Compile Include="..\src\TUnit.Core\GeneratedCaseData.cs" />

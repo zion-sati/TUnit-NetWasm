@@ -150,6 +150,61 @@ public sealed class TestCaseResolverTests
     }
 
     [Fact]
+    public void ParallelConstraintsRunInUpstreamPhasesAndOrder()
+    {
+        var catalog = new SourceGeneratedTestCatalog([
+            TestCaseFactory.Create("global-2", parallelConstraint: NotInParallel(order: 2)),
+            TestCaseFactory.Create("global-1", parallelConstraint: NotInParallel(order: 1)),
+            TestCaseFactory.Create("combined", parallelConstraint: new(true, [], 0, "a", 0)),
+            TestCaseFactory.Create("group-b-1", parallelConstraint: Group("b", order: 1)),
+            TestCaseFactory.Create("group-b-0", parallelConstraint: Group("b", order: 0)),
+            TestCaseFactory.Create("group-a", parallelConstraint: Group("a", order: 5)),
+            TestCaseFactory.Create("keyed", parallelConstraint: NotInParallel(order: 1, "k")),
+            TestCaseFactory.Create("plain"),
+        ]);
+
+        var selected = _resolver.Resolve(catalog, TestRunRequest.All);
+
+        XunitAssert.Equal(
+            ["plain", "keyed", "group-a", "group-b-0", "group-b-1", "combined", "global-1", "global-2"],
+            selected.Select(static testCase => testCase.StableId));
+    }
+
+    [Fact]
+    public void NotInParallelOrdersByClassThenPriorityThenOrder()
+    {
+        var catalog = new SourceGeneratedTestCatalog([
+            TestCaseFactory.Create("a-late", groupIdentity: "Tests.A", parallelConstraint: NotInParallel(order: 9)),
+            TestCaseFactory.Create("b-first", groupIdentity: "Tests.B", parallelConstraint: NotInParallel(order: 1)),
+            TestCaseFactory.Create(
+                "a-high",
+                groupIdentity: "Tests.A",
+                executionPriority: 5,
+                parallelConstraint: NotInParallel(order: 99)),
+            TestCaseFactory.Create("a-early", groupIdentity: "Tests.A", parallelConstraint: NotInParallel(order: 0)),
+        ]);
+
+        var selected = _resolver.Resolve(catalog, TestRunRequest.All);
+
+        XunitAssert.Equal(
+            ["a-high", "a-early", "a-late", "b-first"],
+            selected.Select(static testCase => testCase.StableId));
+    }
+
+    [Fact]
+    public void DependenciesStillRunBeforeTheirDependentsAcrossPhases()
+    {
+        var catalog = new SourceGeneratedTestCatalog([
+            TestCaseFactory.Create("plain", methodName: "Plain", dependencies: ["Last"]),
+            TestCaseFactory.Create("last", methodName: "Last", parallelConstraint: NotInParallel(order: 0)),
+        ]);
+
+        var selected = _resolver.Resolve(catalog, TestRunRequest.All);
+
+        XunitAssert.Equal(["last", "plain"], selected.Select(static testCase => testCase.StableId));
+    }
+
+    [Fact]
     public void SelectionRejectsDependencyCycles()
     {
         var catalog = new SourceGeneratedTestCatalog([
@@ -162,6 +217,12 @@ public sealed class TestCaseResolverTests
 
         XunitAssert.Contains("cycle", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static GeneratedParallelConstraint NotInParallel(int order, params string[] keys) =>
+        new(true, keys, order, null, 0);
+
+    private static GeneratedParallelConstraint Group(string group, int order) =>
+        new(false, [], int.MaxValue / 2, group, order);
 
     private static SourceGeneratedTestCatalog Catalog(params string[] stableIds) =>
         new(stableIds.Select(stableId => TestCaseFactory.Create(stableId)));

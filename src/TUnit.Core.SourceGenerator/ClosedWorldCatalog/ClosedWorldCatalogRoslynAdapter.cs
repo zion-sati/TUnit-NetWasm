@@ -157,7 +157,8 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
                     ExtractEffectiveSkipReason(testMethod),
                     ExtractEffectiveExecutionPriority(testMethod),
                     HasEffectiveAttribute(testMethod, "ExplicitAttribute", includeAssembly: false),
-                    HasEffectiveAttribute(testMethod, "NotDiscoverableAttribute", includeAssembly: true))));
+                    HasEffectiveAttribute(testMethod, "NotDiscoverableAttribute", includeAssembly: true),
+                    ParallelConstraint: ExtractEffectiveParallelConstraint(testMethod))));
             }
         }
 
@@ -473,6 +474,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             ExtractEffectiveExecutionPriority(request.TestMethod),
             HasEffectiveAttribute(request.TestMethod, "ExplicitAttribute", includeAssembly: false),
             HasEffectiveAttribute(request.TestMethod, "NotDiscoverableAttribute", includeAssembly: true),
+            ParallelConstraint: ExtractEffectiveParallelConstraint(request.TestMethod),
             CapturesRuntimeValues: constructorCells.Length > 0,
             DisposeDataExpression: FormatDisposeData(constructorCells),
             LazilyMaterializeConstructorArguments: constructorCells.Length > 0)));
@@ -560,7 +562,8 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             DisposeDataExpression: FormatDisposeData(constructorCells),
             RepeatIndexExpression: repeatIndexVariable,
             LazilyMaterializeRowArguments: true,
-            LazilyMaterializeConstructorArguments: constructorCells.Length > 0)));
+            LazilyMaterializeConstructorArguments: constructorCells.Length > 0,
+            ParallelConstraint: ExtractEffectiveParallelConstraint(testMethod))));
         writer.Unindent();
         writer.AppendLine("}");
         writer.AppendLine($"{rowIndexVariable}++;");
@@ -923,6 +926,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             ExtractEffectiveExecutionPriority(request.TestMethod),
             HasEffectiveAttribute(request.TestMethod, "ExplicitAttribute", includeAssembly: false),
             HasEffectiveAttribute(request.TestMethod, "NotDiscoverableAttribute", includeAssembly: true),
+            ParallelConstraint: ExtractEffectiveParallelConstraint(request.TestMethod),
             CapturesRuntimeValues: true,
             DisposeDataExpression: FormatDisposeData(allCells),
             LazilyMaterializeRowArguments: methodCells.Length > 0,
@@ -1601,6 +1605,63 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         }
 
         return null;
+    }
+
+    // [NotInParallel] and [ParallelGroup]: the nearest scope wins, as for
+    // upstream's scoped attributes. The sequential runner satisfies both and
+    // uses them for upstream's execution phases and Order.
+    private static ParallelConstraintRequest? ExtractEffectiveParallelConstraint(TestMethodMetadata testMethod)
+    {
+        var notInParallel = TryGetScopedAttribute(testMethod, "NotInParallelAttribute", includeAssembly: true, out var notInParallelAttribute);
+        var parallelGroup = TryGetScopedAttribute(testMethod, "ParallelGroupAttribute", includeAssembly: true, out var parallelGroupAttribute);
+        if (!notInParallel && !parallelGroup)
+        {
+            return null;
+        }
+
+        var keys = ImmutableArray<string>.Empty;
+        var notInParallelOrder = int.MaxValue / 2;
+        if (notInParallel)
+        {
+            var argument = notInParallelAttribute.ConstructorArguments.FirstOrDefault();
+            if (argument.Kind == TypedConstantKind.Array)
+            {
+                keys = argument.Values
+                    .Select(static value => value.Value as string)
+                    .Where(static value => value is not null)
+                    .Select(static value => value!)
+                    .ToImmutableArray();
+            }
+            else if (argument.Value is string key)
+            {
+                keys = ImmutableArray.Create(key);
+            }
+
+            notInParallelOrder = ReadNamedInt(notInParallelAttribute, "Order", notInParallelOrder);
+        }
+
+        string? group = null;
+        var groupOrder = 0;
+        if (parallelGroup)
+        {
+            group = parallelGroupAttribute.ConstructorArguments.FirstOrDefault().Value as string;
+            groupOrder = ReadNamedInt(parallelGroupAttribute, "Order", groupOrder);
+        }
+
+        return new ParallelConstraintRequest(notInParallel, keys, notInParallelOrder, group, groupOrder);
+    }
+
+    private static int ReadNamedInt(AttributeData attribute, string name, int fallback)
+    {
+        foreach (var argument in attribute.NamedArguments)
+        {
+            if (argument.Key == name && argument.Value.Value is int value)
+            {
+                return value;
+            }
+        }
+
+        return fallback;
     }
 
     private static int ExtractEffectiveExecutionPriority(TestMethodMetadata testMethod) =>

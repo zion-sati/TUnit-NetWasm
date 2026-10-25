@@ -30,6 +30,29 @@ dotnet test --filter "FullyQualifiedName=MyProject.Tests.Tests.AnswerIsFortyTwo"
 dotnet test --filter "Category=smoke"
 ```
 
+## Supported test attributes
+
+A `netwasm0.1` test project runs a catalog that the TUnit source generator
+builds at compile time. The catalog supports:
+
+- Tests and data: `[Test]`, `[Arguments]`, `[MethodDataSource]`,
+  `[ClassDataSource<T>]`, `[DisplayName]`, `[InheritsTests]` and
+  `[GenerateGenericTest]`.
+- Metadata and selection: `[Category]`, `[Property]`, `[Skip]`, `[Explicit]`
+  and `[NotDiscoverable]`.
+- Execution: `[DependsOn]`, `[ExecutionPriority]`, `[Repeat]`, `[Retry]` and
+  `[Timeout]`.
+- Parallelism: `[NotInParallel]`, `[ParallelGroup]` and
+  `[ParallelLimiter<T>]`. The runner executes one test at a time, which
+  satisfies every constraint. Tests keep TUnit's order: unconstrained tests,
+  keyed `[NotInParallel]` tests, parallel groups, then global
+  `[NotInParallel]` tests, each by `Order`.
+- Hooks: test and class `[Before]` and `[After]` hooks, which may take a
+  `CancellationToken`.
+
+The build reports any other TUnit attribute as unsupported instead of
+ignoring it. Features that need runtime reflection are not available.
+
 ## Packages
 
 [![NuGet: NetWasm.TUnit](https://img.shields.io/badge/NuGet-NetWasm.TUnit-004880?logo=nuget)](https://www.nuget.org/packages/NetWasm.TUnit)

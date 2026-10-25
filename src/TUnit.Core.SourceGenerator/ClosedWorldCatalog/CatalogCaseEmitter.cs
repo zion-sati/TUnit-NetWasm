@@ -54,10 +54,21 @@ internal sealed class CatalogCaseEmitter : ICaseEmitter
         writer.AppendLine($"isExplicit: {FormatBoolean(request.IsExplicit)},");
         writer.AppendLine($"isNotDiscoverable: {FormatBoolean(request.IsNotDiscoverable)},");
         writer.AppendLine($"repeatIndex: {request.RepeatIndexExpression ?? request.Row.RepeatIndex.ToString(global::System.Globalization.CultureInfo.InvariantCulture)},");
-        writer.AppendLine($"disposeData: {request.DisposeDataExpression ?? "null"}));");
+        writer.AppendLine($"disposeData: {request.DisposeDataExpression ?? "null"},");
+        writer.AppendLine($"parallelConstraint: {FormatParallelConstraint(request.ParallelConstraint)}));");
         writer.Unindent();
         return writer.ToString();
     }
+
+    private static string FormatParallelConstraint(ParallelConstraintRequest? constraint) =>
+        constraint is null
+            ? "null"
+            : "new global::TUnit.Core.GeneratedParallelConstraint(" +
+              $"{FormatBoolean(constraint.NotInParallel)}, " +
+              $"{FormatStringArray(constraint.ConstraintKeys)}, " +
+              $"{constraint.NotInParallelOrder.ToString(global::System.Globalization.CultureInfo.InvariantCulture)}, " +
+              $"{FormatNullableString(constraint.ParallelGroup)}, " +
+              $"{constraint.ParallelGroupOrder.ToString(global::System.Globalization.CultureInfo.InvariantCulture)})";
 
     private static string FormatRow(CaseRequest request)
     {
