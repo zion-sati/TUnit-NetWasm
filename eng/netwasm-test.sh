@@ -11,6 +11,9 @@ PACKAGE_DIR="$(cd "${PACKAGE_DIR}" && pwd -P)"
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/netwasm-tunit-test.XXXXXX")"
 test_root="$(cd "${test_root}" && pwd -P)"
 cleanup() {
+  if [[ -d "${test_root}/source" ]]; then
+    git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree remove --force "${test_root}/source" >/dev/null 2>&1 || true
+  fi
   rm -rf "${test_root}"
 }
 trap cleanup EXIT
@@ -68,8 +71,9 @@ fi
 qualification_root="${REPOSITORY_ROOT}"
 if [[ -n "${NETWASM_CORE_CANDIDATE_VERSION:-}" ]]; then
   qualification_root="${test_root}/source"
-  mkdir -p "${qualification_root}"
-  git -C "${REPOSITORY_ROOT}" archive HEAD | tar -x -C "${qualification_root}"
+  # A detached worktree, not an archive: the catalog generator tests locate
+  # the repository through Git (Sourcy.Git).
+  git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree add --quiet --detach "${qualification_root}" HEAD
   python3 "${qualification_root}/eng/project-netwasm-candidate-version.py" \
     --source-root "${qualification_root}" \
     --version "${NETWASM_CORE_CANDIDATE_VERSION}" \
