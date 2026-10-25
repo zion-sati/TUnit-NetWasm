@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text;
 
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
@@ -63,7 +64,7 @@ internal sealed class CatalogRowPlanner : ICatalogRowPlanner
                     : constructorRow.SkipReason;
                 for (var repeatIndex = 0; repeatIndex <= request.RepeatCount; repeatIndex++)
                 {
-                    var stableId = $"{request.MethodIdentity}#row-{rowIndex}:repeat-{repeatIndex}:{canonical}";
+                    var stableId = $"{request.MethodIdentity}#row-{rowIndex.ToString(CultureInfo.InvariantCulture)}:repeat-{repeatIndex.ToString(CultureInfo.InvariantCulture)}:{canonical}";
                     rows.Add(new CatalogRow(
                         methodRow.Values,
                         constructorRow.Values,
@@ -99,7 +100,7 @@ internal sealed class CatalogRowPlanner : ICatalogRowPlanner
 
         for (var index = 0; index < values.Length; index++)
         {
-            displayName = ReplacePlaceholder(displayName, $"$arg{index + 1}", values[index].Display);
+            displayName = ReplacePlaceholder(displayName, $"$arg{(index + 1).ToString(CultureInfo.InvariantCulture)}", values[index].Display);
         }
 
         for (var index = 0; index < values.Length && index < parameterNames.Length; index++)

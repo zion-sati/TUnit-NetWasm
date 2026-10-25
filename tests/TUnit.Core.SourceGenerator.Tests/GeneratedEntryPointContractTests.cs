@@ -1146,6 +1146,41 @@ internal sealed class GeneratedEntryPointContractTests
             "use SharedType.None", StringComparison.Ordinal))).IsTrue();
     }
 
+    [Test]
+    public async Task ClosedWorldCatalogFormatsNegativeHookOrderIndependentlyOfCulture()
+    {
+        // sv-SE writes negative numbers with U+2212, which is not valid C#.
+        const string source = """
+            using TUnit.Core;
+
+            namespace TestProject;
+
+            public sealed class Fixture
+            {
+                [Before(HookType.Test, Order = -1)]
+                public void Setup() { }
+
+                [Test]
+                public void Case() { }
+            }
+            """;
+
+        var culture = global::System.Globalization.CultureInfo.CurrentCulture;
+        global::System.Globalization.CultureInfo.CurrentCulture = new global::System.Globalization.CultureInfo("sv-SE");
+        try
+        {
+            var testCase = BuildGeneratedCatalog(source, closedWorld: true).Catalog.GetGeneratedCases().Single();
+
+            await Assert.That(testCase.Lifecycle.Actions.Single(static action =>
+                    action.Stage == GeneratedLifecycleStage.TestSetup).Order)
+                .IsEqualTo(-1);
+        }
+        finally
+        {
+            global::System.Globalization.CultureInfo.CurrentCulture = culture;
+        }
+    }
+
     private static GeneratedCatalogBuild BuildGeneratedCatalog(string source, bool closedWorld)
     {
         var compilation = CSharpCompilation.Create(

@@ -235,7 +235,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             for (var constructorIndex = 0; constructorIndex < effectiveConstructorRows.Length; constructorIndex++)
             {
                 var constructorRow = effectiveConstructorRows[constructorIndex];
-                var suffix = $"{sourceIndex}_{constructorIndex}";
+                var suffix = $"{sourceIndex.ToString(CultureInfo.InvariantCulture)}_{constructorIndex.ToString(CultureInfo.InvariantCulture)}";
                 var sourceVariable = $"__source_{suffix}";
                 var itemVariable = $"__item_{suffix}";
                 var rowIndexVariable = $"__rowIndex_{suffix}";
@@ -333,7 +333,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             for (var constructorSourceIndex = 0; constructorSourceIndex < constructorClassDataSources.Length; constructorSourceIndex++)
             {
                 var constructorSource = constructorClassDataSources[constructorSourceIndex];
-                var suffix = $"{sourceIndex}_class_{constructorSourceIndex}";
+                var suffix = $"{sourceIndex.ToString(CultureInfo.InvariantCulture)}_class_{constructorSourceIndex.ToString(CultureInfo.InvariantCulture)}";
                 var sourceVariable = $"__source_{suffix}";
                 var itemVariable = $"__item_{suffix}";
                 var rowIndexVariable = $"__rowIndex_{suffix}";
@@ -421,7 +421,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         var constructorCells = EmitClassDataCells(
             writer,
             constructorClassDataSource,
-            $"__emptyConstructorData_{sourceIndex}_{constructorIndex}");
+            $"__emptyConstructorData_{sourceIndex.ToString(CultureInfo.InvariantCulture)}_{constructorIndex.ToString(CultureInfo.InvariantCulture)}");
         var rowValues = valueParameters.Select(parameter =>
             {
                 var type = Substitute(
@@ -436,14 +436,14 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             ? constructorRow?.Values ?? ImmutableArray<CatalogValue>.Empty
             : ToCellValues(constructorCells);
         var constructorIdentity = constructorClassDataSource is null
-            ? $"constructor-row-{constructorIndex}"
-            : $"constructor-class-source-{constructorIndex}";
+            ? $"constructor-row-{constructorIndex.ToString(CultureInfo.InvariantCulture)}"
+            : $"constructor-class-source-{constructorIndex.ToString(CultureInfo.InvariantCulture)}";
         var skipReason = constructorRow?.SkipReason ??
             $"Method data source '{providerName}' produced no rows.";
         var row = new CatalogRow(
             rowValues,
             constructorValues,
-            $"{GetMethodIdentity(request.TestMethod.MethodSymbol, request.FullyQualifiedName)}{request.GeneratedIdentitySuffix}#method-source-{sourceIndex}:{constructorIdentity}:empty",
+            $"{GetMethodIdentity(request.TestMethod.MethodSymbol, request.FullyQualifiedName)}{request.GeneratedIdentitySuffix}#method-source-{sourceIndex.ToString(CultureInfo.InvariantCulture)}:{constructorIdentity}:empty",
             $"{request.TestMethod.MethodSymbol.Name} [no data]",
             skipReason,
             constructorRow?.Categories ?? ImmutableArray<string>.Empty,
@@ -495,13 +495,13 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
     {
         var testMethod = request.TestMethod;
         writer.AppendLine("cancellationToken.ThrowIfCancellationRequested();");
-        writer.AppendLine($"for (var {repeatIndexVariable} = 0; {repeatIndexVariable} <= {ExtractEffectiveRepeatCount(testMethod)}; {repeatIndexVariable}++)");
+        writer.AppendLine($"for (var {repeatIndexVariable} = 0; {repeatIndexVariable} <= {ExtractEffectiveRepeatCount(testMethod).ToString(CultureInfo.InvariantCulture)}; {repeatIndexVariable}++)");
         writer.AppendLine("{");
         writer.Indent();
         var constructorCells = EmitClassDataCells(
             writer,
             constructorClassDataSource,
-            $"__constructorData_{sourceIndex}_{constructorIndex}_{repeatIndexVariable}");
+            $"__constructorData_{sourceIndex.ToString(CultureInfo.InvariantCulture)}_{constructorIndex.ToString(CultureInfo.InvariantCulture)}_{repeatIndexVariable}");
         var rowValues = values.Select(value => new CatalogValue(
                 value.Format(itemVariable),
                 "runtime",
@@ -525,12 +525,12 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             request.ClassTypeArguments,
             rowValues);
         var constructorIdentity = constructorClassDataSource is null
-            ? $"constructor-row-{constructorIndex}"
-            : $"constructor-class-source-{constructorIndex}";
+            ? $"constructor-row-{constructorIndex.ToString(CultureInfo.InvariantCulture)}"
+            : $"constructor-class-source-{constructorIndex.ToString(CultureInfo.InvariantCulture)}";
         var identityPrefix = EscapeString(
             GetMethodIdentity(testMethod.MethodSymbol, request.FullyQualifiedName) +
             request.GeneratedIdentitySuffix +
-            $"#method-source-{sourceIndex}:{constructorIdentity}");
+            $"#method-source-{sourceIndex.ToString(CultureInfo.InvariantCulture)}:{constructorIdentity}");
         var stableIdExpression = $"$\"{identityPrefix}:row-{{{rowIndexVariable}}}:repeat-{{{repeatIndexVariable}}}\"";
         var displayNameExpression = $"$\"{EscapeString(testMethod.MethodSymbol.Name)} [row {{{rowIndexVariable}}}]\"";
         writer.AppendRaw(_caseEmitter.Emit(new CaseRequest(
@@ -872,13 +872,13 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         ImmutableArray<string> rowCategories = default)
     {
         var methodIdentity = methodSource is null
-            ? $"method-row-{methodSourceIndex}"
-            : $"method-class-source-{methodSourceIndex}";
+            ? $"method-row-{methodSourceIndex.ToString(CultureInfo.InvariantCulture)}"
+            : $"method-class-source-{methodSourceIndex.ToString(CultureInfo.InvariantCulture)}";
         var constructorIdentity = constructorSource is null
-            ? $"constructor-row-{constructorSourceIndex}"
-            : $"constructor-class-source-{constructorSourceIndex}";
-        var prefix = $"__classData_{(methodSource is null ? "row" : "class")}_{methodSourceIndex}_" +
-                     $"{(constructorSource is null ? "row" : "class")}_{constructorSourceIndex}_{repeatIndex}";
+            ? $"constructor-row-{constructorSourceIndex.ToString(CultureInfo.InvariantCulture)}"
+            : $"constructor-class-source-{constructorSourceIndex.ToString(CultureInfo.InvariantCulture)}";
+        var prefix = $"__classData_{(methodSource is null ? "row" : "class")}_{methodSourceIndex.ToString(CultureInfo.InvariantCulture)}_" +
+                     $"{(constructorSource is null ? "row" : "class")}_{constructorSourceIndex.ToString(CultureInfo.InvariantCulture)}_{repeatIndex.ToString(CultureInfo.InvariantCulture)}";
         writer.AppendLine("{");
         writer.Indent();
         var methodCells = EmitClassDataCells(writer, methodSource, prefix + "_method");
@@ -890,8 +890,8 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         var row = new CatalogRow(
             methodValues,
             constructorValues,
-            $"{GetMethodIdentity(request.TestMethod.MethodSymbol, request.FullyQualifiedName)}{request.GeneratedIdentitySuffix}#{methodIdentity}:{constructorIdentity}:repeat-{repeatIndex}",
-            $"{request.TestMethod.MethodSymbol.Name} [class data {methodSourceIndex}]",
+            $"{GetMethodIdentity(request.TestMethod.MethodSymbol, request.FullyQualifiedName)}{request.GeneratedIdentitySuffix}#{methodIdentity}:{constructorIdentity}:repeat-{repeatIndex.ToString(CultureInfo.InvariantCulture)}",
+            $"{request.TestMethod.MethodSymbol.Name} [class data {methodSourceIndex.ToString(CultureInfo.InvariantCulture)}]",
             rowSkipReason,
             rowCategories,
             repeatIndex);
@@ -945,7 +945,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         for (var index = 0; index < source.Types.Length; index++)
         {
             var typeName = source.Types[index].GloballyQualified();
-            var name = $"{prefix}_{index}";
+            var name = $"{prefix}_{index.ToString(CultureInfo.InvariantCulture)}";
             writer.AppendLine($"var {name} = new global::TUnit.Core.GeneratedCaseData<{typeName}>(static () => new {typeName}());");
             cells.Add(new ClassDataCell(name, source.Types[index]));
         }
@@ -998,7 +998,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             if (types.Length != parameters.Length)
             {
                 throw new InvalidOperationException(
-                    $"ClassDataSource supplies {types.Length} value(s), but the {subject} requires {parameters.Length}.");
+                    $"ClassDataSource supplies {types.Length.ToString(CultureInfo.InvariantCulture)} value(s), but the {subject} requires {parameters.Length.ToString(CultureInfo.InvariantCulture)}.");
             }
 
             for (var index = 0; index < types.Length; index++)
@@ -1176,10 +1176,10 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
                 if (!CanAssign(tuple.TupleElements[index].Type, parameters[index].Type, compilation))
                 {
                     throw new InvalidOperationException(
-                        $"MethodDataSource tuple item {index + 1} is not assignable to parameter '{parameters[index].Name}'.");
+                        $"MethodDataSource tuple item {(index + 1).ToString(CultureInfo.InvariantCulture)} is not assignable to parameter '{parameters[index].Name}'.");
                 }
 
-                result.Add(new RuntimeValueProjection($".Item{index + 1}"));
+                result.Add(new RuntimeValueProjection($".Item{(index + 1).ToString(CultureInfo.InvariantCulture)}"));
             }
 
             return result.ToImmutable();
@@ -1193,14 +1193,14 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
                 var cast = CanAssign(arrayType.ElementType, parameters[index].Type, compilation)
                     ? string.Empty
                     : $"({parameters[index].Type.GloballyQualified()})";
-                result.Add(new RuntimeValueProjection($"[{index}]", cast));
+                result.Add(new RuntimeValueProjection($"[{index.ToString(CultureInfo.InvariantCulture)}]", cast));
             }
 
             return result.ToImmutable();
         }
 
         throw new InvalidOperationException(
-            $"MethodDataSource item type '{itemType}' must map to the test method's {parameters.Length} parameters as a tuple or array.");
+            $"MethodDataSource item type '{itemType}' must map to the test method's {parameters.Length.ToString(CultureInfo.InvariantCulture)} parameters as a tuple or array.");
     }
 
     private static bool CanAssign(ITypeSymbol source, ITypeSymbol target, CSharpCompilation compilation) =>
@@ -1388,7 +1388,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         if (value.IsNull) return $"null:{typeName}";
         if (value.Kind == TypedConstantKind.Array)
         {
-            return $"array:{typeName}:{value.Values.Length}[{string.Join(",", value.Values.Select(Canonicalize))}]";
+            return $"array:{typeName}:{value.Values.Length.ToString(CultureInfo.InvariantCulture)}[{string.Join(",", value.Values.Select(Canonicalize))}]";
         }
 
         if (value.Kind == TypedConstantKind.Type && value.Value is ITypeSymbol type)
@@ -1403,7 +1403,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             bool boolean => boolean ? "bool:1" : "bool:0",
             _ => "value:" + (Convert.ToString(value.Value, CultureInfo.InvariantCulture) ?? string.Empty),
         };
-        return $"scalar:{typeName.Length}:{typeName}:{text.Length}:{text}";
+        return $"scalar:{typeName.Length.ToString(CultureInfo.InvariantCulture)}:{typeName}:{text.Length.ToString(CultureInfo.InvariantCulture)}:{text}";
     }
 
     private static string Display(TypedConstant value)
@@ -1475,7 +1475,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
 
     private static string GetMethodIdentity(IMethodSymbol method, string fullyQualifiedName)
     {
-        var arity = method.TypeParameters.Length == 0 ? string.Empty : $"`{method.TypeParameters.Length}";
+        var arity = method.TypeParameters.Length == 0 ? string.Empty : $"`{method.TypeParameters.Length.ToString(CultureInfo.InvariantCulture)}";
         var parameters = string.Join(",", method.Parameters.Select(static parameter =>
             parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
         return $"{fullyQualifiedName}{arity}({parameters})";

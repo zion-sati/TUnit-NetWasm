@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
 
@@ -13,7 +14,7 @@ internal sealed class LifecycleFormatter : ILifecycleFormatter
         writer.Indent();
         foreach (var hook in hooks)
         {
-            writer.AppendLine($"new global::TUnit.Core.GeneratedLifecycleAction(global::TUnit.Core.GeneratedLifecycleStage.{hook.Stage}, {hook.Order}, {FormatDelegate(hook.Invocation, hook.ReturnType)}, {FormatTimeout(hook.TimeoutMilliseconds)}),");
+            writer.AppendLine($"new global::TUnit.Core.GeneratedLifecycleAction(global::TUnit.Core.GeneratedLifecycleStage.{hook.Stage}, {hook.Order.ToString(CultureInfo.InvariantCulture)}, {FormatDelegate(hook.Invocation, hook.ReturnType)}, {FormatTimeout(hook.TimeoutMilliseconds)}),");
         }
 
         writer.Unindent();

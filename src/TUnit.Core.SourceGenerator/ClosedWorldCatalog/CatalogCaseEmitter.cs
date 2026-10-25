@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text;
 
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
@@ -24,7 +25,7 @@ internal sealed class CatalogCaseEmitter : ICaseEmitter
         writer.AppendLine($"\"{Escape(request.FullyQualifiedName)}\",");
         writer.AppendLine($"\"{Escape(request.GroupIdentity)}\",");
         writer.AppendLine("\"" + Escape(request.FilePath ?? string.Empty) + "\",");
-        writer.AppendLine($"{request.LineNumber},");
+        writer.AppendLine($"{request.LineNumber.ToString(CultureInfo.InvariantCulture)},");
         writer.AppendLine($"{request.InvocationKind},");
         writer.AppendLine(request.CapturesRuntimeValues ? "() =>" : "static () =>");
         writer.AppendLine("{");

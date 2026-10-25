@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
 
 internal sealed class MethodSourceEmitter : IMethodSourceEmitter
@@ -13,7 +15,7 @@ internal sealed class MethodSourceEmitter : IMethodSourceEmitter
         writer.Indent();
         for (var index = 0; index < request.Groups.Length; index++)
         {
-            writer.AppendLine($"private static readonly global::TUnit.Core.GeneratedLifecycle __Lifecycle_{index} = {request.Groups[index].LifecycleCode};");
+            writer.AppendLine($"private static readonly global::TUnit.Core.GeneratedLifecycle __Lifecycle_{index.ToString(CultureInfo.InvariantCulture)} = {request.Groups[index].LifecycleCode};");
         }
 
         writer.AppendLine("internal static global::TUnit.Core.GeneratedTestCase[] GetGeneratedCases() => GetGeneratedCasesAsync().AsTask().GetAwaiter().GetResult();");
