@@ -60,25 +60,15 @@ assert_vstest_pass_summary() {
 }
 
 build_arguments=(--version "${TEST_VERSION}" --output "${PACKAGE_DIR}")
-if [[ -n "${NETWASM_CORE_CANDIDATE_VERSION:-}" ]]; then
-  build_arguments+=(--netwasm-candidate-version "${NETWASM_CORE_CANDIDATE_VERSION}")
-fi
 if [[ -n "${NETWASM_TUNIT_BUILD_SDK_VERSION:-}" ]]; then
   build_arguments+=(--sdk-version "${NETWASM_TUNIT_BUILD_SDK_VERSION}")
 fi
 "${REPOSITORY_ROOT}/eng/netwasm-build-packages.sh" "${build_arguments[@]}"
 
-qualification_root="${REPOSITORY_ROOT}"
-if [[ -n "${NETWASM_CORE_CANDIDATE_VERSION:-}" ]]; then
-  qualification_root="${test_root}/source"
-  # A detached worktree, not an archive: the catalog generator tests locate
-  # the repository through Git (Sourcy.Git).
-  git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree add --quiet --detach "${qualification_root}" HEAD
-  python3 "${qualification_root}/eng/project-netwasm-candidate-version.py" \
-    --source-root "${qualification_root}" \
-    --version "${NETWASM_CORE_CANDIDATE_VERSION}" \
-    --receipt "${test_root}/NetWasm.TUnit.test-source-projection.json"
-fi
+qualification_root="${test_root}/source"
+# A detached worktree, not an archive: the catalog generator tests locate
+# the repository through Git (Sourcy.Git).
+git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree add --quiet --detach "${qualification_root}" HEAD
 if [[ -n "${NETWASM_TUNIT_BUILD_SDK_VERSION:-}" ]]; then
   python3 - "${qualification_root}" "${NETWASM_TUNIT_BUILD_SDK_VERSION}" <<'PY'
 import json, sys
@@ -110,22 +100,15 @@ native_path() {
   fi
 }
 package_dir_xml="$(xml_escape "$(native_path "${PACKAGE_DIR}")")"
-ci_package_source_xml="$(xml_escape "$(native_path "${NETWASM_CI_PACKAGE_SOURCE:-}")")"
-{
-  printf '%s\n' \
-    '<?xml version="1.0" encoding="utf-8"?>' \
-    '<configuration>' \
-    '  <packageSources>' \
-    '    <clear />' \
-    "    <add key=\"current-build\" value=\"${package_dir_xml}\" />"
-  if [[ -n "${NETWASM_CI_PACKAGE_SOURCE:-}" ]]; then
-    printf '    <add key="ci-artifacts" value="%s" />\n' "${ci_package_source_xml}"
-  fi
-  printf '%s\n' \
-    '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />' \
-    '  </packageSources>' \
-    '</configuration>'
-} > "${nuget_config}"
+printf '%s\n' \
+  '<?xml version="1.0" encoding="utf-8"?>' \
+  '<configuration>' \
+  '  <packageSources>' \
+  '    <clear />' \
+  "    <add key=\"current-build\" value=\"${package_dir_xml}\" />" \
+  '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />' \
+  '  </packageSources>' \
+  '</configuration>' > "${nuget_config}"
 
 # The closed-world catalog generator and the catalog model run inside desktop
 # builds, so their tests use upstream TUnit on the host runtime. Upstream CI

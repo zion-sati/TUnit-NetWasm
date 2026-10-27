@@ -5,7 +5,6 @@ set -euo pipefail
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 OUTPUT_DIR="${REPOSITORY_ROOT}/artifacts/netwasm-packages"
 RELEASE_VERSION="$(tr -d '[:space:]' < "${REPOSITORY_ROOT}/eng/NetWasm.ReleaseVersion.txt")"
-NETWASM_CANDIDATE_VERSION=""
 BUILD_SDK_VERSION=""
 output_was_set=false
 while [[ $# -gt 0 ]]; do
@@ -21,18 +20,13 @@ while [[ $# -gt 0 ]]; do
       RELEASE_VERSION="$2"
       shift 2
       ;;
-    --netwasm-candidate-version)
-      [[ $# -ge 2 ]] || { echo "--netwasm-candidate-version requires a value." >&2; exit 2; }
-      NETWASM_CANDIDATE_VERSION="$2"
-      shift 2
-      ;;
     --sdk-version)
       [[ $# -ge 2 ]] || { echo "--sdk-version requires a value." >&2; exit 2; }
       BUILD_SDK_VERSION="$2"
       shift 2
       ;;
     --help|-h)
-      echo "Usage: $0 [--version VERSION] [--netwasm-candidate-version VERSION] [--sdk-version VERSION] [--output DIRECTORY] [DIRECTORY]"
+      echo "Usage: $0 [--version VERSION] [--sdk-version VERSION] [--output DIRECTORY] [DIRECTORY]"
       exit 0
       ;;
     --*)
@@ -100,16 +94,7 @@ python3 "${source_root}/eng/project-release-version.py" \
   --source-root "${source_root}" \
   --version "${RELEASE_VERSION}" \
   --receipt "${OUTPUT_DIR}/NetWasm.TUnit.release-version-projection.json"
-if [[ -n "${NETWASM_CANDIDATE_VERSION}" ]]; then
-  python3 "${source_root}/eng/project-netwasm-candidate-version.py" \
-    --source-root "${source_root}" \
-    --version "${NETWASM_CANDIDATE_VERSION}" \
-    --receipt "${OUTPUT_DIR}/NetWasm.TUnit.netwasm-candidate-projection.json"
-else
-  python3 "${source_root}/eng/project-netwasm-candidate-version.py" \
-    --source-root "${source_root}" \
-    --check
-fi
+python3 "${source_root}/eng/check-netwasm-dependency.py" --source-root "${source_root}"
 if [[ -n "${BUILD_SDK_VERSION}" ]]; then
   python3 - "${source_root}" "${BUILD_SDK_VERSION}" <<'PY'
 import json, re, sys
@@ -142,22 +127,15 @@ native_path() {
   fi
 }
 output_dir_xml="$(xml_escape "$(native_path "${OUTPUT_DIR}")")"
-ci_package_source_xml="$(xml_escape "$(native_path "${NETWASM_CI_PACKAGE_SOURCE:-}")")"
-{
-  printf '%s\n' \
-    '<?xml version="1.0" encoding="utf-8"?>' \
-    '<configuration>' \
-    '  <packageSources>' \
-    '    <clear />' \
-    "    <add key=\"current-build\" value=\"${output_dir_xml}\" />"
-  if [[ -n "${NETWASM_CI_PACKAGE_SOURCE:-}" ]]; then
-    printf '    <add key="ci-artifacts" value="%s" />\n' "${ci_package_source_xml}"
-  fi
-  printf '%s\n' \
-    '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />' \
-    '  </packageSources>' \
-    '</configuration>'
-} > "${nuget_config}"
+printf '%s\n' \
+  '<?xml version="1.0" encoding="utf-8"?>' \
+  '<configuration>' \
+  '  <packageSources>' \
+  '    <clear />' \
+  "    <add key=\"current-build\" value=\"${output_dir_xml}\" />" \
+  '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />' \
+  '  </packageSources>' \
+  '</configuration>' > "${nuget_config}"
 
 package_cache="${NUGET_PACKAGES:-${build_root}/packages}"
 sdk_version="$(sed -n 's/.*"NetWasm.Sdk": "\([^"]*\)".*/\1/p' "${source_root}/packaging/global.json")"
