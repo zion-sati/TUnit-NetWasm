@@ -133,9 +133,16 @@ ci_package_source_xml="$(xml_escape "$(native_path "${NETWASM_CI_PACKAGE_SOURCE:
 # strong-named TUnit.Core is 1.0.0.0, below the version Verify.TUnit
 # references. Use the high version Directory.Build.props gives local builds.
 upstream_test_version=(-p:Version=99.99.99 -p:AssemblyVersion=99.99.99.0 -p:FileVersion=99.99.99.0)
-for catalog_tests in \
-  tests/TUnit.Core.SourceGenerator.Tests/TUnit.Core.SourceGenerator.Tests.csproj \
-  tests/TUnit.UnitTests/TUnit.UnitTests.csproj; do
+catalog_projects=(tests/TUnit.UnitTests/TUnit.UnitTests.csproj)
+# The generator tests include upstream's Verify snapshots, which are keyed by
+# the runtime that runs them and exist for .NET 10. Lanes with only a newer
+# runtime skip them; every OS still runs them on its .NET 10 lane.
+if dotnet --list-runtimes | grep -q '^Microsoft\.NETCore\.App 10\.'; then
+  catalog_projects=(tests/TUnit.Core.SourceGenerator.Tests/TUnit.Core.SourceGenerator.Tests.csproj "${catalog_projects[@]}")
+else
+  echo "Skipping TUnit.Core.SourceGenerator.Tests: its snapshots need the .NET 10 runtime."
+fi
+for catalog_tests in "${catalog_projects[@]}"; do
   dotnet restore "${qualification_root}/${catalog_tests}" \
     --configfile "${nuget_config}" \
     --disable-build-servers \
