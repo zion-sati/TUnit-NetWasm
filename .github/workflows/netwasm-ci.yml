@@ -250,6 +250,11 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y patchelf=0.18.0-1.1build1
 
+      - name: Install Native AOT prerequisites
+        if: startsWith(matrix.rid, 'linux-')
+        shell: bash
+        run: sudo apt-get install -y clang zlib1g-dev
+
       - name: Build NetWasm host tools package
         shell: bash
         working-directory: netwasm-core
