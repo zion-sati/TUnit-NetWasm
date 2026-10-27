@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -114,7 +115,7 @@ class VerifyReleasePackagesTests(unittest.TestCase):
         self.assertEqual(5, timing["packageCount"])
         self.assertEqual(1.235, timing["durationSeconds"])
 
-    def test_accepts_github_release_lightweight_tag_without_signer_policy(self) -> None:
+    def tagged_release_source(self) -> Path:
         source = self.root / "source"
         source.mkdir()
         subprocess.run(["git", "init", "-q", source], check=True)
@@ -132,6 +133,17 @@ class VerifyReleasePackagesTests(unittest.TestCase):
         self.manifest["sourceCommit"] = subprocess.check_output(
             ["git", "-C", source, "rev-parse", "HEAD"], text=True
         ).strip()
+        return source
+
+    def test_git_diagnostics_on_stderr_do_not_change_the_verified_source(self) -> None:
+        source = self.tagged_release_source()
+
+        # GIT_TRACE writes trace lines to stderr for every git command.
+        with mock.patch.dict(os.environ, {"GIT_TRACE": "1"}):
+            MODULE.verify_source(source, self.manifest)
+
+    def test_accepts_github_release_lightweight_tag_without_signer_policy(self) -> None:
+        source = self.tagged_release_source()
 
         MODULE.verify_source(source, self.manifest)
 

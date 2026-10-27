@@ -6,8 +6,8 @@
   "releaseTag": "netwasm-v0.4.2",
   "sourceCommit": "4974c03935f6fbe8995a1dc7aabe333dced78548",
   "dependencyVersions": {
-    "NetWasm.Sdk": "0.10.4",
-    "NetWasm.Testing.VSTest": "0.10.4"
+    "NetWasm.Sdk": "0.10.5",
+    "NetWasm.Testing.VSTest": "0.10.5"
   },
   "packages": [
     "NetWasm.TUnit",

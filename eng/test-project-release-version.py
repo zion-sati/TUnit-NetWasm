@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_PATH = Path(__file__).parent / "project-release-version.py"
@@ -76,6 +78,20 @@ class ProjectReleaseVersionTests(unittest.TestCase):
     def test_rejects_invalid_version(self) -> None:
         with self.assertRaisesRegex(ValueError, "Invalid release version"):
             self.project("not-a-version")
+
+    def test_rejects_dirty_worktree_and_names_the_change(self) -> None:
+        (self.root / "docs.txt").write_text("Edited\n")
+
+        with self.assertRaisesRegex(ValueError, "clean Git worktree(.|\n)*M docs.txt"):
+            self.project("0.2.0")
+
+    def test_git_diagnostics_on_stderr_do_not_make_a_clean_worktree_dirty(self) -> None:
+        # GIT_TRACE writes trace lines to stderr for every git command.
+        with mock.patch.dict(os.environ, {"GIT_TRACE": "1"}):
+            receipt = self.project("0.2.0")
+
+        self.assertEqual(3, receipt["replacementCount"])
+        self.assertRegex(str(receipt["repositoryCommit"]), "^[0-9a-f]{40}$")
 
 
 if __name__ == "__main__":

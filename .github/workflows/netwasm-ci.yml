@@ -13,8 +13,8 @@ on:
       - eng/dependencies.json
       - eng/netwasm-build-packages.sh
       - eng/netwasm-test.sh
-      - eng/project-netwasm-candidate-version.py
-      - eng/test-project-netwasm-candidate-version.py
+      - eng/check-netwasm-dependency.py
+      - eng/test-check-netwasm-dependency.py
       - eng/project-release-version.py
       - eng/test-project-release-version.py
       - eng/resolve-release.py
@@ -53,235 +53,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  core-candidate:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    outputs:
-      version: ${{ steps.version.outputs.value }}
-      sdk11: ${{ steps.toolchain.outputs.sdk11 }}
-    steps:
-      - name: Check out TUnit candidate source for provenance
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          path: tunit-source
-          persist-credentials: false
-
-      - name: Read dependency pins
-        id: dependencies
-        shell: bash
-        run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          from pathlib import Path
-          print(f"netwasm={json.loads(Path('tunit-source/eng/dependencies.json').read_text())['netwasm']}")
-          PY
-
-      - name: Check out pinned NetWasm source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          repository: zion-sati/NetWasm
-          ref: v${{ steps.dependencies.outputs.netwasm }}
-          path: netwasm-core
-          persist-credentials: false
-
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        with:
-          global-json-file: netwasm-core/global.json
-
-      - name: Read NetWasm toolchain pins
-        id: toolchain
-        shell: bash
-        run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          from pathlib import Path
-          manifest = json.loads(Path('netwasm-core/eng/toolchain.json').read_text())
-          print(f"emscripten={manifest['emscripten']}")
-          print(f"node={manifest['node']}")
-          print(f"wasm_tools={manifest['wasmTools']}")
-          print(f"wasm_tools_sha={manifest['wasmToolsLinuxX64Sha256']}")
-          print(f"sdk11={json.loads(Path('netwasm-core/eng/csharp15-toolchain.json').read_text())['sdk11Version']}")
-          PY
-
-      - name: Install Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: ${{ steps.toolchain.outputs.node }}
-          package-manager-cache: false
-
-      - name: Install pinned native toolchain
-        shell: bash
-        run: |
-          git clone --depth 1 --branch "${{ steps.toolchain.outputs.emscripten }}" https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
-          "$RUNNER_TEMP/emsdk/emsdk" install "${{ steps.toolchain.outputs.emscripten }}"
-          "$RUNNER_TEMP/emsdk/emsdk" activate "${{ steps.toolchain.outputs.emscripten }}"
-          archive="$RUNNER_TEMP/wasm-tools.tar.gz"
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors --output "$archive" \
-            "https://github.com/bytecodealliance/wasm-tools/releases/download/v${{ steps.toolchain.outputs.wasm_tools }}/wasm-tools-${{ steps.toolchain.outputs.wasm_tools }}-x86_64-linux.tar.gz"
-          printf '%s  %s\n' '${{ steps.toolchain.outputs.wasm_tools_sha }}' "$archive" | sha256sum --check --strict
-          mkdir "$RUNNER_TEMP/wasm-tools"
-          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/wasm-tools" --strip-components=1
-          echo "$RUNNER_TEMP/wasm-tools" >> "$GITHUB_PATH"
-
-      - name: Build NetWasm candidate packages
-        id: version
-        shell: bash
-        working-directory: netwasm-core
-        run: |
-          base='${{ steps.dependencies.outputs.netwasm }}'
-          version="${base}-ci.${GITHUB_RUN_ID}"
-          echo "value=$version" >> "$GITHUB_OUTPUT"
-          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
-          bash eng/build-packages.sh --version "$version" --output "$RUNNER_TEMP/netwasm-packages"
-
-      - name: Record Core candidate provenance
-        shell: bash
-        env:
-          CANDIDATE_VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          python3 - <<'PY'
-          import hashlib, json, os, subprocess
-          from pathlib import Path
-
-          def revision(root):
-              head = subprocess.check_output(['git', '-C', root, 'rev-parse', 'HEAD'], text=True).strip()
-              tree = subprocess.check_output(['git', '-C', root, 'rev-parse', f'{head}^{{tree}}'], text=True).strip()
-              return {'commit': head, 'tree': tree}
-
-          event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
-          packages = {}
-          for path in sorted(Path(os.environ['RUNNER_TEMP'], 'netwasm-packages').glob('*.nupkg')):
-              packages[path.name] = {'bytes': path.stat().st_size,
-                                     'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
-          receipt = {
-              'schemaVersion': 1,
-              'repository': os.environ['GITHUB_REPOSITORY'],
-              'pullRequest': event.get('pull_request', {}).get('number'),
-              'pullRequestHead': event.get('pull_request', {}).get('head', {}).get('sha'),
-              'pullRequestBase': event.get('pull_request', {}).get('base', {}).get('sha'),
-              'core': revision('netwasm-core'),
-              'consumer': revision('tunit-source'),
-              'workflowRunId': os.environ['GITHUB_RUN_ID'],
-              'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
-              'candidateVersion': os.environ['CANDIDATE_VERSION'],
-              'packages': packages,
-          }
-          Path(os.environ['RUNNER_TEMP'], 'netwasm-packages', 'netwasm-core-receipt.json').write_text(
-              json.dumps(receipt, indent=2) + '\n')
-          PY
-
-      - name: Retain NetWasm candidate packages
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: netwasm-core-candidate
-          path: ${{ runner.temp }}/netwasm-packages/*
-          if-no-files-found: error
-          retention-days: 14
-
-  core-host-tools:
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
-    name: NetWasm host tools / ${{ matrix.host }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - host: linux-x64
-            runner: ubuntu-24.04
-            rid: linux-x64
-            architecture: x64
-          - host: linux-arm64
-            runner: ubuntu-24.04-arm
-            rid: linux-arm64
-            architecture: arm64
-          - host: macos-arm64
-            runner: macos-14
-            rid: osx-arm64
-            architecture: arm64
-          - host: windows-x64
-            runner: windows-2025
-            rid: win-x64
-            architecture: x64
-          - host: windows-arm64
-            runner: windows-11-vs2026-arm
-            rid: win-arm64
-            architecture: arm64
-    steps:
-      - name: Check out TUnit candidate source for provenance
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          path: tunit-source
-          persist-credentials: false
-
-      - name: Read dependency pins
-        id: dependencies
-        shell: bash
-        run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          from pathlib import Path
-          print(f"netwasm={json.loads(Path('tunit-source/eng/dependencies.json').read_text())['netwasm']}")
-          PY
-
-      - name: Check out pinned NetWasm source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          repository: zion-sati/NetWasm
-          ref: v${{ steps.dependencies.outputs.netwasm }}
-          path: netwasm-core
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        with:
-          global-json-file: netwasm-core/global.json
-
-      - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: '3.13'
-
-      - name: Install pinned Linux Node patcher
-        if: startsWith(matrix.rid, 'linux-')
-        shell: bash
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y patchelf=0.18.0-1.1build1
-
-      - name: Build NetWasm host tools package
-        shell: bash
-        working-directory: netwasm-core
-        env:
-          NETWASM_GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          version='${{ steps.dependencies.outputs.netwasm }}'"-ci.${GITHUB_RUN_ID}"
-          python eng/build-host-tools-package.py \
-            --rid "${{ matrix.rid }}" \
-            --version "$version" \
-            --output "$RUNNER_TEMP/netwasm-host-tools" \
-            --cache "$RUNNER_TEMP/netwasm-host-tools-inputs"
-          python - <<'PY'
-          import hashlib, json, os
-          from pathlib import Path
-          root = Path(os.environ['RUNNER_TEMP'], 'netwasm-host-tools')
-          packages = {path.name: {'bytes': path.stat().st_size,
-                                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
-                      for path in sorted(root.glob('*.nupkg'))}
-          (root / 'host-tools-receipt.json').write_text(json.dumps({'packages': packages}, indent=2) + '\n')
-          PY
-
-      - name: Retain NetWasm host tools package
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: netwasm-host-tools-${{ matrix.rid }}
-          path: ${{ runner.temp }}/netwasm-host-tools/*
-          if-no-files-found: error
-          retention-days: 14
-
   test:
-    needs: [core-candidate, core-host-tools]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     name: test / ${{ matrix.host }} / isolated SDK ${{ matrix.sdk-major }}
@@ -315,15 +87,24 @@ jobs:
       - name: Check out source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Choose the isolated .NET SDK version
+      - name: Choose the isolated .NET SDK and TUnit candidate versions
         id: isolated-dotnet
         shell: bash
         env:
           SDK_MAJOR: ${{ matrix.sdk-major }}
-          SDK11_VERSION: ${{ needs.core-candidate.outputs.sdk11 }}
         run: |
-          if [[ "$SDK_MAJOR" == 10 ]]; then sdk_version=10.0.303; else sdk_version="$SDK11_VERSION"; fi
+          netwasm="$(python3 -c "import json; print(json.load(open('eng/dependencies.json'))['netwasm'])")"
+          if [[ "$SDK_MAJOR" == 10 ]]; then
+            sdk_version=10.0.303
+          else
+            # The released NetWasm qualifies C# 15 with this .NET 11 SDK.
+            sdk_version="$(curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+              "https://raw.githubusercontent.com/zion-sati/NetWasm/v$netwasm/eng/csharp15-toolchain.json" |
+              python3 -c "import json, sys; print(json.load(sys.stdin)['sdk11Version'])")"
+          fi
           echo "sdk-version=$sdk_version" >> "$GITHUB_OUTPUT"
+          # A version NuGet.org never has, so restore takes these TUnit packages from this build.
+          echo "candidate-version=${netwasm}-ci.${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Install one isolated .NET SDK and runtime (Unix)
         if: ${{ !startsWith(matrix.rid, 'win-') }}
@@ -366,57 +147,18 @@ jobs:
             "DOTNET_ROLL_FORWARD=Major" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
 
-      - name: Download NetWasm candidate packages
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: netwasm-core-candidate
-          path: ${{ runner.temp }}/netwasm-packages
-
-      - name: Download NetWasm host tools for this host
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: netwasm-host-tools-${{ matrix.rid }}
-          path: ${{ runner.temp }}/netwasm-host-tools
-
-      - name: Verify Core candidate provenance
-        shell: bash
-        env:
-          EXPECTED_VERSION: ${{ needs.core-candidate.outputs.version }}
-        run: |
-          python3 - <<'PY'
-          import hashlib, json, os, shutil
-          from pathlib import Path
-          root = Path(os.environ['RUNNER_TEMP'], 'netwasm-packages')
-          receipt = json.loads((root / 'netwasm-core-receipt.json').read_text())
-          if receipt['candidateVersion'] != os.environ['EXPECTED_VERSION']:
-              raise SystemExit('Core candidate version does not match its receipt.')
-          host_root = Path(os.environ['RUNNER_TEMP'], 'netwasm-host-tools')
-          host_receipt = json.loads((host_root / 'host-tools-receipt.json').read_text())
-          for directory, packages in [(root, receipt['packages']), (host_root, host_receipt['packages'])]:
-              for path in sorted(directory.glob('*.nupkg')):
-                  expected = packages.get(path.name)
-                  if expected is None or expected['bytes'] != path.stat().st_size or expected['sha256'] != hashlib.sha256(path.read_bytes()).hexdigest():
-                      raise SystemExit(f'Core candidate package does not match its receipt: {path.name}')
-                  if directory == host_root and not path.name.endswith(f".{os.environ['EXPECTED_VERSION']}.nupkg"):
-                      raise SystemExit(f'Host tools package is not from this candidate: {path.name}')
-          for path in sorted(host_root.glob('*.nupkg')):
-              shutil.copy2(path, root / path.name)
-          PY
-
       - name: Build and test NetWasm packages
         shell: bash
         run: |
-          PYTHONDONTWRITEBYTECODE=1 python3 eng/test-project-netwasm-candidate-version.py
+          PYTHONDONTWRITEBYTECODE=1 python3 eng/test-check-netwasm-dependency.py
           PYTHONDONTWRITEBYTECODE=1 python3 eng/test-project-release-version.py
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
             eng/tests/test_resolve_release.py \
             eng/tests/test_release_train.py \
             eng/tests/test_publish_release_packages.py \
             eng/tests/test_verify_release_packages.py
-          NETWASM_CI_PACKAGE_SOURCE="$RUNNER_TEMP/netwasm-packages" \
-          NETWASM_CORE_CANDIDATE_VERSION="${{ needs.core-candidate.outputs.version }}" \
           NETWASM_TUNIT_BUILD_SDK_VERSION="${{ steps.isolated-dotnet.outputs.sdk-version }}" \
-          NETWASM_TUNIT_TEST_VERSION="${{ needs.core-candidate.outputs.version }}" \
+          NETWASM_TUNIT_TEST_VERSION="${{ steps.isolated-dotnet.outputs.candidate-version }}" \
             bash eng/netwasm-test.sh
 
       - name: Record TUnit candidate packages and analyzer closure
@@ -424,7 +166,7 @@ jobs:
         shell: bash
         env:
           SDK_VERSION: ${{ steps.isolated-dotnet.outputs.sdk-version }}
-          CANDIDATE_VERSION: ${{ needs.core-candidate.outputs.version }}
+          CANDIDATE_VERSION: ${{ steps.isolated-dotnet.outputs.candidate-version }}
         run: |
           python3 - <<'PY'
           import hashlib, json, os, zipfile
