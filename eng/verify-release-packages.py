@@ -50,9 +50,9 @@ def read_manifest(path: Path) -> dict[str, object]:
 
 
 def git(source_root: Path, *arguments: str) -> str:
+    # Only stdout is the answer; Git's diagnostics on stderr stay in the log.
     return subprocess.check_output(
         ["git", "-C", str(source_root), *arguments],
-        stderr=subprocess.STDOUT,
         text=True,
     ).strip()
 

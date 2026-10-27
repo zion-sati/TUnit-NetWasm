@@ -24,9 +24,8 @@ TEMPLATE_PATH = Path(
 
 
 def run_git(source_root: Path, *arguments: str) -> bytes:
-    return subprocess.check_output(
-        ["git", "-C", str(source_root), *arguments], stderr=subprocess.STDOUT
-    )
+    # Only stdout is the answer; Git's diagnostics on stderr stay in the log.
+    return subprocess.check_output(["git", "-C", str(source_root), *arguments])
 
 
 def tracked_files(source_root: Path) -> list[Path]:
@@ -82,8 +81,9 @@ def project_version(source_root: Path, target_version: str, receipt_path: Path) 
     if not VERSION_PATTERN.fullmatch(target_version):
         raise ValueError(f"Invalid release version: {target_version}")
     source_root = source_root.resolve()
-    if run_git(source_root, "status", "--porcelain=v1").strip():
-        raise ValueError("Release-version projection requires a clean Git worktree.")
+    changes = run_git(source_root, "status", "--porcelain=v1").decode("utf-8").strip()
+    if changes:
+        raise ValueError(f"Release-version projection requires a clean Git worktree:\n{changes}")
     source_version = (source_root / VERSION_FILE).read_text(encoding="utf-8").strip()
     if not VERSION_PATTERN.fullmatch(source_version):
         raise ValueError(f"Invalid source release version in {VERSION_FILE}: {source_version}")
