@@ -128,20 +128,26 @@ ci_package_source_xml="$(xml_escape "$(native_path "${NETWASM_CI_PACKAGE_SOURCE:
 } > "${nuget_config}"
 
 # The closed-world catalog generator and the catalog model run inside desktop
-# builds, so their tests use upstream TUnit on the host runtime.
+# builds, so their tests use upstream TUnit on the host runtime. Upstream CI
+# passes TUnit's version to every build; without it, a GitHub Actions build of
+# strong-named TUnit.Core is 1.0.0.0, below the version Verify.TUnit
+# references. Use the high version Directory.Build.props gives local builds.
+upstream_test_version=(-p:Version=99.99.99 -p:AssemblyVersion=99.99.99.0 -p:FileVersion=99.99.99.0)
 for catalog_tests in \
   tests/TUnit.Core.SourceGenerator.Tests/TUnit.Core.SourceGenerator.Tests.csproj \
   tests/TUnit.UnitTests/TUnit.UnitTests.csproj; do
   dotnet restore "${qualification_root}/${catalog_tests}" \
     --configfile "${nuget_config}" \
     --disable-build-servers \
-    --nologo
+    --nologo \
+    "${upstream_test_version[@]}"
   dotnet run --project "${qualification_root}/${catalog_tests}" \
     -c Release \
     -f net10.0 \
     --no-restore \
     --no-launch-profile \
-    --disable-build-servers
+    --disable-build-servers \
+    "${upstream_test_version[@]}"
 done
 
 runner_tests="${qualification_root}/packaging/NetWasm.TUnit.Runner.Tests/NetWasm.TUnit.Runner.Tests.csproj"
