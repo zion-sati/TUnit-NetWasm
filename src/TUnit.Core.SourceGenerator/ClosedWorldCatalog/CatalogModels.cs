@@ -42,6 +42,13 @@ internal sealed record RetryPolicyRequest(
     double BackoffMultiplier,
     ImmutableArray<string> ExceptionTypeNames);
 
+internal sealed record ParallelConstraintRequest(
+    bool NotInParallel,
+    ImmutableArray<string> ConstraintKeys,
+    int NotInParallelOrder,
+    string? ParallelGroup,
+    int ParallelGroupOrder);
+
 internal sealed record CaseRequest(
     string TypeName,
     string MethodName,
@@ -69,7 +76,8 @@ internal sealed record CaseRequest(
     string? DisposeDataExpression = null,
     string? RepeatIndexExpression = null,
     bool LazilyMaterializeRowArguments = false,
-    bool LazilyMaterializeConstructorArguments = false);
+    bool LazilyMaterializeConstructorArguments = false,
+    ParallelConstraintRequest? ParallelConstraint = null);
 
 internal sealed record CatalogCollectionGroup(int Index, ImmutableArray<string> CaseBodies);
 

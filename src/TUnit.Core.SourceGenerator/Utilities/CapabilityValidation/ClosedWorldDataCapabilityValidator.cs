@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -208,13 +209,13 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
 
         if (valueCount < requiredCount)
         {
-            message = $"Arguments row has {valueCount} value{(valueCount == 1 ? string.Empty : "s")} but {subject} requires at least {requiredCount}.";
+            message = $"Arguments row has {valueCount.ToString(CultureInfo.InvariantCulture)} value{(valueCount == 1 ? string.Empty : "s")} but {subject} requires at least {requiredCount.ToString(CultureInfo.InvariantCulture)}.";
             return false;
         }
 
         if (!collectsTrailing && valueCount > parameters.Length)
         {
-            message = $"Arguments row has {valueCount} values but {subject} accepts at most {parameters.Length}.";
+            message = $"Arguments row has {valueCount.ToString(CultureInfo.InvariantCulture)} values but {subject} accepts at most {parameters.Length.ToString(CultureInfo.InvariantCulture)}.";
             return false;
         }
 

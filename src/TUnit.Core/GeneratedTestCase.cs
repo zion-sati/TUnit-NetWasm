@@ -32,7 +32,8 @@ public abstract class GeneratedTestCase
         bool isExplicit,
         bool isNotDiscoverable,
         int repeatIndex,
-        Func<ValueTask>? disposeData)
+        Func<ValueTask>? disposeData,
+        GeneratedParallelConstraint? parallelConstraint = null)
     {
         MethodName = Require(methodName, nameof(methodName));
         FullyQualifiedName = Require(fullyQualifiedName, nameof(fullyQualifiedName));
@@ -54,6 +55,7 @@ public abstract class GeneratedTestCase
         IsNotDiscoverable = isNotDiscoverable;
         RepeatIndex = repeatIndex;
         _disposeData = disposeData;
+        ParallelConstraint = parallelConstraint;
         CatalogProvenance = string.IsNullOrWhiteSpace(catalogProvenance)
             ? "TUnit.Core.SourceGenerator"
             : catalogProvenance!;
@@ -109,6 +111,9 @@ public abstract class GeneratedTestCase
     public bool IsNotDiscoverable { get; }
 
     public int RepeatIndex { get; }
+
+    /// <summary>The test's [NotInParallel] and [ParallelGroup] settings, or null.</summary>
+    public GeneratedParallelConstraint? ParallelConstraint { get; }
 
     public string CatalogProvenance { get; }
 
@@ -185,7 +190,8 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
         bool isExplicit = false,
         bool isNotDiscoverable = false,
         int repeatIndex = 0,
-        Func<ValueTask>? disposeData = null)
+        Func<ValueTask>? disposeData = null,
+        GeneratedParallelConstraint? parallelConstraint = null)
         : base(
             methodName,
             fullyQualifiedName,
@@ -207,7 +213,8 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
             isExplicit,
             isNotDiscoverable,
             repeatIndex,
-            disposeData)
+            disposeData,
+            parallelConstraint)
     {
         _legacyCreateInstance = createInstance ?? throw new ArgumentNullException(nameof(createInstance));
         _legacyInvoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
@@ -238,7 +245,8 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
         bool isExplicit = false,
         bool isNotDiscoverable = false,
         int repeatIndex = 0,
-        Func<ValueTask>? disposeData = null)
+        Func<ValueTask>? disposeData = null,
+        GeneratedParallelConstraint? parallelConstraint = null)
         : base(
             methodName,
             fullyQualifiedName,
@@ -260,7 +268,8 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
             isExplicit,
             isNotDiscoverable,
             repeatIndex,
-            disposeData)
+            disposeData,
+            parallelConstraint)
     {
         if (createInstance is null)
         {

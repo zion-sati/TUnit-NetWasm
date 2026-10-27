@@ -21,7 +21,8 @@ internal static class TestCaseFactory
         int executionPriority = 2,
         bool isExplicit = false,
         bool isNotDiscoverable = false,
-        Func<ValueTask>? disposeData = null)
+        Func<ValueTask>? disposeData = null,
+        GeneratedParallelConstraint? parallelConstraint = null)
     {
         methodName ??= stableId;
         return new GeneratedTestCase<TestInstance>(
@@ -44,7 +45,8 @@ internal static class TestCaseFactory
             executionPriority: executionPriority,
             isExplicit: isExplicit,
             isNotDiscoverable: isNotDiscoverable,
-            disposeData: disposeData);
+            disposeData: disposeData,
+            parallelConstraint: parallelConstraint);
     }
 }
 

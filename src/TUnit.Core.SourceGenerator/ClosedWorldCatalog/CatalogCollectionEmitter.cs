@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
 
 internal sealed class CatalogCollectionEmitter : ICatalogCollectionEmitter
@@ -10,7 +12,7 @@ internal sealed class CatalogCollectionEmitter : ICatalogCollectionEmitter
         {
             if (request.IncludeGroupMethods)
             {
-                writer.AppendLine($"internal static async global::System.Threading.Tasks.ValueTask<global::TUnit.Core.GeneratedTestCase[]> GetGeneratedCases_{group.Index}Async(global::System.Threading.CancellationToken cancellationToken)");
+                writer.AppendLine($"internal static async global::System.Threading.Tasks.ValueTask<global::TUnit.Core.GeneratedTestCase[]> GetGeneratedCases_{group.Index.ToString(CultureInfo.InvariantCulture)}Async(global::System.Threading.CancellationToken cancellationToken)");
                 writer.AppendLine("{");
                 writer.Indent();
                 writer.AppendLine("var cases = new global::System.Collections.Generic.List<global::TUnit.Core.GeneratedTestCase>();");
@@ -31,7 +33,7 @@ internal sealed class CatalogCollectionEmitter : ICatalogCollectionEmitter
         {
             if (request.IncludeGroupMethods)
             {
-                writer.AppendLine($"cases.AddRange(await GetGeneratedCases_{group.Index}Async(cancellationToken));");
+                writer.AppendLine($"cases.AddRange(await GetGeneratedCases_{group.Index.ToString(CultureInfo.InvariantCulture)}Async(cancellationToken));");
             }
             else
             {

@@ -15,8 +15,14 @@ internal sealed class ClosedWorldCapabilityValidatorTests
 
             [assembly: Retry(1)]
             [assembly: ParallelGroup("assembly")]
+            [assembly: TUnit.Core.Executors.STAThreadExecutor]
 
             namespace TestProject;
+
+            public sealed class Limit : TUnit.Core.Interfaces.IParallelLimit
+            {
+                public int Limit => 1;
+            }
 
             public sealed class Fixture
             {
@@ -26,18 +32,23 @@ internal sealed class ClosedWorldCapabilityValidatorTests
                 [Timeout(100)]
                 [NotInParallel]
                 [ParallelGroup("method")]
+                [ParallelLimiter<Limit>]
+                [TUnit.Core.Executors.STAThreadExecutor]
                 public void Case() { }
             }
             """)).ToArray();
 
         await Assert.That(diagnostics.Count(static diagnostic =>
                 diagnostic.Message.Contains("is not supported by the closed-world catalog", StringComparison.Ordinal)))
-            .IsEqualTo(3);
+            .IsEqualTo(2);
         await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("SkipAttribute", StringComparison.Ordinal))).IsFalse();
         await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("ExplicitAttribute", StringComparison.Ordinal))).IsFalse();
         await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("TimeoutAttribute", StringComparison.Ordinal))).IsFalse();
         await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("RetryAttribute", StringComparison.Ordinal))).IsFalse();
-        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("ParallelGroupAttribute", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("NotInParallelAttribute", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("ParallelGroupAttribute", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(diagnostics.Any(static diagnostic => diagnostic.Message.Contains("ParallelLimiterAttribute", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(diagnostics.All(static diagnostic => diagnostic.Message.Contains("STAThreadExecutorAttribute", StringComparison.Ordinal))).IsTrue();
     }
 
     [Test]

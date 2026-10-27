@@ -358,7 +358,7 @@ internal sealed class GeneratedEntryPointContractTests
                 [Explicit]
                 [Retry(1)]
                 [Timeout(100)]
-                [ParallelGroup("unsupported")]
+                [TUnit.Core.Executors.STAThreadExecutor]
                 public void UnsupportedExecutionSemantics() { }
 
                 [Test]
@@ -446,7 +446,7 @@ internal sealed class GeneratedEntryPointContractTests
         await Assert.That(errors.Any(static error => error.Contains("Argument conversion", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'SkipAttribute'", StringComparison.Ordinal))).IsFalse();
         await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'RetryAttribute'", StringComparison.Ordinal))).IsFalse();
-        await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'ParallelGroupAttribute'", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'STAThreadExecutorAttribute'", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains("TUnit semantic attribute 'FutureSemanticAttribute'", StringComparison.Ordinal))).IsTrue();
         await Assert.That(generated).DoesNotContain("AsyncConvert");
         await Assert.That(generated).Contains("Generated catalog supports only void, Task, and ValueTask");
@@ -775,6 +775,87 @@ internal sealed class GeneratedEntryPointContractTests
                     action.Stage == GeneratedLifecycleStage.TestSetup).Timeout)
                 .IsEqualTo(TimeSpan.FromMilliseconds(25));
         }
+    }
+
+    [Test]
+    public async Task ClosedWorldCatalogCarriesTheNearestParallelConstraints()
+    {
+        const string source = """
+            using TUnit.Core;
+
+            [assembly: NotInParallel(Order = 9)]
+
+            namespace TestProject;
+
+            [ParallelGroup("database", Order = 3)]
+            public sealed class GroupedFixture
+            {
+                [Test]
+                public void Grouped() { }
+
+                [Test]
+                [NotInParallel(new[] { "files", "network" }, Order = 4)]
+                public void GroupedAndKeyed() { }
+            }
+
+            [NotInParallel("shared")]
+            public sealed class KeyedFixture
+            {
+                [Test]
+                public void ClassKey() { }
+
+                [Test]
+                [NotInParallel(Order = 1)]
+                public void MethodWins() { }
+            }
+
+            public sealed class AssemblyFixture
+            {
+                [Test]
+                public void FromAssembly() { }
+            }
+            """;
+
+        var cases = BuildGeneratedCatalog(source, closedWorld: true)
+            .Catalog
+            .GetGeneratedCases()
+            .ToDictionary(static testCase => testCase.MethodName, static testCase => testCase.ParallelConstraint!);
+
+        await Assert.That(cases["Grouped"].NotInParallel).IsTrue();
+        await Assert.That(cases["Grouped"].ConstraintKeys).IsEmpty();
+        await Assert.That(cases["Grouped"].NotInParallelOrder).IsEqualTo(9);
+        await Assert.That(cases["Grouped"].ParallelGroup).IsEqualTo("database");
+        await Assert.That(cases["Grouped"].ParallelGroupOrder).IsEqualTo(3);
+        await Assert.That(cases["GroupedAndKeyed"].ConstraintKeys).IsEquivalentTo(["files", "network"]);
+        await Assert.That(cases["GroupedAndKeyed"].NotInParallelOrder).IsEqualTo(4);
+        await Assert.That(cases["GroupedAndKeyed"].ParallelGroup).IsEqualTo("database");
+        await Assert.That(cases["ClassKey"].ConstraintKeys).IsEquivalentTo(["shared"]);
+        await Assert.That(cases["ClassKey"].NotInParallelOrder).IsEqualTo(int.MaxValue / 2);
+        await Assert.That(cases["ClassKey"].ParallelGroup).IsNull();
+        await Assert.That(cases["MethodWins"].ConstraintKeys).IsEmpty();
+        await Assert.That(cases["MethodWins"].NotInParallelOrder).IsEqualTo(1);
+        await Assert.That(cases["FromAssembly"].NotInParallelOrder).IsEqualTo(9);
+        await Assert.That(cases["FromAssembly"].ParallelGroup).IsNull();
+    }
+
+    [Test]
+    public async Task ClosedWorldCatalogLeavesUnconstrainedTestsWithoutAParallelConstraint()
+    {
+        const string source = """
+            using TUnit.Core;
+
+            namespace TestProject;
+
+            public sealed class Fixture
+            {
+                [Test]
+                public void Plain() { }
+            }
+            """;
+
+        var testCase = BuildGeneratedCatalog(source, closedWorld: true).Catalog.GetGeneratedCases().Single();
+
+        await Assert.That(testCase.ParallelConstraint).IsNull();
     }
 
     [Test]
@@ -1144,6 +1225,41 @@ internal sealed class GeneratedEntryPointContractTests
             "is ambiguous for the supplied arguments", StringComparison.Ordinal))).IsTrue();
         await Assert.That(errors.Any(static error => error.Contains(
             "use SharedType.None", StringComparison.Ordinal))).IsTrue();
+    }
+
+    [Test]
+    public async Task ClosedWorldCatalogFormatsNegativeHookOrderIndependentlyOfCulture()
+    {
+        // sv-SE writes negative numbers with U+2212, which is not valid C#.
+        const string source = """
+            using TUnit.Core;
+
+            namespace TestProject;
+
+            public sealed class Fixture
+            {
+                [Before(HookType.Test, Order = -1)]
+                public void Setup() { }
+
+                [Test]
+                public void Case() { }
+            }
+            """;
+
+        var culture = global::System.Globalization.CultureInfo.CurrentCulture;
+        global::System.Globalization.CultureInfo.CurrentCulture = new global::System.Globalization.CultureInfo("sv-SE");
+        try
+        {
+            var testCase = BuildGeneratedCatalog(source, closedWorld: true).Catalog.GetGeneratedCases().Single();
+
+            await Assert.That(testCase.Lifecycle.Actions.Single(static action =>
+                    action.Stage == GeneratedLifecycleStage.TestSetup).Order)
+                .IsEqualTo(-1);
+        }
+        finally
+        {
+            global::System.Globalization.CultureInfo.CurrentCulture = culture;
+        }
     }
 
     private static GeneratedCatalogBuild BuildGeneratedCatalog(string source, bool closedWorld)

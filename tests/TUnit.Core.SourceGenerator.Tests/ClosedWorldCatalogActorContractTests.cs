@@ -15,12 +15,13 @@ internal sealed class ClosedWorldCatalogActorContractTests
     {
         IInstanceCreationEmitter emitter = new DirectInstanceCreationEmitter();
         await Assert.That(() => emitter.Emit(null!)).Throws<ArgumentNullException>();
+        // CodeWriter ends lines with the platform newline.
         await Assert.That(emitter.Emit(new InstanceCreationRequest(
             "global::Fixture",
             false,
             ImmutableArray<ConstructorParameter>.Empty,
             ImmutableArray<string>.Empty,
-            ImmutableArray<RequiredProperty>.Empty))).IsEqualTo("return new global::Fixture();\n");
+            ImmutableArray<RequiredProperty>.Empty)).Replace("\r\n", "\n")).IsEqualTo("return new global::Fixture();\n");
 
         var required = emitter.Emit(new InstanceCreationRequest(
             "global::Fixture",

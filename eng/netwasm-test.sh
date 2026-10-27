@@ -11,6 +11,9 @@ PACKAGE_DIR="$(cd "${PACKAGE_DIR}" && pwd -P)"
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/netwasm-tunit-test.XXXXXX")"
 test_root="$(cd "${test_root}" && pwd -P)"
 cleanup() {
+  if [[ -d "${test_root}/source" ]]; then
+    git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree remove --force "${test_root}/source" >/dev/null 2>&1 || true
+  fi
   rm -rf "${test_root}"
 }
 trap cleanup EXIT
@@ -68,8 +71,9 @@ fi
 qualification_root="${REPOSITORY_ROOT}"
 if [[ -n "${NETWASM_CORE_CANDIDATE_VERSION:-}" ]]; then
   qualification_root="${test_root}/source"
-  mkdir -p "${qualification_root}"
-  git -C "${REPOSITORY_ROOT}" archive HEAD | tar -x -C "${qualification_root}"
+  # A detached worktree, not an archive: the catalog generator tests locate
+  # the repository through Git (Sourcy.Git).
+  git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree add --quiet --detach "${qualification_root}" HEAD
   python3 "${qualification_root}/eng/project-netwasm-candidate-version.py" \
     --source-root "${qualification_root}" \
     --version "${NETWASM_CORE_CANDIDATE_VERSION}" \
@@ -123,6 +127,36 @@ ci_package_source_xml="$(xml_escape "$(native_path "${NETWASM_CI_PACKAGE_SOURCE:
     '</configuration>'
 } > "${nuget_config}"
 
+# The closed-world catalog generator and the catalog model run inside desktop
+# builds, so their tests use upstream TUnit on the host runtime. Upstream CI
+# passes TUnit's version to every build; without it, a GitHub Actions build of
+# strong-named TUnit.Core is 1.0.0.0, below the version Verify.TUnit
+# references. Use the high version Directory.Build.props gives local builds.
+upstream_test_version=(-p:Version=99.99.99 -p:AssemblyVersion=99.99.99.0 -p:FileVersion=99.99.99.0)
+catalog_projects=(tests/TUnit.UnitTests/TUnit.UnitTests.csproj)
+# The generator tests include upstream's Verify snapshots, which are keyed by
+# the runtime that runs them and exist for .NET 10. Lanes with only a newer
+# runtime skip them; every OS still runs them on its .NET 10 lane.
+if dotnet --list-runtimes | grep -q '^Microsoft\.NETCore\.App 10\.'; then
+  catalog_projects=(tests/TUnit.Core.SourceGenerator.Tests/TUnit.Core.SourceGenerator.Tests.csproj "${catalog_projects[@]}")
+else
+  echo "Skipping TUnit.Core.SourceGenerator.Tests: its snapshots need the .NET 10 runtime."
+fi
+for catalog_tests in "${catalog_projects[@]}"; do
+  dotnet restore "${qualification_root}/${catalog_tests}" \
+    --configfile "${nuget_config}" \
+    --disable-build-servers \
+    --nologo \
+    "${upstream_test_version[@]}"
+  dotnet run --project "${qualification_root}/${catalog_tests}" \
+    -c Release \
+    -f net10.0 \
+    --no-restore \
+    --no-launch-profile \
+    --disable-build-servers \
+    "${upstream_test_version[@]}"
+done
+
 runner_tests="${qualification_root}/packaging/NetWasm.TUnit.Runner.Tests/NetWasm.TUnit.Runner.Tests.csproj"
 dotnet restore "${runner_tests}" \
   --configfile "${nuget_config}" \
@@ -157,7 +191,7 @@ package_tests="NetWasm.TUnit.Package.Tests/NetWasm.TUnit.Package.Tests.csproj"
     -p:NetWasmTUnitPackageVersion="${TEST_VERSION}"
   dotnet test "${package_tests}" -c Release --no-restore --disable-build-servers --nologo |
     tee "${test_root}/package-run.log"
-  assert_vstest_pass_summary "${test_root}/package-run.log" 7
+  assert_vstest_pass_summary "${test_root}/package-run.log" 11
   dotnet test "${package_tests}" -c Release --no-build --no-restore --list-tests --nologo |
     tee "${test_root}/package-list.log"
   grep -F -q 'PackageOnlyConsumerRunsThroughStandardDotNetTest()' \

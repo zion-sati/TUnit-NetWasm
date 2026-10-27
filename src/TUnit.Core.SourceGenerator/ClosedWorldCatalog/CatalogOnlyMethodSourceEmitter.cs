@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using TUnit.Core.SourceGenerator.CodeGenerators.Helpers;
 using TUnit.Core.SourceGenerator.Extensions;
@@ -47,7 +48,7 @@ internal sealed class CatalogOnlyMethodSourceEmitter : ICatalogOnlyMethodSourceE
                     entry.ClassTypeArgs,
                     entry.MethodTypeArgs,
                     entry.SpecificArgumentsAttribute,
-                    $"__Lifecycle_{index}")))))
+                    $"__Lifecycle_{index.ToString(CultureInfo.InvariantCulture)}")))))
             .ToImmutableArray();
         return _methodSourceEmitter.Emit(new MethodSourceRequest(sourceName, groups));
     }
