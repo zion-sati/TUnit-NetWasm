@@ -81,7 +81,7 @@ done
   echo "Package construction requires a Git checkout." >&2
   exit 2
 }
-[[ -z "$(git -C "${REPOSITORY_ROOT}" status --porcelain=v1)" ]] || {
+[[ -z "$(git -C "${REPOSITORY_ROOT}" -c core.longpaths=true status --porcelain=v1)" ]] || {
   echo "Package construction requires a clean checkout." >&2
   exit 2
 }

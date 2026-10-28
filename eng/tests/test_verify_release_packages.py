@@ -142,6 +142,23 @@ class VerifyReleasePackagesTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"GIT_TRACE": "1"}):
             MODULE.verify_source(source, self.manifest)
 
+    def test_reads_the_source_with_long_paths_enabled(self) -> None:
+        # Upstream's template snapshots are longer than Windows' 260-character path limit.
+        source = self.tagged_release_source()
+        commands = []
+        real = subprocess.check_output
+
+        def record(command, *args, **kwargs):
+            commands.append(command)
+            return real(command, *args, **kwargs)
+
+        with mock.patch.object(MODULE.subprocess, "check_output", side_effect=record):
+            MODULE.verify_source(source, self.manifest)
+
+        self.assertTrue(commands)
+        for command in commands:
+            self.assertEqual(["git", "-c", "core.longpaths=true", "-C"], command[:4])
+
     def test_accepts_github_release_lightweight_tag_without_signer_policy(self) -> None:
         source = self.tagged_release_source()
 

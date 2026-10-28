@@ -24,8 +24,11 @@ TEMPLATE_PATH = Path(
 
 
 def run_git(source_root: Path, *arguments: str) -> bytes:
-    # Only stdout is the answer; Git's diagnostics on stderr stay in the log.
-    return subprocess.check_output(["git", "-C", str(source_root), *arguments])
+    # Only stdout is the answer; Git's diagnostics on stderr stay in the log. Upstream's template
+    # snapshots exceed Windows' 260-character path limit, so Git for Windows needs core.longpaths
+    # to stat them, as it did to check them out.
+    return subprocess.check_output(
+        ["git", "-c", "core.longpaths=true", "-C", str(source_root), *arguments])
 
 
 def tracked_files(source_root: Path) -> list[Path]:
