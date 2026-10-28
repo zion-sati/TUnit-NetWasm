@@ -93,6 +93,23 @@ class ProjectReleaseVersionTests(unittest.TestCase):
         self.assertEqual(3, receipt["replacementCount"])
         self.assertRegex(str(receipt["repositoryCommit"]), "^[0-9a-f]{40}$")
 
+    def test_reads_the_worktree_with_long_paths_enabled(self) -> None:
+        # Upstream's template snapshots are longer than Windows' 260-character path limit; without
+        # core.longpaths, Git for Windows cannot stat them and reports them as modified.
+        commands = []
+        real = subprocess.check_output
+
+        def record(command, *args, **kwargs):
+            commands.append(command)
+            return real(command, *args, **kwargs)
+
+        with mock.patch.object(MODULE.subprocess, "check_output", side_effect=record):
+            self.project("0.2.0")
+
+        self.assertTrue(commands)
+        for command in commands:
+            self.assertEqual(["git", "-c", "core.longpaths=true", "-C"], command[:4])
+
 
 if __name__ == "__main__":
     unittest.main()

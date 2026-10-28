@@ -50,9 +50,10 @@ def read_manifest(path: Path) -> dict[str, object]:
 
 
 def git(source_root: Path, *arguments: str) -> str:
-    # Only stdout is the answer; Git's diagnostics on stderr stay in the log.
+    # Only stdout is the answer; Git's diagnostics on stderr stay in the log. Upstream's template
+    # snapshots exceed Windows' 260-character path limit, so Git for Windows needs core.longpaths.
     return subprocess.check_output(
-        ["git", "-C", str(source_root), *arguments],
+        ["git", "-c", "core.longpaths=true", "-C", str(source_root), *arguments],
         text=True,
     ).strip()
 
