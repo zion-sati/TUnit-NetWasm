@@ -72,7 +72,7 @@ jobs:
             rid: linux-arm64
             architecture: arm64
           - host: macos-arm64
-            runner: macos-14
+            runner: macos-15
             rid: osx-arm64
             architecture: arm64
           - host: windows-x64
