@@ -61,28 +61,19 @@ jobs:
       fail-fast: false
       matrix:
         sdk-major: [10, 11]
-        host: [linux-x64, linux-arm64, macos-arm64, windows-x64, windows-arm64]
+        # One POSIX host and Windows, where the test host's process and path
+        # handling differ. NetWasm's own CI covers its host toolchains on every
+        # supported host.
+        host: [linux-x64, windows-x64]
         include:
           - host: linux-x64
             runner: ubuntu-24.04
             rid: linux-x64
             architecture: x64
-          - host: linux-arm64
-            runner: ubuntu-24.04-arm
-            rid: linux-arm64
-            architecture: arm64
-          - host: macos-arm64
-            runner: macos-15
-            rid: osx-arm64
-            architecture: arm64
           - host: windows-x64
             runner: windows-2025
             rid: win-x64
             architecture: x64
-          - host: windows-arm64
-            runner: windows-11-vs2026-arm
-            rid: win-arm64
-            architecture: arm64
     steps:
       - name: Check out source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
