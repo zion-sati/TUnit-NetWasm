@@ -53,6 +53,18 @@ builds at compile time. The catalog supports:
 The build reports any other TUnit attribute as unsupported instead of
 ignoring it. Features that need runtime reflection are not available.
 
+## Test context
+
+`TestContext.Current` is the running test's context, in its test-level
+`[Before]` and `[After]` hooks, in its body and after its awaits. Its
+`Metadata` carries what the catalog records for the test, under upstream
+TUnit's names: `TestName`, `DisplayName`, `DefinitionId` and `TestDetails`,
+which has `TestId`, `TestName`, `MethodName`, `ClassType`, `ClassInstance`,
+`TestMethodArguments`, `TestClassArguments`, `Categories`, `CustomProperties`,
+`Timeout`, `RetryLimit`, `TestFilePath` and `TestLineNumber`. Upstream's other
+context members, such as output capture, the state bag and events, are not
+available on `netwasm0.1`.
+
 ## Packages
 
 [![NuGet: NetWasm.TUnit](https://img.shields.io/badge/NuGet-NetWasm.TUnit-004880?logo=nuget)](https://www.nuget.org/packages/NetWasm.TUnit)
