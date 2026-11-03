@@ -177,9 +177,9 @@ package_tests="NetWasm.TUnit.Package.Tests/NetWasm.TUnit.Package.Tests.csproj"
   assert_vstest_pass_summary "${test_root}/package-run.log" 11
   dotnet test "${package_tests}" -c Release --no-build --no-restore --list-tests --nologo |
     tee "${test_root}/package-list.log"
-  grep -F -q 'PackageOnlyConsumerRunsThroughStandardDotNetTest()' \
+  grep -E -q '^[[:space:]]+PackageOnlyConsumerRunsThroughStandardDotNetTest$' \
     "${test_root}/package-list.log"
-  grep -F -q 'FilterCanaryPreservesTraits()' \
+  grep -E -q '^[[:space:]]+FilterCanaryPreservesTraits$' \
     "${test_root}/package-list.log"
   dotnet test "${package_tests}" -c Release --no-build --no-restore \
     --filter "FullyQualifiedName=NetWasm.TUnit.Package.Tests.PackageSmokeTests.PackageOnlyConsumerRunsThroughStandardDotNetTest" \
