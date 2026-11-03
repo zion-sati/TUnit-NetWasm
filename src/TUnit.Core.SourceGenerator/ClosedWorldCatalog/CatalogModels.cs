@@ -1,25 +1,25 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using TUnit.Core.SourceGenerator.Generators;
 using TUnit.Core.SourceGenerator.Models;
 
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
 
-internal sealed record CatalogValue(string Code, string Canonical, string Display);
+// A row value's code, identity and display; an [Arguments] constant also carries its type.
+internal sealed record CatalogValue(string Code, string Canonical, string Display, ITypeSymbol? ConstantType = null);
 
 internal sealed record CatalogArgumentRow(
     ImmutableArray<CatalogValue> Values,
     string? DisplayName = null,
-    string? Identity = null,
     string? SkipReason = null,
     ImmutableArray<string> Categories = default);
 
 internal sealed record CatalogRowRequest(
     string MethodIdentity,
-    string MethodName,
+    string TestName,
     ImmutableArray<CatalogArgumentRow> MethodRows,
     ImmutableArray<CatalogArgumentRow> ConstructorRows,
     bool HasRuntimeDataSource,
-    string? SelectedMethodRowIdentity = null,
     string? MethodDisplayName = null,
     ImmutableArray<string> MethodParameterNames = default,
     string? ClassDisplayName = null,
@@ -85,14 +85,6 @@ internal sealed record CatalogCollectionRequest(
     ImmutableArray<CatalogCollectionGroup> Groups,
     bool IncludeGroupMethods = true);
 
-internal sealed record RoslynArgumentRowsRequest(ImmutableArray<AttributeData> Attributes);
-
-internal sealed record RoslynCatalogRowBuildRequest(
-    TestMethodMetadata TestMethod,
-    string MethodIdentity,
-    string MethodName,
-    AttributeData? SelectedArgumentsAttribute);
-
 internal sealed record CatalogRoslynEmissionRequest(
     TestMethodMetadata TestMethod,
     string ConcreteClassName,
@@ -101,5 +93,5 @@ internal sealed record CatalogRoslynEmissionRequest(
     string GeneratedIdentitySuffix,
     ITypeSymbol[] ClassTypeArguments,
     ITypeSymbol[] MethodTypeArguments,
-    AttributeData? SelectedArgumentsAttribute,
+    TestMetadataGenerator.ConcreteInstantiation? Instantiation,
     string LifecycleName);

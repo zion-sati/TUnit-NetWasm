@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
@@ -115,10 +116,10 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
     /// for a resource that has already exited — and even after the application has been disposed.
     /// </para>
     /// <para>
-    /// Otherwise it falls back to a best-effort live read of Aspire's
-    /// <c>ResourceLoggerService.WatchAsync</c> backlog, which can return an empty list for a resource
-    /// that already exited (the "(no logs available)" race). Enable retention for reliable
-    /// post-mortem retrieval. Returns an empty list when the application is not initialized.
+    /// Otherwise it falls back to a best-effort read of Aspire's persisted console streams via
+    /// <c>ResourceLoggerService.GetAllAsync</c>, which only works while the application is still
+    /// running. Enable retention for reliable post-mortem retrieval. Returns an empty list when the
+    /// application is not initialized.
     /// </para>
     /// </remarks>
     /// <param name="resourceName">The resource whose logs to retrieve.</param>
@@ -257,26 +258,72 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
 
         var cts = new CancellationTokenSource();
         var loggerService = App.Services.GetRequiredService<ResourceLoggerService>();
+        var notificationService = App.Services.GetRequiredService<ResourceNotificationService>();
 
-        _ = PumpResourceLogsAsync(loggerService, resourceName,
+        _ = PumpResourceLogsAsync(loggerService, notificationService, resourceName,
             line => testContext.Output.WriteLine($"[{resourceName}] {line}"), cts.Token);
 
         return new ResourceLogWatcher(cts);
     }
 
     /// <summary>
-    /// Reads a resource's console output via <see cref="ResourceLoggerService.WatchAsync(string)"/>
-    /// and hands each raw line to <paramref name="write"/> until <paramref name="token"/> is
-    /// cancelled. The stream replays the buffered backlog before tailing live output (so logs from
-    /// an already-exited resource are still delivered) and never completes on its own, so the token
-    /// is the only way it ends.
+    /// Streams a resource's console output and hands each raw line to <paramref name="write"/>
+    /// until <paramref name="token"/> is cancelled, which is the only way it ends.
     /// </summary>
+    /// <remarks>
+    /// DCP-backed resources (executables, projects, containers) log under their runtime instance
+    /// names (the model name plus a unique suffix, one per replica), not the model name, and those
+    /// names are only assigned during startup. So besides the model-name stream (in-memory loggers,
+    /// non-DCP resources), this follows <see cref="ResourceNotificationService.WatchAsync"/> and
+    /// opens one more stream per distinct <see cref="ResourceEvent.ResourceId"/> as instances appear.
+    /// Each stream replays its backlog first, so an instance that already exited still delivers its
+    /// output. Streams may produce concurrently, so <paramref name="write"/> is serialized here.
+    /// </remarks>
     private static async Task PumpResourceLogsAsync(ResourceLoggerService loggerService,
-        string resourceName, Action<string> write, CancellationToken token)
+        ResourceNotificationService notificationService, string resourceName, Action<string> write,
+        CancellationToken token)
+    {
+        var gate = new object();
+        Action<string> serializedWrite = line =>
+        {
+            lock (gate)
+            {
+                write(line);
+            }
+        };
+
+        var streams = new List<Task> { PumpLogStreamAsync(loggerService, resourceName, serializedWrite, token) };
+        var watched = new HashSet<string>(StringComparer.Ordinal) { resourceName };
+
+        try
+        {
+            await foreach (var evt in notificationService.WatchAsync(token))
+            {
+                if (string.Equals(evt.Resource.Name, resourceName, StringComparison.Ordinal)
+                    && watched.Add(evt.ResourceId))
+                {
+                    streams.Add(PumpLogStreamAsync(loggerService, evt.ResourceId, serializedWrite, token));
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the watcher is disposed or the fixture is torn down.
+        }
+
+        await Task.WhenAll(streams);
+    }
+
+    /// <summary>
+    /// Tails one <see cref="ResourceLoggerService.WatchAsync(string)"/> log stream (backlog first,
+    /// then live output) until <paramref name="token"/> is cancelled or the stream is completed.
+    /// </summary>
+    private static async Task PumpLogStreamAsync(ResourceLoggerService loggerService,
+        string loggerName, Action<string> write, CancellationToken token)
     {
         try
         {
-            await foreach (var batch in loggerService.WatchAsync(resourceName)
+            await foreach (var batch in loggerService.WatchAsync(loggerName)
                 .WithCancellation(token))
             {
                 foreach (var line in batch)
@@ -341,6 +388,7 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
         _logForwardCts = CancellationTokenSource.CreateLinkedTokenSource(RunCancellationToken);
         var token = _logForwardCts.Token;
         var loggerService = app.Services.GetRequiredService<ResourceLoggerService>();
+        var notificationService = app.Services.GetRequiredService<ResourceNotificationService>();
 
         // Bind each resource's sink once, so the per-line path is a single write with no per-line
         // branch. PumpResourceLogsAsync is async and yields at its first await, so calling it
@@ -365,7 +413,7 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
                 _ => static _ => { }, // unreachable: forward || retain guaranteed above
             };
 
-            return PumpResourceLogsAsync(loggerService, name, write, token);
+            return PumpResourceLogsAsync(loggerService, notificationService, name, write, token);
         }));
     }
 
@@ -513,6 +561,12 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
 
     /// <summary>
     /// Resources to be removed from the <see cref="DistributedApplicationTestingBuilder"/>.
+    /// <para>
+    /// Children of a removed resource (for example a database on a removed server) are removed too.
+    /// Kept resources lose their <c>WaitFor</c> edges on removed resources, and environment variables
+    /// or arguments that reference a removed resource (from <c>WithReference</c>, endpoint or
+    /// connection-string values) are not set. Each change is logged through <see cref="LogProgress"/>.
+    /// </para>
     /// </summary>
     protected virtual IEnumerable<string> ResourcesToRemove() => [];
 
@@ -630,6 +684,9 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
         LogProgress($"Creating distributed application builder for {typeof(TAppHost).Name}...");
         var builder = await DistributedApplicationTestingBuilder.CreateAsync<TAppHost>(Args, ConfigureAppHost, RunCancellationToken);
         ConfigureBuilder(builder);
+
+        // After ConfigureBuilder so edges the user adds are detached too. Removal wraps the
+        // environment and args callbacks present now; ones added later are not filtered.
         RemoveResources(builder);
 
         // Configure OTLP endpoint on project resources AFTER user's ConfigureBuilder
@@ -720,23 +777,7 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
     }
 
     private void RemoveResources(IDistributedApplicationTestingBuilder builder)
-    {
-        foreach (var name in ResourcesToRemove())
-        {
-            var resource =
-                builder.Resources.SingleOrDefault(r =>
-                    string.Equals(r.Name, name, StringComparison.Ordinal));
-
-            if (resource is not null)
-            {
-                builder.Resources.Remove(resource);
-            }
-            else
-            {
-                LogProgress($"ResourcesToRemove: resource '{name}' not found (skipped).");
-            }
-        }
-    }
+        => ResourceRemoval.Remove(builder.Resources, ResourcesToRemove(), LogProgress);
 
     /// <summary>
     /// Disposes the Aspire distributed application. Override to add custom cleanup:
@@ -1090,13 +1131,11 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
     /// </summary>
     private static async Task<bool> ResourceProducedConsoleOutputAsync(DistributedApplication app, string resourceName, TimeSpan timeout)
     {
-        var loggerService = app.Services.GetRequiredService<ResourceLoggerService>();
-
         using var cts = new CancellationTokenSource(timeout);
 
         try
         {
-            await foreach (var batch in loggerService.WatchAsync(resourceName)
+            await foreach (var batch in ReadAllResourceLogsAsync(app, resourceName)
                 .WithCancellation(cts.Token))
             {
                 if (batch.Count > 0)
@@ -1109,8 +1148,36 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
         {
             // No output within the window.
         }
+        catch (Exception ex) when (ex is not ObjectDisposedException)
+        {
+            // Best-effort: an unreadable console stream counts as no output.
+        }
 
         return false;
+    }
+
+    /// <summary>
+    /// Reads every log line a resource has written so far, then completes. Resolves the model
+    /// resource so <see cref="ResourceLoggerService.GetAllAsync(IResource)"/> reads each runtime
+    /// instance's persisted console stream — DCP-backed resources log under instance names (model
+    /// name plus a unique suffix), so a read by model name alone sees none of their output. Falls
+    /// back to the by-name read for a name the model does not contain.
+    /// </summary>
+    private static IAsyncEnumerable<IReadOnlyList<LogLine>> ReadAllResourceLogsAsync(
+        DistributedApplication app, string resourceName)
+    {
+        var loggerService = app.Services.GetRequiredService<ResourceLoggerService>();
+        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
+
+        foreach (var resource in model.Resources)
+        {
+            if (string.Equals(resource.Name, resourceName, StringComparison.Ordinal))
+            {
+                return loggerService.GetAllAsync(resource);
+            }
+        }
+
+        return loggerService.GetAllAsync(resourceName);
     }
 
     /// <summary>
@@ -1283,62 +1350,39 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
         // Track which resources have become ready (for timeout reporting)
         var readyResources = new ConcurrentBag<string>();
 
-        // Linked CTS lets us cancel the failure watchers once all resources are ready
-        using var failureCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
         var targetState = waitForHealthy ? "healthy" : "running";
         LogProgress($"Waiting for {visibleNames.Count} resource(s) to become {targetState}: [{string.Join(", ", visibleNames)}]");
 
-        // Success path: wait for all resources to reach the desired state
-        var readyTask = Task.WhenAll(visibleNames.Select(async name =>
-        {
-            if (waitForHealthy)
-            {
-                await notificationService.WaitForResourceHealthyAsync(name, cancellationToken);
-            }
-            else
-            {
-                await notificationService.WaitForResourceAsync(name, KnownResourceStates.Running, cancellationToken);
-            }
-
-            readyResources.Add(name);
-            LogProgress($"  Resource '{name}' is {targetState} ({readyResources.Count}/{visibleNames.Count})");
-        }));
-
-        // Fail-fast path: complete as soon as ANY resource enters a genuine failure state.
-        // Watch a non-zero Exited too — a container that crash-exits cleanly never reports
-        // FailedToStart, so without it we would wait the full timeout for an already-dead
-        // resource. A clean (code 0) exit is excluded so successful one-shot resources
-        // (migration runners, seeders) aren't mis-reported as failures (see IsFailureState).
-        var failureTasks = visibleNames.Select(async name =>
-        {
-            await notificationService.WaitForResourceAsync(name, evt => IsFailureState(evt.Snapshot), failureCts.Token);
-            return name;
-        }).ToList();
-        var anyFailureTask = Task.WhenAny(failureTasks);
-
         try
         {
-            // Race: all resources ready vs. any resource failed
-            var completed = await Task.WhenAny(readyTask, anyFailureTask);
+            var failedName = await ResourceStartupWaiter.WaitAsync(
+                visibleNames,
+                async (name, token) =>
+                {
+                    if (waitForHealthy)
+                    {
+                        await notificationService.WaitForResourceHealthyAsync(name, token);
+                    }
+                    else
+                    {
+                        await notificationService.WaitForResourceAsync(name, KnownResourceStates.Running, token);
+                    }
 
-            if (completed == anyFailureTask)
+                    readyResources.Add(name);
+                    LogProgress($"  Resource '{name}' is {targetState} ({readyResources.Count}/{visibleNames.Count})");
+                },
+                // Watch both launch failures and non-zero terminal exits, but not successful one-shot resources.
+                (name, token) => notificationService.WaitForResourceAsync(
+                    name, evt => IsFailureState(evt.Snapshot), token),
+                cancellationToken);
+
+            if (failedName is not null)
             {
-                failureCts.Cancel();
-                var failedName = await await anyFailureTask;
-
-                // "failed during startup" (not "failed to start") because the trigger covers both a
-                // launch failure (FailedToStart) and a crash-exit that reached a terminal state
-                // (Exited/Finished with a non-zero code) — see IsFailureState.
                 var headline = $"Aspire startup aborted: resource '{failedName}' failed during startup.";
                 throw new InvalidOperationException(
                     await BuildDiagnosticsAndAttachAsync(
                         app, notificationService, headline, [failedName], readyResources.ToArray()));
             }
-
-            // All resources are ready - cancel the failure watchers
-            failureCts.Cancel();
-            await readyTask;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1351,8 +1395,6 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
 
             // Timeout - diagnose each pending resource (state, exit code, health, dependencies)
             // and attach the full timeline + untruncated logs as an artifact.
-            failureCts.Cancel();
-
             var readySet = new HashSet<string>(readyResources);
             var pending = visibleNames.Where(n => !readySet.Contains(n)).ToList();
 
@@ -1360,14 +1402,30 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
             throw new TimeoutException(
                 await BuildDiagnosticsAndAttachAsync(app, notificationService, headline, pending, readySet));
         }
+        catch (DistributedApplicationException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Aspire's health wait throws once a resource reaches a terminal state without becoming
+            // healthy. That can beat the fail-fast watcher to the same crash, so report it the same
+            // way (with diagnostics) instead of leaking Aspire's bare exception.
+            var readySet = new HashSet<string>(readyResources);
+            var pending = visibleNames.Where(n => !readySet.Contains(n)).ToList();
+            var failed = pending
+                .Where(n => notificationService.TryGetCurrentState(n, out var ev) && ev.Snapshot.State?.Text is { } state && IsTerminalState(state))
+                .ToList();
+
+            var headline = $"Aspire startup aborted: {ex.Message}";
+            throw new InvalidOperationException(
+                await BuildDiagnosticsAndAttachAsync(
+                    app, notificationService, headline, failed.Count > 0 ? failed : pending, readySet),
+                ex);
+        }
     }
 
     /// <summary>
-    /// Collects buffered log lines from a resource via the <see cref="ResourceLoggerService"/>,
-    /// or an empty list if none are available. <see cref="ResourceLoggerService.WatchAsync(string)"/>
-    /// replays the buffered backlog before tailing live output (so logs from an already-exited
-    /// resource are still captured) and never completes on its own, so <paramref name="timeout"/>
-    /// bounds the wait.
+    /// Collects the log lines a resource has written so far via <see cref="ReadAllResourceLogsAsync"/>,
+    /// or an empty list if none are available. The read covers every runtime instance's persisted
+    /// console stream (so logs from an already-exited resource are still captured) and completes on
+    /// its own; <paramref name="timeout"/> bounds a slow read.
     /// </summary>
     /// <param name="timeout">Time budget for collection. Defaults to 5 seconds.</param>
     /// <param name="errorsOnly">When <c>true</c>, keeps only stderr lines (raw content). When
@@ -1384,8 +1442,6 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
         int max = -1,
         bool markErrors = true)
     {
-        var loggerService = app.Services.GetRequiredService<ResourceLoggerService>();
-
         // When a cap is set, keep only the most recent `max` lines in a sliding window so memory
         // stays proportional to `max` — the backlog can be large on a long run with a shared fixture,
         // and buffering it all just to discard the head would allocate it twice over.
@@ -1397,7 +1453,7 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
 
         try
         {
-            await foreach (var batch in loggerService.WatchAsync(resourceName)
+            await foreach (var batch in ReadAllResourceLogsAsync(app, resourceName)
                 .WithCancellation(cts.Token))
             {
                 foreach (var line in batch)
@@ -1429,6 +1485,11 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
         catch (OperationCanceledException)
         {
             // Expected - we use a short timeout to collect buffered logs.
+        }
+        catch (Exception ex) when (ex is not ObjectDisposedException)
+        {
+            // Best-effort: keep whatever was read before the console stream failed (e.g. DCP
+            // shutting down mid-read). Disposal still propagates — callers handle it explicitly.
         }
 
         return bounded ? window!.ToList() : all!;
@@ -1705,13 +1766,22 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
             return "(unknown)";
         }
 
-        return DecodeExitCode(code) is { } meaning ? $"{code} ({meaning})" : code.ToString();
+        var number = FormatExitCodeNumber(code);
+        return DecodeExitCode(code) is { } meaning ? $"{number} ({meaning})" : number;
     }
+
+    /// <summary>
+    /// Formats an exit code with the invariant culture: exit codes are identifiers to search for, and cultures such
+    /// as sv-SE would otherwise print negative Windows codes with U+2212 MINUS SIGN.
+    /// </summary>
+    private static string FormatExitCodeNumber(int code) => code.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>One-line human description of a resource's failure state for the concise exception message.</summary>
     internal static string DescribeState(in ResourceDiagnosis d) => d.Class switch
     {
-        ResourceFailureClass.OutOfMemory => $"{d.State}, exit code {d.ExitCode} (OOM / SIGKILL)",
+        ResourceFailureClass.OutOfMemory => d.ExitCode is int oomCode
+            ? $"{d.State}, exit code {FormatExitCodeNumber(oomCode)} (OOM / SIGKILL)"
+            : $"{d.State} (OOM / SIGKILL)",
         ResourceFailureClass.NonZeroExit => $"{d.State}, exit code {FormatExitCode(d.ExitCode)}",
         ResourceFailureClass.CrashedNoCode => $"{d.State} (no exit code)",
         ResourceFailureClass.HealthCheckFailing => d.Detail is { Length: > 0 } health
@@ -1807,7 +1877,7 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
                 }
 
                 return dep.Snapshot.ExitCode is int code
-                    ? $"'{depName}' ({depState}, exit code {code})"
+                    ? $"'{depName}' ({depState}, exit code {FormatExitCodeNumber(code)})"
                     : $"'{depName}' ({depState})";
             }
 
@@ -1987,7 +2057,7 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
         sb.AppendLine($"  State:      {diagnosis.State}");
         if (diagnosis.ExitCode is int code)
         {
-            sb.Append($"  Exit code:  {code}");
+            sb.Append($"  Exit code:  {FormatExitCodeNumber(code)}");
             if (DecodeExitCode(code) is { } meaning)
             {
                 sb.Append($" ({meaning})");
@@ -2078,7 +2148,7 @@ public class AspireFixture<TAppHost> : IAsyncInitializer, IAsyncDisposable, ITes
             if (notificationService.TryGetCurrentState(depName, out var dep) && dep is not null)
             {
                 var depState = dep.Snapshot.State?.Text ?? "unknown";
-                description = dep.Snapshot.ExitCode is int code ? $"{depState}, exit code {code}" : depState;
+                description = dep.Snapshot.ExitCode is int code ? $"{depState}, exit code {FormatExitCodeNumber(code)}" : depState;
             }
             else
             {

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using TUnit.Core;
 using TUnit.Core.Discovery;
 using TUnit.Core.Helpers;
@@ -8,7 +9,6 @@ using TUnit.Core.PropertyInjection;
 using TUnit.Core.Tracking;
 #if NET
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading;
 #endif
 
@@ -33,10 +33,10 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
     private readonly ObjectGraphDiscoveryService _objectGraphDiscoveryService;
     private readonly ObjectTracker _objectTracker;
 
-    // Track initialization state per object
-    // Use ReferenceEqualityComparer to prevent objects with custom Equals from sharing initialization state
-    private readonly ConcurrentDictionary<object, TaskCompletionSource<bool>> _initializationTasks =
-        new(Core.Helpers.ReferenceEqualityComparer.Instance);
+    // Track initialization state per object. ConditionalWeakTable compares keys by reference, so objects
+    // with custom Equals never share initialization state, and it does not keep per-test objects alive
+    // for the rest of the session once their test has finished (#7260).
+    private readonly ConditionalWeakTable<object, TaskCompletionSource<bool>> _initializationTasks = new();
 
 #if NET
     // Gates span creation so only the first caller for a given object creates a trace span.
@@ -99,6 +99,12 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
             }
         }
     }
+
+    /// <summary>
+    /// Tracks the objects a test already holds for reference-counted disposal, without resolving
+    /// injected properties or initializing anything. Used for tests that are skipped before they run.
+    /// </summary>
+    public void TrackTestObjects(TestContext testContext) => _objectTracker.TrackObjects(testContext);
 
     /// <summary>
     /// IObjectRegistry implementation - registers a single object.
@@ -261,6 +267,8 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
         // SortedList keeps keys in ascending order; iterate by index in reverse for descending depth.
         var trackedObjects = testContext.TrackedObjectsIfCreated;
         var values = trackedObjects is not { Count: > 0 } ? (IList<HashSet<object>>)Array.Empty<HashSet<object>>() : trackedObjects.Values;
+        // Objects reachable only from rows the test never receives are tracked for disposal only (#7157).
+        var disposalOnly = testContext.DisposalOnlyTrackedObjects;
 
         for (var i = values.Count - 1; i >= 0; i--)
         {
@@ -270,6 +278,11 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
             var tasks = new List<Task>(objectsAtLevel.Count);
             foreach (var obj in objectsAtLevel)
             {
+                if (disposalOnly?.Contains(obj) == true)
+                {
+                    continue;
+                }
+
                 // Tracked objects were discovered before execution and are already
                 // ordered deepest-first, so nested graph traversal would be redundant.
                 tasks.Add(InitializeObjectWithSpanAsync(obj, testContext, cancellationToken, includeNestedObjects: false));
@@ -468,7 +481,15 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
 
         // Slow path: need to initialize
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        existingTcs = _initializationTasks.GetOrAdd(obj, tcs);
+        // Lock instead of GetValue(obj, _ => tcs) so the slow path does not allocate a closure.
+        lock (_initializationTasks)
+        {
+            if (!_initializationTasks.TryGetValue(obj, out existingTcs))
+            {
+                _initializationTasks.Add(obj, tcs);
+                existingTcs = tcs;
+            }
+        }
 
         if (existingTcs == tcs)
         {
@@ -609,15 +630,4 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
     }
 
     #endregion
-
-    /// <summary>
-    /// Clears the initialization cache. Called at end of test session.
-    /// </summary>
-    public void ClearCache()
-    {
-        _initializationTasks.Clear();
-#if NET
-        _spannedObjects.Clear();
-#endif
-    }
 }

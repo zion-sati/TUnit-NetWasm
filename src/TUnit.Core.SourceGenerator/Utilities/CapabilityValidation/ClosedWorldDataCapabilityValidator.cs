@@ -53,13 +53,11 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
                         attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core"));
                 if (argumentAttributes.Length == 0 && !hasRuntimeDataSource)
                 {
-                    var methodParameters = method.Parameters;
-                    if (methodParameters.Length > 0 &&
-                        methodParameters[^1].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
-                        "global::System.Threading.CancellationToken")
-                    {
-                        methodParameters = methodParameters.RemoveAt(methodParameters.Length - 1);
-                    }
+                    // The token binds wherever the method declares it (#7185); rows fill the rest.
+                    var methodParameters = method.Parameters
+                        .Where(static parameter => parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) !=
+                                                   "global::System.Threading.CancellationToken")
+                        .ToImmutableArray();
 
                     if (!ValidateArgumentCount(methodParameters, 0, out var countMessage, "test method"))
                     {
@@ -70,13 +68,11 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
                 foreach (var argumentAttribute in argumentAttributes)
                 {
                     var values = GetArgumentValues(argumentAttribute);
-                    var methodParameters = method.Parameters;
-                    if (methodParameters.Length > 0 &&
-                        methodParameters[^1].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
-                        "global::System.Threading.CancellationToken")
-                    {
-                        methodParameters = methodParameters.RemoveAt(methodParameters.Length - 1);
-                    }
+                    // The token binds wherever the method declares it (#7185); rows fill the rest.
+                    var methodParameters = method.Parameters
+                        .Where(static parameter => parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) !=
+                                                   "global::System.Threading.CancellationToken")
+                        .ToImmutableArray();
 
                     if (!ValidateArgumentCount(methodParameters, values.Length, out var countMessage, "test method"))
                     {
@@ -176,12 +172,19 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
 
     private static bool SupportsConstant(TypedConstant value, ITypeSymbol targetType, CSharpCompilation compilation)
     {
+        // The row's values close a type parameter to the types they infer, so they need no
+        // conversion; a row whose types break the constraints fails as a test, as on desktop.
+        if (ContainsTypeParameter(targetType))
+        {
+            return true;
+        }
+
         if (value.IsNull)
         {
             return targetType.IsReferenceType || IsNullable(targetType);
         }
 
-        if (targetType is ITypeParameterSymbol || SymbolEqualityComparer.Default.Equals(value.Type, targetType))
+        if (SymbolEqualityComparer.Default.Equals(value.Type, targetType))
         {
             return true;
         }
@@ -269,6 +272,14 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
             .FirstOrDefault()
             ?? constructors.OrderByDescending(static constructor => constructor.Parameters.Length).FirstOrDefault();
     }
+
+    private static bool ContainsTypeParameter(ITypeSymbol type) => type switch
+    {
+        ITypeParameterSymbol => true,
+        IArrayTypeSymbol array => ContainsTypeParameter(array.ElementType),
+        INamedTypeSymbol named => named.TypeArguments.Any(ContainsTypeParameter),
+        _ => false,
+    };
 
     private static bool IsNullable(ITypeSymbol type) => IsNullable(type, out _);
 

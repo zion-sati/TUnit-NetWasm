@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using TUnit.Core.SourceGenerator.CodeGenerators.Formatting;
 using TUnit.Core.SourceGenerator.CodeGenerators.Helpers;
 using TUnit.Core.SourceGenerator.Extensions;
+using TUnit.Core.SourceGenerator.Generators;
 using TUnit.Core.SourceGenerator.Models;
 
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
@@ -51,43 +52,39 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         var generatedIdentitySuffix = request.GeneratedIdentitySuffix;
         var classTypeArguments = request.ClassTypeArguments;
         var methodTypeArguments = request.MethodTypeArguments;
-        var selectedArgumentsAttribute = request.SelectedArgumentsAttribute;
         var lifecycleName = request.LifecycleName;
         if (testMethod is null) throw new ArgumentNullException(nameof(request.TestMethod));
-        var runtimeMethodDataSources = testMethod.MethodAttributes
+        if (request.Instantiation?.MethodConstraintViolations is { Count: > 0 } violations)
+        {
+            return EmitViolationCases(request, violations);
+        }
+
+        // The rows an instantiation runs, as the desktop source generator selects them: every
+        // [Arguments] row that infers its type arguments, multiplied by its class rows.
+        var (methodDataSources, classDataSources) =
+            TestMetadataGenerator.SelectEntryDataSources(testMethod, request.Instantiation);
+        var runtimeMethodDataSources = methodDataSources
             .Where(static attribute => IsMethodDataSource(attribute.AttributeClass))
             .ToArray();
         var methodValueParameters = testMethod.MethodSymbol.Parameters
             .Where(static parameter => parameter.Type.GloballyQualified() != "global::System.Threading.CancellationToken")
             .ToImmutableArray();
-        var methodAttributes = testMethod.MethodSymbol.GetAttributes()
+        var methodRows = methodDataSources
             .Where(static attribute => attribute.AttributeClass?.Name == "ArgumentsAttribute")
-            .ToArray();
-        var selectedClassArguments = selectedArgumentsAttribute is not null &&
-            testMethod.TypeSymbol.GetAttributes().Any(attribute => SameAttribute(attribute, selectedArgumentsAttribute));
-        var methodRows = methodAttributes
             .Select(ToArgumentRow)
             .ToImmutableArray();
-        var selectedMethodIdentity = selectedArgumentsAttribute is not null && !selectedClassArguments
-            ? ArgumentIdentity(selectedArgumentsAttribute)
-            : null;
-        var constructorRows = selectedClassArguments
-            ? ImmutableArray.Create(ToArgumentRow(selectedArgumentsAttribute!))
-            : testMethod.TypeSymbol.GetAttributes()
-                .Where(static attribute => attribute.AttributeClass?.Name == "ArgumentsAttribute")
-                .Select(ToArgumentRow)
-                .ToImmutableArray();
+        var constructorRows = classDataSources
+            .Where(static attribute => attribute.AttributeClass?.Name == "ArgumentsAttribute")
+            .Select(ToArgumentRow)
+            .ToImmutableArray();
         var rows = _rowPlanner.Plan(new CatalogRowRequest(
             GetMethodIdentity(testMethod.MethodSymbol, fullyQualifiedName) + generatedIdentitySuffix,
-            testMethod.MethodSymbol.Name,
+            request.Instantiation?.TestName ?? testMethod.MethodSymbol.Name,
             methodRows,
             constructorRows,
-            testMethod.MethodAttributes.Any(static attribute =>
-                DataSourceAttributeHelper.IsDataSourceAttribute(attribute.AttributeClass) &&
-                attribute.AttributeClass?.Name != "ArgumentsAttribute") ||
+            methodDataSources.Any(static attribute => attribute.AttributeClass?.Name != "ArgumentsAttribute") ||
             testMethod.MethodSymbol.Parameters.Any(static parameter => parameter.GetAttributes().Any(attribute =>
                 IsClassDataSource(attribute.AttributeClass))),
-            selectedMethodIdentity,
             GetMethodDisplayName(testMethod),
             testMethod.MethodSymbol.Parameters
                 .Where(static parameter => parameter.Type.GloballyQualified() != "global::System.Threading.CancellationToken")
@@ -104,7 +101,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         var constructor = GetPrimaryConstructor(concreteType);
         var constructorParameters = constructor?.Parameters ?? ImmutableArray<IParameterSymbol>.Empty;
         var methodClassDataSources = ResolveClassDataSources(
-            testMethod.MethodAttributes,
+            methodDataSources,
             methodValueParameters,
             testMethod,
             classTypeArguments,
@@ -116,7 +113,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
                 methodTypeArguments,
                 "test method"));
         var constructorClassDataSources = ResolveClassDataSources(
-            testMethod.TypeSymbol.GetAttributes(),
+            classDataSources,
             constructorParameters,
             testMethod,
             classTypeArguments,
@@ -135,7 +132,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         {
             foreach (var row in rows)
             {
-                var instanceRequest = CreateInstanceRequest(concreteType, row.ConstructorValues);
+                var instanceRequest = CreateInstanceRequest(request, concreteType, row.ConstructorValues);
                 var invocationRequest = CreateInvocationRequest(testMethod, methodTypeArguments, classTypeArguments, row.MethodValues);
                 source.AppendRaw(_caseEmitter.Emit(new CaseRequest(
                     concreteClassName,
@@ -193,6 +190,122 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         }
 
         return source.ToString();
+    }
+
+    // Type arguments that break the method's or class's constraints, or that no data source
+    // determines, leave nothing to call. Each row fails with the violation, one test per row as the
+    // desktop engine reports it: an [Arguments] row, every row a method data source produces, or one
+    // test when no data source supplied the types (#7107, #7163).
+    private string EmitViolationCases(
+        CatalogRoslynEmissionRequest request,
+        IReadOnlyList<TestMetadataGenerator.MethodConstraintViolation> violations)
+    {
+        var testMethod = request.TestMethod;
+        var methodDataSources = testMethod.MethodSymbol.GetAttributes()
+            .Where(static attribute => DataSourceAttributeHelper.IsDataSourceAttribute(attribute.AttributeClass))
+            .ToArray();
+        var identity = EscapeString(GetMethodIdentity(testMethod.MethodSymbol, request.FullyQualifiedName) + request.GeneratedIdentitySuffix);
+        var writer = new CodeWriter(includeHeader: false);
+        for (var violationIndex = 0; violationIndex < violations.Count; violationIndex++)
+        {
+            var violation = violations[violationIndex];
+            var failure = $"new global::TUnit.Core.Exceptions.GenericTypeResolutionException(\"{EscapeString(violation.Message)}\")";
+            var rowSources = violation.RowSource is { } rowSource
+                ? [rowSource]
+                : violation.AllMethodDataSources ? methodDataSources : Array.Empty<AttributeData>();
+            var prefix = $"{identity}#violation-{violationIndex.ToString(CultureInfo.InvariantCulture)}";
+            if (rowSources.Length == 0)
+            {
+                EmitViolationCase(writer, request, failure, $"\"{prefix}\"");
+                continue;
+            }
+
+            for (var sourceIndex = 0; sourceIndex < rowSources.Length; sourceIndex++)
+            {
+                var attribute = rowSources[sourceIndex];
+                var sourcePrefix = $"{prefix}:source-{sourceIndex.ToString(CultureInfo.InvariantCulture)}";
+                if (attribute.AttributeClass?.Name == "ArgumentsAttribute")
+                {
+                    EmitViolationCase(writer, request, failure, $"\"{sourcePrefix}\"");
+                    continue;
+                }
+
+                if (!IsMethodDataSource(attribute.AttributeClass))
+                {
+                    throw new InvalidOperationException(
+                        $"[{attribute.AttributeClass?.Name}] rows whose type arguments break '{testMethod.MethodSymbol.Name}''s constraints are not supported by the closed-world catalog.");
+                }
+
+                var provider = ResolveMethodDataSourceProvider(testMethod, request, attribute);
+                var providerResult = UnwrapAwaitable(provider.ResultType, out var awaitProvider);
+                var isAsyncEnumerable = TryGetSequenceElement(providerResult, async: true, out _);
+                var isEnumerable = !isAsyncEnumerable && TryGetSequenceElement(providerResult, async: false, out _);
+                var suffix = $"{violationIndex.ToString(CultureInfo.InvariantCulture)}_{sourceIndex.ToString(CultureInfo.InvariantCulture)}";
+                writer.AppendLine("{");
+                writer.Indent();
+                writer.AppendLine($"var __violationSource_{suffix} = {(awaitProvider ? "await " : string.Empty)}{provider.Expression};");
+                if (isAsyncEnumerable || isEnumerable)
+                {
+                    writer.AppendLine($"var __violationRow_{suffix} = 0;");
+                    writer.AppendLine($"{(isAsyncEnumerable ? "await " : string.Empty)}foreach (var _ in __violationSource_{suffix})");
+                    writer.AppendLine("{");
+                    writer.Indent();
+                    EmitViolationCase(writer, request, failure, $"$\"{sourcePrefix}:row-{{__violationRow_{suffix}}}\"");
+                    writer.AppendLine($"__violationRow_{suffix}++;");
+                    writer.Unindent();
+                    writer.AppendLine("}");
+                }
+                else
+                {
+                    writer.AppendLine($"_ = __violationSource_{suffix};");
+                    EmitViolationCase(writer, request, failure, $"\"{sourcePrefix}\"");
+                }
+
+                writer.Unindent();
+                writer.AppendLine("}");
+            }
+        }
+
+        return writer.ToString();
+    }
+
+    private void EmitViolationCase(
+        CodeWriter writer,
+        CatalogRoslynEmissionRequest request,
+        string failure,
+        string stableIdExpression)
+    {
+        var testMethod = request.TestMethod;
+        writer.AppendRaw(_caseEmitter.Emit(new CaseRequest(
+            request.ConcreteClassName,
+            testMethod.MethodSymbol.Name,
+            request.FullyQualifiedName,
+            request.GroupIdentity,
+            testMethod.FilePath ?? string.Empty,
+            testMethod.LineNumber,
+            GetInvocationKind(testMethod.MethodSymbol),
+            new InstanceCreationRequest(
+                request.ConcreteClassName,
+                HasClassConstructor: false,
+                ImmutableArray<ConstructorParameter>.Empty,
+                ImmutableArray<string>.Empty,
+                ImmutableArray<RequiredProperty>.Empty,
+                failure),
+            new InvocationRequest("default(global::System.Threading.Tasks.ValueTask)", InvocationReturnKind.ValueTask),
+            ExtractCategories(testMethod),
+            ExtractProperties(testMethod),
+            ExtractDependencies(testMethod),
+            new CatalogRow(
+                ImmutableArray<CatalogValue>.Empty,
+                ImmutableArray<CatalogValue>.Empty,
+                "violation",
+                testMethod.MethodSymbol.Name,
+                null,
+                ImmutableArray<string>.Empty,
+                0),
+            request.LifecycleName,
+            StableIdExpression: stableIdExpression,
+            ParallelConstraint: ExtractEffectiveParallelConstraint(testMethod))));
     }
 
     private string EmitRuntimeMethodDataSourceCases(
@@ -303,29 +416,18 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
                         null);
                 }
 
-                if (!GetNamedBoolean(attribute, "SkipIfEmpty"))
-                {
-                    writer.AppendLine($"if ({rowIndexVariable} == 0)");
-                    writer.AppendLine("{");
-                    writer.Indent();
-                    writer.AppendLine($"throw new global::System.InvalidOperationException(\"Method data source '{EscapeString(provider.MemberName)}' produced no rows for '{EscapeString(testMethod.MethodSymbol.Name)}'.\");");
-                    writer.Unindent();
-                    writer.AppendLine("}");
-                }
-                else
-                {
-                    EmitEmptyRuntimeSourceCase(
-                        writer,
-                        request,
-                        concreteType,
-                        constructorRow,
-                        valueParameters,
-                        rowIndexVariable,
-                        sourceIndex,
-                        constructorIndex,
-                        null,
-                        provider.MemberName);
-                }
+                EmitEmptyRuntimeSourceCase(
+                    writer,
+                    request,
+                    concreteType,
+                    constructorRow,
+                    valueParameters,
+                    rowIndexVariable,
+                    sourceIndex,
+                    constructorIndex,
+                    null,
+                    provider.MemberName,
+                    GetNamedBoolean(attribute, "SkipIfEmpty"));
 
                 writer.Unindent();
                 writer.AppendLine("}");
@@ -370,29 +472,18 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
                         rowIndexVariable, repeatIndexVariable, sourceIndex, constructorSourceIndex, constructorSource);
                 }
 
-                if (!GetNamedBoolean(attribute, "SkipIfEmpty"))
-                {
-                    writer.AppendLine($"if ({rowIndexVariable} == 0)");
-                    writer.AppendLine("{");
-                    writer.Indent();
-                    writer.AppendLine($"throw new global::System.InvalidOperationException(\"Method data source '{EscapeString(provider.MemberName)}' produced no rows for '{EscapeString(testMethod.MethodSymbol.Name)}'.\");");
-                    writer.Unindent();
-                    writer.AppendLine("}");
-                }
-                else
-                {
-                    EmitEmptyRuntimeSourceCase(
-                        writer,
-                        request,
-                        concreteType,
-                        null,
-                        valueParameters,
-                        rowIndexVariable,
-                        sourceIndex,
-                        constructorSourceIndex,
-                        constructorSource,
-                        provider.MemberName);
-                }
+                EmitEmptyRuntimeSourceCase(
+                    writer,
+                    request,
+                    concreteType,
+                    null,
+                    valueParameters,
+                    rowIndexVariable,
+                    sourceIndex,
+                    constructorSourceIndex,
+                    constructorSource,
+                    provider.MemberName,
+                    GetNamedBoolean(attribute, "SkipIfEmpty"));
 
                 writer.Unindent();
                 writer.AppendLine("}");
@@ -414,8 +505,11 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         int sourceIndex,
         int constructorIndex,
         ClassDataSourceSpec? constructorClassDataSource,
-        string providerName)
+        string providerName,
+        bool skipIfEmpty)
     {
+        // An empty source skips the test with SkipIfEmpty; otherwise it runs the test once with no
+        // arguments, as the desktop engine does (#2862), which fails a test that needs some.
         writer.AppendLine($"if ({rowIndexVariable} == 0)");
         writer.AppendLine("{");
         writer.Indent();
@@ -440,12 +534,21 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             ? $"constructor-row-{constructorIndex.ToString(CultureInfo.InvariantCulture)}"
             : $"constructor-class-source-{constructorIndex.ToString(CultureInfo.InvariantCulture)}";
         var skipReason = constructorRow?.SkipReason ??
-            $"Method data source '{providerName}' produced no rows.";
+            (skipIfEmpty ? $"Method data source '{providerName}' produced no rows." : null);
+        var instanceRequest = CreateInstanceRequest(request, concreteType, constructorValues);
+        if (!skipIfEmpty && valueParameters.Length > 0)
+        {
+            instanceRequest = instanceRequest with
+            {
+                FailureExpression = $"new global::System.InvalidOperationException(\"Method data source '{EscapeString(providerName)}' produced no rows for '{EscapeString(request.TestMethod.MethodSymbol.Name)}'.\")",
+            };
+        }
+
         var row = new CatalogRow(
             rowValues,
             constructorValues,
             $"{GetMethodIdentity(request.TestMethod.MethodSymbol, request.FullyQualifiedName)}{request.GeneratedIdentitySuffix}#method-source-{sourceIndex.ToString(CultureInfo.InvariantCulture)}:{constructorIdentity}:empty",
-            $"{request.TestMethod.MethodSymbol.Name} [no data]",
+            skipIfEmpty ? $"{request.TestMethod.MethodSymbol.Name} [no data]" : request.Instantiation?.TestName ?? request.TestMethod.MethodSymbol.Name,
             skipReason,
             constructorRow?.Categories ?? ImmutableArray<string>.Empty,
             0);
@@ -457,7 +560,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             request.TestMethod.FilePath ?? string.Empty,
             request.TestMethod.LineNumber,
             GetInvocationKind(request.TestMethod.MethodSymbol),
-            CreateInstanceRequest(concreteType, constructorValues),
+            instanceRequest,
             CreateInvocationRequest(
                 request.TestMethod,
                 request.MethodTypeArguments,
@@ -520,7 +623,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             constructorRow?.SkipReason,
             constructorRow?.Categories ?? ImmutableArray<string>.Empty,
             0);
-        var instanceRequest = CreateInstanceRequest(concreteType, constructorValues);
+        var instanceRequest = CreateInstanceRequest(request, concreteType, constructorValues);
         var invocationRequest = CreateInvocationRequest(
             testMethod,
             request.MethodTypeArguments,
@@ -898,7 +1001,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             rowSkipReason,
             rowCategories,
             repeatIndex);
-        var instanceRequest = CreateInstanceRequest(concreteType, constructorValues);
+        var instanceRequest = CreateInstanceRequest(request, concreteType, constructorValues);
         var invocationRequest = CreateInvocationRequest(
             request.TestMethod,
             request.MethodTypeArguments,
@@ -1248,6 +1351,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
     }
 
     private static InstanceCreationRequest CreateInstanceRequest(
+        CatalogRoslynEmissionRequest request,
         ITypeSymbol type,
         ImmutableArray<CatalogValue> arguments)
     {
@@ -1258,7 +1362,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
                     parameter.Type.GloballyQualified(),
                     parameter.CollectsTrailingArguments() && parameter.Type is IArrayTypeSymbol,
                     parameter.Type is IArrayTypeSymbol array ? array.ElementType.GloballyQualified() : null,
-                    parameter.HasExplicitDefaultValue
+                    parameter.HasExplicitDefaultValue && parameter.ExplicitDefaultValue is not null
                         ? new TypedConstantFormatter().FormatValue(parameter.ExplicitDefaultValue, parameter.Type)
                         : null))
                 .ToImmutableArray();
@@ -1271,8 +1375,16 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             type.GloballyQualified(),
             type is INamedTypeSymbol named && InstanceFactoryGenerator.HasClassConstructorAttribute(named),
             constructorParameters,
-            arguments.Select(static argument => argument.Code).ToImmutableArray(),
-            requiredProperties);
+            arguments.Select((argument, index) => parameters is { Parameters.Length: > 0 } constructor
+                    ? Argument(argument, ConstructorArgumentType(constructor, arguments, index), request.TestMethod.CompilationContext.Compilation)
+                    : argument.Code)
+                .ToImmutableArray(),
+            requiredProperties,
+            // Only method rows inferred these class type arguments, and no class row supplies the
+            // constructor's arguments, so every test fails as on desktop (#7118).
+            request.Instantiation is { HasNoClassRow: true }
+                ? $"new global::System.InvalidOperationException(\"{EscapeString(TestMetadataGenerator.NoClassRowForMethodRowMessage)}\")"
+                : null);
     }
 
     private static InvocationRequest CreateInvocationRequest(
@@ -1286,12 +1398,13 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             .Where(static parameter => parameter.Type.GloballyQualified() != "global::System.Threading.CancellationToken")
             .ToArray();
         var lastValueOrdinal = valueParameters.Length == 0 ? -1 : valueParameters[^1].Ordinal;
+        var compilation = testMethod.CompilationContext.Compilation;
         var expressions = new List<string>();
         var valueIndex = 0;
         foreach (var parameter in parameters)
         {
-            if (parameter.Type.GloballyQualified() == "global::System.Threading.CancellationToken" &&
-                parameter.Ordinal == parameters.Length - 1)
+            // The token binds wherever the method declares it (#7185).
+            if (parameter.Type.GloballyQualified() == "global::System.Threading.CancellationToken")
             {
                 expressions.Add("cancellationToken");
                 continue;
@@ -1306,17 +1419,19 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
                 }
                 else
                 {
-                    expressions.Add($"new {array.ElementType.GloballyQualified()}[] {{ {string.Join(", ", values.Skip(valueIndex).Select(static value => value.Code))} }}");
+                    expressions.Add($"new {array.ElementType.GloballyQualified()}[] {{ {string.Join(", ", values.Skip(valueIndex).Select(value => Argument(value, array.ElementType, compilation)))} }}");
                     valueIndex = values.Length;
                 }
                 continue;
             }
 
+            // A row that leaves out an optional parameter passes its declared default, so the call
+            // binds to the test method and caller information keeps it, as on desktop (#7148).
             expressions.Add(valueIndex < values.Length
-                ? values[valueIndex++].Code
-                : parameter.HasExplicitDefaultValue
-                    ? new TypedConstantFormatter().FormatValue(parameter.ExplicitDefaultValue, parameterType)
-                    : $"default({parameterType.GloballyQualified()})");
+                ? Argument(values[valueIndex++], parameterType, compilation)
+                : parameter.ExplicitDefaultValue is not null && TupleArgumentHelper.TryFormatDefaultValue(parameter, out var declared)
+                    ? declared
+                    : $"default({parameterType.GloballyQualified()})!");
         }
 
         var methodName = testMethod.MethodSymbol.Name;
@@ -1328,6 +1443,44 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         var receiver = $"instance.{methodName}({string.Join(", ", expressions)})";
         return new InvocationRequest(receiver, GetReturnKind(testMethod.MethodSymbol));
     }
+
+    // A row value as the closed parameter takes it: a null for a value type is its default, as the
+    // desktop engine casts it; a constant the parameter cannot take without the desktop engine's
+    // run-time conversion is not supported.
+    private static string Argument(CatalogValue value, ITypeSymbol parameterType, Compilation compilation)
+    {
+        if (value.Code == "null")
+        {
+            return parameterType.IsValueType && !IsNullableValueType(parameterType)
+                ? $"default({parameterType.GloballyQualified()})"
+                : value.Code;
+        }
+
+        if (value.ConstantType is { } constantType && !compilation.ClassifyConversion(constantType, parameterType).IsImplicit)
+        {
+            throw new InvalidOperationException(
+                $"Argument conversion from '{constantType.ToDisplayString()}' to '{parameterType.ToDisplayString()}' requires the desktop AOT converter generator and is not supported by the closed-world catalog.");
+        }
+
+        return value.Code;
+    }
+
+
+    // The type a constructor argument binds to: a trailing params array takes the remaining values
+    // as its elements, unless a single array value is the whole array.
+    private static ITypeSymbol ConstructorArgumentType(IMethodSymbol constructor, ImmutableArray<CatalogValue> arguments, int index)
+    {
+        var parameters = constructor.Parameters;
+        var parameter = parameters[Math.Min(index, parameters.Length - 1)];
+        var wholeArray = arguments.Length - index == 1 && arguments[index].ConstantType is IArrayTypeSymbol;
+        return parameter.Ordinal == parameters.Length - 1 && parameter.CollectsTrailingArguments() &&
+               parameter.Type is IArrayTypeSymbol array && !wholeArray
+            ? array.ElementType
+            : parameter.Type;
+    }
+
+    private static bool IsNullableValueType(ITypeSymbol type) =>
+        type is INamedTypeSymbol { ConstructedFrom.SpecialType: SpecialType.System_Nullable_T };
 
     private static IMethodSymbol? GetPrimaryConstructor(ITypeSymbol type)
     {
@@ -1358,9 +1511,9 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             values.Select(value => new CatalogValue(
                 TypedConstantParser.GetRawTypedConstantValue(value),
                 Canonicalize(value),
-                Display(value))).ToImmutableArray(),
+                Display(value),
+                value.IsNull ? null : value.Type)).ToImmutableArray(),
             GetDisplayName(attribute),
-            ArgumentIdentity(attribute),
             GetNamedString(attribute, "Skip"),
             GetNamedStringArray(attribute, "Categories"));
     }
@@ -1382,9 +1535,6 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
 
         return ImmutableArray.Create(argument);
     }
-
-    private static string ArgumentIdentity(AttributeData attribute) =>
-        string.Join("|", GetArgumentValues(attribute).Select(Canonicalize));
 
     private static string Canonicalize(TypedConstant value)
     {
@@ -1465,16 +1615,6 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
         return constructor is null
             ? ImmutableArray<string>.Empty
             : constructor.Parameters.Select(static parameter => parameter.Name).ToImmutableArray();
-    }
-
-    private static bool SameAttribute(AttributeData left, AttributeData right) =>
-        SymbolEqualityComparer.Default.Equals(left.AttributeClass, right.AttributeClass) &&
-        left.ConstructorArguments.SequenceEqual(right.ConstructorArguments, new TypedConstantComparer());
-
-    private sealed class TypedConstantComparer : IEqualityComparer<TypedConstant>
-    {
-        public bool Equals(TypedConstant left, TypedConstant right) => Canonicalize(left) == Canonicalize(right);
-        public int GetHashCode(TypedConstant value) => Canonicalize(value).GetHashCode();
     }
 
     private static string GetMethodIdentity(IMethodSymbol method, string fullyQualifiedName)

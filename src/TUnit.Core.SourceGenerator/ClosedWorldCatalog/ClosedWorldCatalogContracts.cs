@@ -18,16 +18,6 @@ internal interface IPropertyReader
     ImmutableArray<string> Read(TestMethodMetadata testMethod);
 }
 
-internal interface IRoslynArgumentRowReader
-{
-    ImmutableArray<CatalogArgumentRow> Read(RoslynArgumentRowsRequest request);
-}
-
-internal interface IRoslynCatalogRowRequestBuilder
-{
-    CatalogRowRequest Build(RoslynCatalogRowBuildRequest request);
-}
-
 internal interface IRoslynInstanceRequestBuilder
 {
     InstanceCreationRequest Build(RoslynInstanceRequestInput request);
