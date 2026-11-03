@@ -8,6 +8,23 @@ TEST_VERSION="${NETWASM_TUNIT_TEST_VERSION:-$(tr -d '[:space:]' < "${REPOSITORY_
 mkdir -p "${PACKAGE_DIR}"
 PACKAGE_DIR="$(cd "${PACKAGE_DIR}" && pwd -P)"
 
+# The NetWasm projects build at the SDK's default preset unless a lane names
+# one and, optionally, a collector; MSBuild reads both as properties.
+if [[ -n "${NETWASM_TUNIT_TEST_OPTIMIZATION:-}" ]]; then
+  if [[ ! "${NETWASM_TUNIT_TEST_OPTIMIZATION}" =~ ^(None|O0|O1|O2|O3|Os|Oz)$ ]]; then
+    echo "NETWASM_TUNIT_TEST_OPTIMIZATION must be None, O0, O1, O2, O3, Os or Oz." >&2
+    exit 2
+  fi
+  export NetWasmOptimization="${NETWASM_TUNIT_TEST_OPTIMIZATION}"
+fi
+if [[ -n "${NETWASM_TUNIT_TEST_COLLECTOR:-}" ]]; then
+  if [[ ! "${NETWASM_TUNIT_TEST_COLLECTOR}" =~ ^(Compact|NetWasm)$ ]]; then
+    echo "NETWASM_TUNIT_TEST_COLLECTOR must be Compact or NetWasm." >&2
+    exit 2
+  fi
+  export NetWasmGarbageCollector="${NETWASM_TUNIT_TEST_COLLECTOR}"
+fi
+
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/netwasm-tunit-test.XXXXXX")"
 test_root="$(cd "${test_root}" && pwd -P)"
 cleanup() {
