@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using Microsoft.CodeAnalysis;
 using TUnit.Core.SourceGenerator.Generators;
 using TUnit.Core.SourceGenerator.Models;
 
@@ -23,5 +22,3 @@ internal sealed record PerClassSourceRequest(
 internal sealed record CatalogOnlyMethodSourceRequest(
     TestMethodMetadata TestMethod,
     ImmutableArray<TestMetadataGenerator.ConcreteInstantiation> Instantiations);
-
-internal sealed record MethodIdentityRequest(IMethodSymbol Method, string FullyQualifiedName);
