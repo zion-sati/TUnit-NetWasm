@@ -268,6 +268,26 @@ class PublishReleasePackagesTests(unittest.TestCase):
             [("verify", "NetWasm.TUnit.Core")],
             [event for event in events if event[0] == "verify"],
         )
+    def test_release_completes_dotnet_first_use_before_parallel_pushes(self) -> None:
+        events = []
+
+        def run(command: list[str], **options: object) -> object:
+            events.append(("run", tuple(command)))
+            return mock.Mock(returncode=0)
+
+        def push(package_id: str, *args: object) -> bool:
+            events.append(("push", package_id))
+            return False
+
+        with mock.patch.object(MODULE, "package_base_address", return_value="https://example.invalid/"), \
+             mock.patch.object(MODULE.subprocess, "run", side_effect=run), \
+             mock.patch.object(MODULE, "push_or_reconcile", side_effect=push):
+            MODULE.publish_release(self.manifest, self.root)
+
+        self.assertEqual(("run", ("dotnet", "nuget", "locals", "http-cache", "--list")), events[0])
+        self.assertEqual(1, sum(1 for operation, _ in events if operation == "run"))
+        self.assertEqual(set(self.manifest["packages"]), {value for operation, value in events if operation == "push"})
+
     def test_prerequisites_use_bounded_parallel_pushes(self) -> None:
         for index in range(8):
             package_id = f"NetWasm.Independent{index}"
