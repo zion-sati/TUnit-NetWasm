@@ -170,7 +170,10 @@ public static class ArgumentFormatter
 #if NET
             || o is Half or Int128 or UInt128 or System.Runtime.InteropServices.NFloat
 #endif
-            ;
+            // .NET 11's numeric types, which these target frameworks can't name: matched by name so a
+            // build for an earlier framework still formats them invariantly when it runs on .NET 11.
+            || (o is IFormattable && type.FullName is "System.Numerics.BFloat16" or "System.Numerics.Decimal32"
+                or "System.Numerics.Decimal64" or "System.Numerics.Decimal128");
     }
 
     private static string FormatTuple(object tuple)
