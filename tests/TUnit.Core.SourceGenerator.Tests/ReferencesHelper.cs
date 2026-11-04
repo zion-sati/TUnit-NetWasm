@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using Microsoft.CodeAnalysis;
+using TUnit.Tests.Shared;
 
 namespace TUnit.Core.SourceGenerator.Tests;
 
@@ -7,14 +8,28 @@ namespace TUnit.Core.SourceGenerator.Tests;
 internal class ReferencesHelper
 {
     public static readonly List<PortableExecutableReference> References =
-        AppDomain.CurrentDomain.GetAssemblies()
-            .Where(x => !x.IsDynamic && !string.IsNullOrWhiteSpace(x.Location))
-            .Select(x => MetadataReference.CreateFromFile(x.Location))
-            .Concat([
-                // add your app/lib specifics, e.g.:
-                MetadataReference.CreateFromFile(typeof(Attribute).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(Assert).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(Polyfill).Assembly.Location),
-            ])
-            .ToList();
+        TestHostReferences.CreateReferences(
+            typeof(Attribute).Assembly,
+            typeof(Assert).Assembly,
+            typeof(Polyfill).Assembly);
+
+#if NETFRAMEWORK
+    // The net472 leg compiles against .NET Framework's mscorlib, which lacks the types behind
+    // `required` and `init`. Add this source to compilations whose test source uses them.
+    public const string NetFrameworkPolyfills =
+        """
+        namespace System.Runtime.CompilerServices;
+
+        internal static class IsExternalInit;
+
+        [AttributeUsage(AttributeTargets.All, AllowMultiple = true, Inherited = false)]
+        internal sealed class CompilerFeatureRequiredAttribute(string featureName) : Attribute
+        {
+            public string FeatureName { get; } = featureName;
+        }
+
+        [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
+        internal sealed class RequiredMemberAttribute : Attribute;
+        """;
+#endif
 }

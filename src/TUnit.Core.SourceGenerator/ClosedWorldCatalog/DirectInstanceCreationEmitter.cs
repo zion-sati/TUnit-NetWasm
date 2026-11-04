@@ -9,6 +9,14 @@ internal sealed class DirectInstanceCreationEmitter : IInstanceCreationEmitter
         if (request is null) throw new ArgumentNullException(nameof(request));
         var writer = new CodeWriter(includeHeader: false);
 
+        // A row that cannot build its test fails as the desktop engine reports it, before any
+        // instance exists.
+        if (request.FailureExpression is not null)
+        {
+            writer.AppendLine($"throw {request.FailureExpression};");
+            return writer.ToString();
+        }
+
         if (request.HasClassConstructor)
         {
             writer.AppendLine("throw new global::System.NotSupportedException(\"Instance creation for classes with ClassConstructor attribute is handled at runtime\");");

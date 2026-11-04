@@ -16,14 +16,6 @@ internal sealed class CatalogRowPlanner : ICatalogRowPlanner
             methodRows = ImmutableArray.Create(new CatalogArgumentRow(ImmutableArray<CatalogValue>.Empty));
         }
 
-        if (request.SelectedMethodRowIdentity is not null)
-        {
-            methodRows = methodRows
-                .Where(row => string.Equals(row.Identity, request.SelectedMethodRowIdentity, StringComparison.Ordinal))
-                .ToImmutableArray();
-        }
-
-        if (methodRows.IsDefaultOrEmpty) return ImmutableArray<CatalogRow>.Empty;
         var constructorRows = request.ConstructorRows.IsDefaultOrEmpty
             ? ImmutableArray.Create(new CatalogArgumentRow(ImmutableArray<CatalogValue>.Empty))
             : request.ConstructorRows;
@@ -45,12 +37,15 @@ internal sealed class CatalogRowPlanner : ICatalogRowPlanner
                         methodRow.Values,
                         request.ConstructorParameterNames,
                         constructorRow.Values);
+                // As the desktop engine names a test: its name, then the method row's values, if any.
                 var rowDisplayName = FormatRowDisplayName(methodRow.DisplayName, request.MethodParameterNames, methodRow.Values) ??
                     FormatRowDisplayName(constructorRow.DisplayName, request.MethodParameterNames, methodRow.Values) ??
-                    $"{request.MethodName}({string.Join(", ", methodRow.Values.Select(static value => value.Display))})";
+                    (methodRow.Values.IsDefaultOrEmpty
+                        ? request.TestName
+                        : $"{request.TestName}({string.Join(", ", methodRow.Values.Select(static value => value.Display))})");
                 var displayName = !string.IsNullOrEmpty(customDisplayName)
                     ? customDisplayName!
-                    : rowDisplayName ?? request.MethodName;
+                    : rowDisplayName;
                 var methodCategories = methodRow.Categories.IsDefault ? ImmutableArray<string>.Empty : methodRow.Categories;
                 var constructorCategories = constructorRow.Categories.IsDefault ? ImmutableArray<string>.Empty : constructorRow.Categories;
                 var categories = methodCategories

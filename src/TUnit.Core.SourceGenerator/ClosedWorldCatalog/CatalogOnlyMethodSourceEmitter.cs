@@ -33,12 +33,20 @@ internal sealed class CatalogOnlyMethodSourceEmitter : ICatalogOnlyMethodSourceE
         var sourceName = FileNameHelper.GetDeterministicFileNameForMethod(testMethod.TypeSymbol, testMethod.MethodSymbol)
             .Replace(".g.cs", "_TestSource");
         var groups = request.Instantiations
-            .Select((entry, index) => new MethodSourceGroup(
-                _lifecycleAdapter.Format(new LifecycleRoslynRequest(testMethod.TypeSymbol, entry.ConcreteClassName)),
+            .Select((entry, index) =>
+            {
+                // A violation of an open generic class has no type to instantiate: its failed tests
+                // carry no instance and run no hooks.
+                var open = testMethod.TypeSymbol.IsGenericType && entry.ClassTypeArgs.Length == 0;
+                var caseTypeName = open ? "global::System.Object" : entry.ConcreteClassName;
+                return new MethodSourceGroup(
+                open
+                    ? "global::TUnit.Core.GeneratedLifecycle.Empty"
+                    : _lifecycleAdapter.Format(new LifecycleRoslynRequest(testMethod.TypeSymbol, entry.ConcreteClassName)),
                 ImmutableArray.Create(_catalogAdapter.Emit(new CatalogRoslynEmissionRequest(
                     testMethod,
-                    entry.ConcreteClassName,
-                    entry.ConcreteClassName,
+                    caseTypeName,
+                    caseTypeName,
                     ClosedWorldCatalogIdentity.FormatFullyQualifiedName(
                         testMethod.TypeSymbol.ContainingNamespace?.ToDisplayString() ?? string.Empty,
                         testMethod.TypeSymbol.GetNestedClassName(),
@@ -47,8 +55,9 @@ internal sealed class CatalogOnlyMethodSourceEmitter : ICatalogOnlyMethodSourceE
                     ClosedWorldCatalogIdentity.Format(entry.ClassTypeArgs, entry.MethodTypeArgs),
                     entry.ClassTypeArgs,
                     entry.MethodTypeArgs,
-                    entry.SpecificArgumentsAttribute,
-                    $"__Lifecycle_{index.ToString(CultureInfo.InvariantCulture)}")))))
+                    entry,
+                    $"__Lifecycle_{index.ToString(CultureInfo.InvariantCulture)}"))));
+            })
             .ToImmutableArray();
         return _methodSourceEmitter.Emit(new MethodSourceRequest(sourceName, groups));
     }

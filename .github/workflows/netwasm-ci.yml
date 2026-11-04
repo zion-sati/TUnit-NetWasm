@@ -56,13 +56,23 @@ jobs:
   test:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
-    name: test / ${{ matrix.host }} / isolated SDK ${{ matrix.sdk-major }}
+    name: test / ${{ matrix.host }} / isolated SDK ${{ matrix.sdk-major }}${{ matrix.optimization != 'Default' && format(' / {0}', matrix.optimization) || '' }}
     strategy:
       fail-fast: false
       matrix:
         sdk-major: [10, 11]
         host: [linux-x64, linux-arm64, macos-arm64, windows-x64, windows-arm64]
+        # The NetWasm suites at the SDK's default preset on every host, and
+        # once at O3 with NetWasmGC, so every optimization meets them.
+        optimization: [Default]
         include:
+          - host: linux-x64
+            sdk-major: 10
+            optimization: O3
+            collector: NetWasm
+            runner: ubuntu-24.04
+            rid: linux-x64
+            architecture: x64
           - host: linux-x64
             runner: ubuntu-24.04
             rid: linux-x64
@@ -159,6 +169,8 @@ jobs:
             eng/tests/test_verify_release_packages.py
           NETWASM_TUNIT_BUILD_SDK_VERSION="${{ steps.isolated-dotnet.outputs.sdk-version }}" \
           NETWASM_TUNIT_TEST_VERSION="${{ steps.isolated-dotnet.outputs.candidate-version }}" \
+          NETWASM_TUNIT_TEST_OPTIMIZATION="${{ matrix.optimization != 'Default' && matrix.optimization || '' }}" \
+          NETWASM_TUNIT_TEST_COLLECTOR="${{ matrix.collector }}" \
             bash eng/netwasm-test.sh
 
       - name: Record TUnit candidate packages and analyzer closure

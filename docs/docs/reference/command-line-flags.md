@@ -82,6 +82,10 @@ Please note that for the coverage and trx report, you need to install [additiona
         Cancel the test run after the first test failure
         Programmatic equivalent: context.Settings.Execution.FailFast
 
+    --fail-on-unobserved-task-exceptions
+        Fail the test run when a task faults and nothing observes its exception
+        Programmatic equivalent: context.Settings.Execution.FailOnUnobservedTaskExceptions
+
     --maximum-parallel-tests
         Maximum Parallel Tests
         Programmatic equivalent: context.Settings.Parallelism.MaximumParallelTests
@@ -125,15 +129,6 @@ Please note that for the coverage and trx report, you need to install [additiona
         Display TUnit internals within stack traces.
         By default, TUnit frames are hidden to keep failure output focused on user code.
         Programmatic equivalent: context.Settings.Display.DetailedStackTrace
-
-    --output-json
-        Write a JSON report of the test run.
-
-    --output-json-filename
-        File name for the JSON report produced by --output-json.
-
-    --output-json-prefix
-        File name prefix for the JSON report produced by --output-json.
 
     --report-html
         Available when Microsoft.Testing.Extensions.HtmlReport is not referenced.

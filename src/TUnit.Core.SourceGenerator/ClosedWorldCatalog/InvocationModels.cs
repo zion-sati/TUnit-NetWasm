@@ -1,6 +1,4 @@
 using System.Collections.Immutable;
-using Microsoft.CodeAnalysis;
-using TUnit.Core.SourceGenerator.Models;
 
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
 
@@ -17,7 +15,8 @@ internal sealed record InstanceCreationRequest(
     bool HasClassConstructor,
     ImmutableArray<ConstructorParameter> ConstructorParameters,
     ImmutableArray<string> ConstructorArguments,
-    ImmutableArray<RequiredProperty> RequiredProperties);
+    ImmutableArray<RequiredProperty> RequiredProperties,
+    string? FailureExpression = null);
 
 internal sealed record InvocationRequest(string MethodCall, InvocationReturnKind ReturnKind);
 
@@ -28,32 +27,4 @@ internal enum InvocationReturnKind
     ValueTaskOfT,
     Task,
     Unsupported,
-}
-
-internal sealed record InvocationSource(InvocationRequest Request, string InvocationKind);
-
-internal sealed record RoslynInstanceRequestInput(
-    ITypeSymbol Type,
-    ImmutableArray<CatalogValue> ConstructorArguments);
-
-internal sealed record RoslynInvocationRequestInput(
-    TestMethodMetadata TestMethod,
-    ITypeSymbol[] MethodTypeArguments,
-    ITypeSymbol[] ClassTypeArguments,
-    ImmutableArray<CatalogValue> Values);
-
-/// <summary>
-/// A closed-world test method paired with the compile-time type arguments that instantiate it.
-/// The same passive value is also consumed by the desktop compatibility path.
-/// </summary>
-internal sealed class ConcreteInstantiation
-{
-    public required string ConcreteClassName { get; init; }
-    public required ITypeSymbol[] TypeArguments { get; init; }
-    public required ITypeSymbol[] ClassTypeArgs { get; init; }
-    public required ITypeSymbol[] MethodTypeArgs { get; init; }
-    public required string TestName { get; init; }
-    public required string MethodName { get; init; }
-    public AttributeData? SpecificArgumentsAttribute { get; init; }
-    public bool HasParameterizedConstructor { get; init; }
 }

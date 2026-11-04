@@ -1,56 +1,10 @@
 using System.Collections.Immutable;
-using TUnit.Core.SourceGenerator.Models;
 
 namespace TUnit.Core.SourceGenerator.ClosedWorldCatalog;
-
-internal interface ICategoryReader
-{
-    ImmutableArray<string> Read(TestMethodMetadata testMethod);
-}
-
-internal interface IDependencyReader
-{
-    ImmutableArray<string> Read(TestMethodMetadata testMethod);
-}
-
-internal interface IPropertyReader
-{
-    ImmutableArray<string> Read(TestMethodMetadata testMethod);
-}
-
-internal interface IRoslynArgumentRowReader
-{
-    ImmutableArray<CatalogArgumentRow> Read(RoslynArgumentRowsRequest request);
-}
-
-internal interface IRoslynCatalogRowRequestBuilder
-{
-    CatalogRowRequest Build(RoslynCatalogRowBuildRequest request);
-}
-
-internal interface IRoslynInstanceRequestBuilder
-{
-    InstanceCreationRequest Build(RoslynInstanceRequestInput request);
-}
-
-internal interface IRoslynInvocationRequestBuilder
-{
-    InvocationSource Build(RoslynInvocationRequestInput request);
-}
-
-internal interface IRoslynMethodIdentityFormatter
-{
-    string Format(MethodIdentityRequest request);
-}
 
 internal interface IClosedWorldCatalogRoslynAdapter
 {
     string Emit(CatalogRoslynEmissionRequest request);
-}
-
-internal interface IClosedWorldLifecycleHookReader
-{
-    ImmutableArray<LifecycleHook> Read(LifecycleRoslynRequest request);
 }
 
 internal interface IClosedWorldLifecycleRoslynAdapter

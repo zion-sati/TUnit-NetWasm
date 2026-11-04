@@ -287,6 +287,11 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
         var instance = _typedCreateInstance is null
             ? _legacyCreateInstance!(Row.CreateConstructorArguments())
             : _typedCreateInstance();
+#if NETWASM
+        // Set in this async method, the context flows into the test's hooks and
+        // body and is gone again when the runner resumes.
+        TestContext.Current = new TestContext(this, typeof(T), instance);
+#endif
         // Class lifecycle is retained as catalog metadata for the sequential runner. It is
         // scoped around a class's complete case group, so executing it here would repeat
         // class setup/teardown once per row. A case owns only its test-level lifecycle.

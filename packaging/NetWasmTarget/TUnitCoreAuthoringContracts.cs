@@ -38,7 +38,7 @@ public sealed class TimeoutAttribute(int timeoutInMilliseconds) : TUnitAttribute
 }
 
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Parameter, AllowMultiple = true)]
-public sealed class ArgumentsAttribute(params object?[]? values) : Attribute
+public sealed class ArgumentsAttribute(params object?[]? values) : Attribute, IDataSourceAttribute
 {
     public object?[] Values { get; } = values ?? [null];
 
@@ -54,7 +54,7 @@ public sealed class ArgumentsAttribute(params object?[]? values) : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Parameter, AllowMultiple = true)]
-public sealed class ArgumentsAttribute<T>(T value) : Attribute
+public sealed class ArgumentsAttribute<T>(T value) : Attribute, IDataSourceAttribute
 {
     public T Value { get; } = value;
 

@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using TUnit.Core.SourceGenerator.CodeGenerators.Writers;
 using TUnit.Core.SourceGenerator.ClosedWorldCatalog;
+using TUnit.Core.SourceGenerator.Generators;
 using TUnit.Core.SourceGenerator.Helpers;
 using TUnit.Core.SourceGenerator.Models;
 
@@ -76,7 +77,7 @@ internal sealed class ClosedWorldCatalogActorContractTests
     }
 
     [Test]
-    public async Task RowPlannerPlansEmptyRuntimeSelectedAndCartesianRows()
+    public async Task RowPlannerPlansEmptyRuntimeAndCartesianRows()
     {
         ICatalogRowPlanner planner = new CatalogRowPlanner();
         await Assert.That(() => planner.Plan(null!)).Throws<ArgumentNullException>();
@@ -86,12 +87,11 @@ internal sealed class ClosedWorldCatalogActorContractTests
         await Assert.That(noRows).IsEmpty();
 
         var methodRow = new CatalogArgumentRow(
-            ImmutableArray.Create(new CatalogValue("7", "int:7", "7")),
-            Identity: "selected");
+            ImmutableArray.Create(new CatalogValue("7", "int:7", "7")));
         var constructorRow = new CatalogArgumentRow(
             ImmutableArray.Create(new CatalogValue("\"x\"", "string:x", "x")));
         var rows = planner.Plan(new CatalogRowRequest(
-            "M()", "M", ImmutableArray.Create(methodRow), ImmutableArray.Create(constructorRow), false, "selected"));
+            "M()", "M", ImmutableArray.Create(methodRow), ImmutableArray.Create(constructorRow), false));
         await Assert.That(rows.Length).IsEqualTo(1);
         await Assert.That(rows[0].StableId).Contains("method:[int:7];constructor:[string:x]");
         await Assert.That(rows[0].DisplayName).IsEqualTo("M(7)");
@@ -100,8 +100,6 @@ internal sealed class ClosedWorldCatalogActorContractTests
             "M()", "M", ImmutableArray.Create(methodRow with { DisplayName = "named" }),
             ImmutableArray<CatalogArgumentRow>.Empty, false));
         await Assert.That(explicitName[0].DisplayName).IsEqualTo("named");
-        await Assert.That(planner.Plan(new CatalogRowRequest(
-            "M()", "M", ImmutableArray.Create(methodRow), ImmutableArray<CatalogArgumentRow>.Empty, false, "missing"))).IsEmpty();
 
         var unknownStage = new LifecyclePlanner().Plan(new LifecycleRequest(ImmutableArray.Create(
             new LifecycleHook("Unknown", 0, 0, 0, "unknown", "instance.unknown()", "global::System.Void"))));
@@ -230,7 +228,7 @@ internal sealed class ClosedWorldCatalogActorContractTests
         await Assert.That(() => methodEmitter.Emit(null!)).Throws<ArgumentNullException>();
         var methodSource = methodEmitter.Emit(new CatalogOnlyMethodSourceRequest(
             metadata,
-            ImmutableArray.Create(new ConcreteInstantiation
+            ImmutableArray.Create(new TestMetadataGenerator.ConcreteInstantiation
             {
                 ConcreteClassName = "global::TestProject.Fixture",
                 TypeArguments = Array.Empty<ITypeSymbol>(),

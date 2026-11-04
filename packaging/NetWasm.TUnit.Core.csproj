@@ -41,6 +41,7 @@
   <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
     <Compile Include="NetWasmTarget\GlobalUsings.cs" />
     <Compile Include="NetWasmTarget\TUnitCoreAuthoringContracts.cs" />
+    <Compile Include="NetWasmTarget\TUnitCoreContextContracts.cs" />
     <Compile Include="NetWasmTarget\TUnitCoreDataSourceContracts.cs" />
     <Compile Include="NetWasmTarget\TUnitCoreMetadataContracts.cs" />
     <Compile Include="NetWasmTarget\TUnitCoreParallelContracts.cs" />

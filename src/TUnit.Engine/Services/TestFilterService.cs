@@ -81,9 +81,42 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
         }
     }
 
+    private async Task InvokeTestRegisteredReceivers(ITestRegisteredEventReceiver[] receivers, TestRegisteredContext context,
+        HashSet<ITestRegisteredEventReceiver> invokedReceivers)
+    {
+        foreach (var receiver in receivers)
+        {
+            await InvokeTestRegisteredReceiver(receiver, context, invokedReceivers).ConfigureAwait(false);
+
+            // Dynamically installed executor callbacks run after their installer, regardless of their
+            // own Order. The shared identity set also covers executors in the original receiver list.
+            while (context.TryDequeueExecutorEventReceiver(out var executorReceiver))
+            {
+                await InvokeTestRegisteredReceiver(executorReceiver, context, invokedReceivers).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static TestRegisteredContext CreateTestRegisteredContext(TestContext testContext)
+    {
+        var discoveredTest = new DiscoveredTest<object>
+        {
+            TestContext = testContext
+        };
+
+        testContext.InternalDiscoveredTest = discoveredTest;
+
+        return new TestRegisteredContext(testContext)
+        {
+            DiscoveredTest = discoveredTest
+        };
+    }
+
     private async Task RegisterTest(AbstractExecutableTest test, bool isForExecution)
     {
         var registeredReceivers = test.Context.GetTestRegisteredReceivers();
+        TestRegisteredContext? registeredContext = null;
+        HashSet<ITestRegisteredEventReceiver>? invokedReceivers = null;
 
         // Invoke event receivers BEFORE argument registration so that SkipAttribute
         // and other ITestRegisteredEventReceiver implementations can set SkipReason
@@ -92,30 +125,10 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
         // that need to prevent ClassDataSource initialization when the test should be skipped.
         if (registeredReceivers.Length > 0)
         {
-            var discoveredTest = new DiscoveredTest<object>
-            {
-                TestContext = test.Context
-            };
+            registeredContext = CreateTestRegisteredContext(test.Context);
+            invokedReceivers = new HashSet<ITestRegisteredEventReceiver>(Core.Helpers.ReferenceEqualityComparer.Instance);
 
-            var registeredContext = new TestRegisteredContext(test.Context)
-            {
-                DiscoveredTest = discoveredTest
-            };
-
-            test.Context.InternalDiscoveredTest = discoveredTest;
-            var invokedReceivers = new HashSet<ITestRegisteredEventReceiver>(Core.Helpers.ReferenceEqualityComparer.Instance);
-
-            foreach (var receiver in registeredReceivers)
-            {
-                await InvokeTestRegisteredReceiver(receiver, registeredContext, invokedReceivers).ConfigureAwait(false);
-
-                // Dynamically installed executor callbacks run after their installer, regardless of their
-                // own Order. The shared identity set also covers executors in the original receiver list.
-                while (registeredContext.TryDequeueExecutorEventReceiver(out var executorReceiver))
-                {
-                    await InvokeTestRegisteredReceiver(executorReceiver, registeredContext, invokedReceivers).ConfigureAwait(false);
-                }
-            }
+            await InvokeTestRegisteredReceivers(registeredReceivers, registeredContext, invokedReceivers).ConfigureAwait(false);
         }
 
         // If the test was marked as skipped by an event receiver, skip argument registration entirely.
@@ -123,6 +136,26 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
         // for tests that will never execute.
         if (!string.IsNullOrEmpty(test.Context.SkipReason))
         {
+            // The builder has already created this row's argument objects, so track them (without
+            // resolving or initializing anything) to dispose them when the skipped test completes (#7156).
+            if (isForExecution)
+            {
+                try
+                {
+                    testArgumentRegistrationService.TrackSkippedTestArguments(test.Context);
+                }
+                catch (Exception ex)
+                {
+                    // A property getter in the arguments' object graph threw. The test still never
+                    // runs, so it stays skipped rather than failing the whole run: its objects are
+                    // left untracked (and so not disposed), as they were before #7156.
+                    // Tracking is synchronous and takes no cancellation token, so an
+                    // OperationCanceledException here can only come from that user getter, never from
+                    // run cancellation; it is contained like any other getter failure.
+                    logger.LogDebug($"Could not track the objects of skipped test '{test.Context.Metadata.TestDetails.TestId}' for disposal: {ex.Message}");
+                }
+            }
+
             test.Context.InvalidateDisplayNameCache();
             return;
         }
@@ -133,14 +166,30 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
         // requests would create fixtures as a side effect and leak them forever (#6151).
         if (isForExecution)
         {
+            var argumentsRegistered = false;
+
             try
             {
                 await testArgumentRegistrationService.RegisterTestArgumentsAsync(test.Context).ConfigureAwait(false);
+                argumentsRegistered = true;
             }
             catch (Exception ex)
             {
                 // Mark the test as failed - event receivers have already run above
                 test.SetResult(TestState.Failed, ex);
+            }
+
+            // Injected property values only exist now, after argument registration resolved them,
+            // and those values can themselves be registered receivers (e.g. a shared fixture that
+            // calls SetParallelLimiter). Argument registration dropped the receiver caches, so the
+            // rebuilt list includes them; the shared identity set skips receivers that already ran (#7290).
+            if (argumentsRegistered &&
+                test.Context.Metadata.TestDetails.TestClassInjectedPropertyArguments.Count > 0)
+            {
+                registeredContext ??= CreateTestRegisteredContext(test.Context);
+                invokedReceivers ??= new HashSet<ITestRegisteredEventReceiver>(Core.Helpers.ReferenceEqualityComparer.Instance);
+
+                await InvokeTestRegisteredReceivers(test.Context.GetTestRegisteredReceivers(), registeredContext, invokedReceivers).ConfigureAwait(false);
             }
         }
 
