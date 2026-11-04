@@ -24,6 +24,7 @@ from xml.etree import ElementTree
 SOURCE_INDEX = "https://api.nuget.org/v3/index.json"
 PUSH_SOURCE = SOURCE_INDEX
 PUSH_TIMEOUT_SECONDS = 2 * 60
+FIRST_USE_TIMEOUT_SECONDS = 2 * 60
 MAX_PARALLEL_PUSHES = 4
 
 
@@ -303,10 +304,23 @@ def publish_wave(
     }
 
 
+def complete_dotnet_first_use() -> None:
+    # A runner's first dotnet command migrates NuGet's settings under a named mutex, and
+    # concurrent first commands can fail to create it ("NuGet-Migrations"), which failed one
+    # of a wave's parallel pushes. One command on its own completes the migration first.
+    subprocess.run(
+        ["dotnet", "nuget", "locals", "http-cache", "--list"],
+        stdout=subprocess.DEVNULL,
+        timeout=FIRST_USE_TIMEOUT_SECONDS,
+        check=True,
+    )
+
+
 def publish_release(
     manifest: dict[str, object], packages_root: Path
 ) -> dict[str, object]:
     started = time.monotonic()
+    complete_dotnet_first_use()
     wave_count = len(publication_stages(manifest, packages_root))
     waves = [publish_wave(manifest, packages_root, index) for index in range(wave_count)]
     return {
