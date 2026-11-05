@@ -38,7 +38,13 @@ class CheckNetWasmDependencyTests(unittest.TestCase):
                 json.dumps({"msbuild-sdks": {"NetWasm.Sdk": "0.4.0"}}, indent=2) + "\n",
                 encoding="utf-8",
             )
+        self.write_template("0.4.0")
         self.write_manifest({"NetWasm.Sdk": "0.4.0", "NetWasm.Testing.VSTest": "0.4.0"})
+
+    def write_template(self, version: str) -> None:
+        path = self.root / MODULE.TEMPLATE_PROJECT_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f'<Project Sdk="NetWasm.Sdk/{version}">\n</Project>\n', encoding="utf-8")
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -63,13 +69,25 @@ class CheckNetWasmDependencyTests(unittest.TestCase):
             MODULE.check(self.root)
 
     def test_rejects_disagreeing_sdk_version(self) -> None:
-        path = self.root / MODULE.GLOBAL_JSON_PATHS[1]
+        path = self.root / MODULE.GLOBAL_JSON_PATHS[0]
         path.write_text(
             json.dumps({"msbuild-sdks": {"NetWasm.Sdk": "0.3.0"}}, indent=2) + "\n",
             encoding="utf-8",
         )
 
         with self.assertRaisesRegex(ValueError, "global.json selects '0.3.0', expected '0.4.0'"):
+            MODULE.check(self.root)
+
+    def test_rejects_a_template_naming_another_sdk(self) -> None:
+        self.write_template("0.3.0")
+
+        with self.assertRaisesRegex(ValueError, "NetWasmTUnitTests.csproj selects '0.3.0', expected '0.4.0'"):
+            MODULE.check(self.root)
+
+    def test_rejects_a_template_naming_no_sdk_version(self) -> None:
+        (self.root / MODULE.TEMPLATE_PROJECT_PATH).write_text('<Project Sdk="NetWasm.Sdk">\n</Project>\n', encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "Unable to read the NetWasm.Sdk version"):
             MODULE.check(self.root)
 
     def test_rejects_disagreeing_manifest_version(self) -> None:

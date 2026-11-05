@@ -16,10 +16,9 @@ VERSION_PATTERN = re.compile(
 )
 DEPENDENCIES_PATH = Path("eng/dependencies.json")
 PROPS_PATH = Path("packaging/Directory.Build.props")
-GLOBAL_JSON_PATHS = (
-    Path("packaging/global.json"),
-    Path("packaging/NetWasm.TUnit.Templates/content/NetWasmTUnitTests/global.json"),
-)
+GLOBAL_JSON_PATHS = (Path("packaging/global.json"),)
+# The template leaves SDK selection to the user's dotnet and names NetWasm.Sdk in its project.
+TEMPLATE_PROJECT_PATH = Path("packaging/NetWasm.TUnit.Templates/content/NetWasmTUnitTests/NetWasmTUnitTests.csproj")
 RELEASE_MANIFEST_PATH = Path("eng/release-manifest.json")
 
 
@@ -60,6 +59,12 @@ def check(source_root: Path) -> str:
             str(relative_path),
             expected,
         )
+
+    template = (source_root / TEMPLATE_PROJECT_PATH).read_text(encoding="utf-8")
+    match = re.search(r'<Project Sdk="NetWasm\.Sdk/([^"]+)"', template)
+    if match is None:
+        raise ValueError(f"Unable to read the NetWasm.Sdk version from {TEMPLATE_PROJECT_PATH}")
+    require_version(match.group(1), str(TEMPLATE_PROJECT_PATH), expected)
 
     manifest = json.loads(
         (source_root / RELEASE_MANIFEST_PATH).read_text(encoding="utf-8")
