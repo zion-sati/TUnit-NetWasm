@@ -3,7 +3,6 @@
   <PropertyGroup>
     <IsTestProject>true</IsTestProject>
     <OutputType>Exe</OutputType>
-    <NetWasmComponentContract Condition="'$(NetWasmComponentContract)' == ''">async-command</NetWasmComponentContract>
     <NetWasmTUnitGenerateProgram Condition="'$(NetWasmTUnitGenerateProgram)' == ''">true</NetWasmTUnitGenerateProgram>
     <NetWasmTUnitProgramSource>$(MSBuildThisFileDirectory)..\..\build\NetWasm,Version=v0.1\NetWasm.TUnit.Program.cs</NetWasmTUnitProgramSource>
     <StartupObject Condition="'$(NetWasmTUnitGenerateProgram)' == 'true'">NetWasm.TUnit.Generated.NetWasmTestProgram</StartupObject>
