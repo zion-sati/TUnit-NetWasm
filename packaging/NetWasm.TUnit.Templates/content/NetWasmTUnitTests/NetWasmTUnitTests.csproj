@@ -1,4 +1,4 @@
-<Project Sdk="NetWasm.Sdk/0.12.0">
+<Project Sdk="NetWasm.Sdk/0.12.2">
   <PropertyGroup>
     <TargetFramework>netwasm0.1</TargetFramework>
     <IsTestProject>true</IsTestProject>
