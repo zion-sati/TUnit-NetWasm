@@ -34,7 +34,8 @@
     <None Include="..\LICENSE" Pack="true" PackagePath="LICENSE" Condition="'$(NetWasmSdkCustomProfileEnabled)' == 'true'" Visible="false" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' != 'netwasm0.1'">
+  <!-- Both targets compile upstream's TUnit.Assertions; netwasm0.1 as the .NET 10 code it is. -->
+  <ItemGroup>
     <Compile Include="..\src\TUnit.Assertions\**\*.cs"
              Exclude="..\src\TUnit.Assertions\AssertConditions\Generic\EquatableAssertCondition.cs;..\src\TUnit.Assertions\obj\**\*;..\src\TUnit.Assertions\bin\**\*" />
     <Compile Include="..\src\TUnit.Engine\PolyfillExtensions.cs" Link="PolyfillExtensions.cs" />
@@ -47,18 +48,9 @@
     <Analyzer Include="..\src\TUnit.Assertions.SourceGenerator\bin\$(Configuration)\netstandard2.0\TUnit.Assertions.SourceGenerator.dll" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
-    <Compile Include="NetWasmTarget\GlobalUsings.cs" />
-    <Compile Include="NetWasmTarget\TUnit\Assertions\Assert.cs" />
-    <Compile Include="NetWasmTarget\TUnit\Assertions\BooleanAssertionExtensions.cs" />
-    <Compile Include="NetWasmTarget\TUnit\Assertions\ValueAssertion.cs" />
-    <Compile Include="NetWasmTarget\TUnit\Assertions\ValueAssertionResult.cs" />
-    <Compile Include="..\src\TUnit.Assertions\Exceptions\BaseAssertionException.cs" />
-    <Compile Include="..\src\TUnit.Assertions\Exceptions\AssertionException.cs" />
-  </ItemGroup>
+  <Import Project="NetWasmUpstreamSources.props" />
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
-    <ImplicitUsings>disable</ImplicitUsings>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <SignAssembly>false</SignAssembly>
   </PropertyGroup>

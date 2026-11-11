@@ -1,0 +1,26 @@
+<Project Sdk="NetWasm.Sdk">
+  <!-- Upstream TUnit's own assertion tests (tests/TUnit.Assertions.Tests), compiled for netwasm0.1 against the
+       NetWasm.TUnit packages, as upstream compiles them for .NET. ThrowTests.cs is left out as upstream's project
+       leaves it out. -->
+  <Import Project="../NetWasmUpstreamSources.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netwasm0.1</TargetFramework>
+    <TargetFrameworks></TargetFrameworks>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetWasm.TUnit" Version="[$(NetWasmTUnitPackageVersion)]" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../tests/TUnit.Assertions.Tests/**/*.cs"
+             Exclude="../../tests/TUnit.Assertions.Tests/ThrowTests.cs;../../tests/TUnit.Assertions.Tests/obj/**;../../tests/TUnit.Assertions.Tests/bin/**" />
+    <Analyzer Include="../../src/TUnit.Assertions.SourceGenerator/bin/$(Configuration)/netstandard2.0/TUnit.Assertions.SourceGenerator.dll" />
+  </ItemGroup>
+</Project>
