@@ -191,7 +191,7 @@ package_tests="NetWasm.TUnit.Package.Tests/NetWasm.TUnit.Package.Tests.csproj"
     -p:NetWasmTUnitPackageVersion="${TEST_VERSION}"
   dotnet test "${package_tests}" -c Release --no-restore --disable-build-servers --nologo |
     tee "${test_root}/package-run.log"
-  assert_vstest_pass_summary "${test_root}/package-run.log" 14
+  assert_vstest_pass_summary "${test_root}/package-run.log" 15
   dotnet test "${package_tests}" -c Release --no-build --no-restore --list-tests --nologo |
     tee "${test_root}/package-list.log"
   grep -E -q '^[[:space:]]+PackageOnlyConsumerRunsThroughStandardDotNetTest$' \
