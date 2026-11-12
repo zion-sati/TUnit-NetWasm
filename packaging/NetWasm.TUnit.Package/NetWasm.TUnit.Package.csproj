@@ -4,6 +4,9 @@
          .NET Standard assets. This project restores both frameworks at once, outside the SDK's netwasm0.1-only NU1701
          exemption, and NuGet applies warning settings to the whole project. -->
     <NoWarn>$(NoWarn);NU1701</NoWarn>
+    <!-- The runner's sources call the request context and completion notifier a test host uses, which
+         Microsoft.Testing.Platform marks experimental. -->
+    <NoWarn>$(NoWarn);TPEXP</NoWarn>
     <TargetFramework></TargetFramework>
     <TargetFrameworks>net10.0;netwasm0.1</TargetFrameworks>
     <AssemblyName>NetWasm.TUnit.Runner</AssemblyName>
@@ -21,7 +24,7 @@
     <PackageIcon></PackageIcon>
     <IsPackable>true</IsPackable>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Description>NetWasm-targeted TUnit catalog runner and package integration.</Description>
+    <Description>Runs TUnit's engine on NetWasm and integrates TUnit test projects with dotnet test.</Description>
     <Deterministic>true</Deterministic>
     <!-- This release-only runner package does not ship symbols. Omitting its
          unused portable PDB also avoids Roslyn recording physical restored-

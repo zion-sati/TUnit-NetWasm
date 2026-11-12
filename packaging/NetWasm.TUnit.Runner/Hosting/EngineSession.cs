@@ -3,6 +3,7 @@ using Microsoft.Testing.Platform.Extensions.TestFramework;
 using Microsoft.Testing.Platform.Messages;
 using Microsoft.Testing.Platform.Requests;
 using Microsoft.Testing.Platform.TestHost;
+using PlatformSessionContext = Microsoft.Testing.Platform.TestHost.TestSessionContext;
 
 namespace NetWasm.TUnit.Runner.Hosting;
 
@@ -18,7 +19,7 @@ public sealed class EngineSession(ITestFramework framework)
 
     /// <returns>Whether the framework reports the session as successful.</returns>
     public async Task<bool> RunAsync(
-        Func<TestSessionContext, IRequest> createRequest,
+        Func<PlatformSessionContext, IRequest> createRequest,
         IMessageBus messageBus,
         CancellationToken cancellationToken)
     {
@@ -44,7 +45,7 @@ public sealed class EngineSession(ITestFramework framework)
     }
 
     [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
-    private static extern TestSessionContext CreateSession(SessionUid sessionUid);
+    private static extern PlatformSessionContext CreateSession(SessionUid sessionUid);
 
     [UnsafeAccessor(UnsafeAccessorKind.Constructor)]
     private static extern CreateTestSessionContext CreateSessionContext(SessionUid sessionUid, CancellationToken cancellationToken);
