@@ -43,8 +43,9 @@ behave as upstream's do. The VSTest adapter starts the program to list and run t
 - TUnit's reflection mode is not available, nor are the reflection fallbacks of its
   source-generated mode. A custom data source attribute's `DisplayName`, `Skip` and
   `Categories` properties are not read; TUnit's own attributes are unaffected.
-- Test classes are treated as top-level types of the test program's assembly, so a
-  nested test class is named without its enclosing class.
+- Test classes are treated as top-level types of the test program's assembly (NetWasm
+  has no `Type.Assembly`), and a nested test class is named without its enclosing class
+  until NetWasm supplies `Type.DeclaringType`.
 - Test projects build at `NetWasmOptimization=O0` for now: an optimized build of
   TUnit's engine exceeds WebAssembly's function size limit (NW1013). Pass
   `-p:NetWasmOptimization=O0` to a Release build.

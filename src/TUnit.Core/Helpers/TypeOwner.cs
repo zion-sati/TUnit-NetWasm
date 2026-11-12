@@ -22,6 +22,7 @@ internal static class TypeOwner
     public static Type? DeclaringType(Type type)
     {
 #if NETWASM
+        // NetWasm does not supply Type.DeclaringType yet; switch to it when it does.
         return null;
 #else
         return type.DeclaringType;
