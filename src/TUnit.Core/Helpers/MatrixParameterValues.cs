@@ -45,9 +45,15 @@ internal static class MatrixParameterValues
 
     public static object?[][] GetExclusions(DataGeneratorMetadata dataGeneratorMetadata)
     {
+#if NETWASM
+        // NetWasm keeps no attribute metadata at run time: read the test's attributes the builder already created
+        // from the generated metadata (the method's, then its class's and assembly's).
+        IEnumerable<Attribute> attributes = dataGeneratorMetadata.TestBuilderContext.Current.InitializedAttributes ?? [];
+#else
         var attributes = dataGeneratorMetadata.Type == DataGeneratorType.TestParameters
             ? dataGeneratorMetadata.TestInformation!.GetCustomAttributes()
             : dataGeneratorMetadata.TestInformation!.Class.Type.GetCustomAttributesSafe();
+#endif
 
         List<object?[]>? exclusions = null;
 

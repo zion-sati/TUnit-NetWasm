@@ -43,6 +43,26 @@ public static class ParameterMetadataFactory
         };
     }
 
+#if NETWASM
+    /// <summary>
+    /// Attaches each parameter's data-source attributes ([Matrix] and kin), which the generated code of a NetWasm
+    /// build supplies: NetWasm keeps no member metadata at run time, so data sources read these instead of the
+    /// parameters' <see cref="ParameterInfo"/>. <paramref name="attributes"/> has one array per parameter.
+    /// </summary>
+    public static ParameterMetadata[] WithDataSourceAttributes(ParameterMetadata[] parameters, params Attribute[][] attributes)
+    {
+        var attached = new ParameterMetadata[parameters.Length];
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            attached[i] = i < attributes.Length && attributes[i].Length > 0
+                ? parameters[i] with { CachedDataSourceAttributes = attributes[i] }
+                : parameters[i];
+        }
+
+        return attached;
+    }
+
+#endif
     /// <summary>
     /// Attaches lazy <see cref="ParameterMetadata.ReflectionInfo"/> resolution to the parameters of a
     /// non-generic public method. The method is looked up once, on first access, by name and the parameters' types.

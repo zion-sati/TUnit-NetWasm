@@ -554,10 +554,19 @@ internal static class TUnit_TestProject_Bugs__7107_MatrixInfersTypeConstraintTes
         Parent = null
     });
     private static readonly global::System.Type __classType = typeof(global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests);
-    private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("Invalid", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata, genericTypeCount: 1, parameters: global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests), "Invalid", false, 1, new global::TUnit.Core.ParameterMetadata[]
+    private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("Invalid", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata, genericTypeCount: 1, parameters: 
+#if NETWASM
+global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests), "Invalid", false, 1, new global::TUnit.Core.ParameterMetadata[]
 {
 global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "value", new global::TUnit.Core.GenericParameter(0, true, "T"), false)
-}));
+}), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute<string>("a", "b") })
+#else
+global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests), "Invalid", false, 1, new global::TUnit.Core.ParameterMetadata[]
+{
+global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "value", new global::TUnit.Core.GenericParameter(0, true, "T"), false)
+})
+#endif
+);
     private static global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests __CreateInstance_0(global::System.Type[] typeArgs, object?[] args)
     {
         return new global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests();
@@ -625,10 +634,19 @@ internal static class TUnit_TestProject_Bugs__7107_MatrixInfersTypeConstraintTes
         Parent = null
     });
     private static readonly global::System.Type __classType = typeof(global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests);
-    private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("Valid", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata, genericTypeCount: 1, parameters: global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests), "Valid", false, 1, new global::TUnit.Core.ParameterMetadata[]
+    private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("Valid", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata, genericTypeCount: 1, parameters: 
+#if NETWASM
+global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests), "Valid", false, 1, new global::TUnit.Core.ParameterMetadata[]
 {
 global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "value", new global::TUnit.Core.GenericParameter(0, true, "T"), false)
-}));
+}), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute<int>(1, 2) })
+#else
+global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests), "Valid", false, 1, new global::TUnit.Core.ParameterMetadata[]
+{
+global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "value", new global::TUnit.Core.GenericParameter(0, true, "T"), false)
+})
+#endif
+);
     private static global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests __CreateInstance_0(global::System.Type[] typeArgs, object?[] args)
     {
         return new global::TUnit.TestProject.Bugs._7107.MatrixInfersTypeConstraintTests();

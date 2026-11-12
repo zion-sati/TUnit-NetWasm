@@ -245,12 +245,23 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixTest_One", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixTest_One", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "str", new global::TUnit.Core.ConcreteType(typeof(string)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i", new global::TUnit.Core.ConcreteType(typeof(int)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute("A", "B", "C", "D") }, new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(1, 2, 3) }, new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(true, false) })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixTest_One", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "str", new global::TUnit.Core.ConcreteType(typeof(string)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i", new global::TUnit.Core.ConcreteType(typeof(int)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -268,13 +279,25 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixTest_Two", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixTest_Two", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i", new global::TUnit.Core.ConcreteType(typeof(int)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i2", new global::TUnit.Core.ConcreteType(typeof(int)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i3", new global::TUnit.Core.ConcreteType(typeof(int)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(1, 2) }, new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(1, 2, 3) }, new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(1, 2, 3, 4) }, new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(true, false) })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixTest_Two", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i", new global::TUnit.Core.ConcreteType(typeof(int)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i2", new global::TUnit.Core.ConcreteType(typeof(int)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i3", new global::TUnit.Core.ConcreteType(typeof(int)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -292,12 +315,23 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixTest_Enum", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixTest_Enum", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i", new global::TUnit.Core.ConcreteType(typeof(int)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(TestEnum), "testEnum", new global::TUnit.Core.ConcreteType(typeof(TestEnum)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(TestEnum?), "testEnum2", new global::TUnit.Core.ConcreteType(typeof(TestEnum?)), true)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(1, 2) }, new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(-1, One) }, global::System.Array.Empty<global::System.Attribute>())
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixTest_Enum", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "i", new global::TUnit.Core.ConcreteType(typeof(int)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(TestEnum), "testEnum", new global::TUnit.Core.ConcreteType(typeof(TestEnum)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(TestEnum?), "testEnum2", new global::TUnit.Core.ConcreteType(typeof(TestEnum?)), true)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -315,11 +349,21 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "AutoGenerateBools", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "AutoGenerateBools", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "str", new global::TUnit.Core.ConcreteType(typeof(string)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute("A", "B", "C") }, global::System.Array.Empty<global::System.Attribute>())
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "AutoGenerateBools", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "str", new global::TUnit.Core.ConcreteType(typeof(string)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -337,11 +381,21 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "AutoGenerateBools2", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "AutoGenerateBools2", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "str", new global::TUnit.Core.ConcreteType(typeof(string)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool?), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool?)), true)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute("A", "B", "C") }, new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute() })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "AutoGenerateBools2", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "str", new global::TUnit.Core.ConcreteType(typeof(string)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool?), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool?)), true)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -359,11 +413,21 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "ImplicitConversion", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "ImplicitConversion", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(OneOf<TestEnum, TestEnum2>), "enum", new global::TUnit.Core.ConcreteType(typeof(OneOf<TestEnum, TestEnum2>)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(One, Two) }, new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute() })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "ImplicitConversion", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(OneOf<TestEnum, TestEnum2>), "enum", new global::TUnit.Core.ConcreteType(typeof(OneOf<TestEnum, TestEnum2>)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -381,11 +445,22 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "ExcludingAutoGeneratedMatrixValues", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "ExcludingAutoGeneratedMatrixValues", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.MatrixTests.CountToTenEnum), "enum", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.MatrixTests.CountToTenEnum)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute<global::TUnit.TestProject.MatrixTests.CountToTenEnum>()
+            {Excluding = new object[]{global::TUnit.TestProject.MatrixTests.CountToTenEnum.Three,global::TUnit.TestProject.MatrixTests.CountToTenEnum.Seven},} }, new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute() })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "ExcludingAutoGeneratedMatrixValues", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.MatrixTests.CountToTenEnum), "enum", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.MatrixTests.CountToTenEnum)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "boolean", new global::TUnit.Core.ConcreteType(typeof(bool)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -403,10 +478,19 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method1", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method1", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixMethodAttribute<global::TUnit.TestProject.MatrixTests>("EnumerableMethod") })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method1", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -424,10 +508,19 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method2", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method2", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixMethodAttribute<global::TUnit.TestProject.MatrixTests>("ArrayMethod") })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method2", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -445,10 +538,19 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method3", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method3", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixMethodAttribute<global::TUnit.TestProject.MatrixTests>("IntMethod") })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method3", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -469,10 +571,19 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method4", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method4", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixMethodAttribute<global::TUnit.TestProject.MatrixTests>("ObjectMethod") })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Method4", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -490,11 +601,21 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Exclusion", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Exclusion", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item2", new global::TUnit.Core.ConcreteType(typeof(int)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixMethodAttribute<global::TUnit.TestProject.MatrixTests>("EnumerableMethod") }, new global::System.Attribute[] { new global::TUnit.Core.MatrixMethodAttribute<global::TUnit.TestProject.MatrixTests>("EnumerableMethod") })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "Exclusion", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item", new global::TUnit.Core.ConcreteType(typeof(int)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "item2", new global::TUnit.Core.ConcreteType(typeof(int)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -512,11 +633,21 @@ internal static class TUnit_TestProject_MatrixTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixMethod_WithEnumParameter_UsesOnlyMethodValues", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixMethod_WithEnumParameter_UsesOnlyMethodValues", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "flag", new global::TUnit.Core.ConcreteType(typeof(bool)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.MatrixTests.CountToTenEnum), "enum", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.MatrixTests.CountToTenEnum)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(true, false) }, new global::System.Attribute[] { new global::TUnit.Core.MatrixMethodAttribute<global::TUnit.TestProject.MatrixTests>("GetSpecificEnumValues") })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.MatrixTests), "MatrixMethod_WithEnumParameter_UsesOnlyMethodValues", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "flag", new global::TUnit.Core.ConcreteType(typeof(bool)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.MatrixTests.CountToTenEnum), "enum", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.MatrixTests.CountToTenEnum)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,

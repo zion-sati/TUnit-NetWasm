@@ -761,10 +761,19 @@ internal static class TUnit_TestProject_ArgsAsArrayTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.ArgsAsArrayTests), "TrailingArray_ObjectArrayFromMatrix", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.ArgsAsArrayTests), "TrailingArray_ObjectArrayFromMatrix", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.ConfigKind[]), "configs", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.ConfigKind[])), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.TestProject.MatrixArrayAttribute(new object[]{global::TUnit.TestProject.ConfigKind.Ai,global::TUnit.TestProject.ConfigKind.Sample}, new object[]{global::TUnit.TestProject.ConfigKind.Sample,global::TUnit.TestProject.ConfigKind.NoWindow,global::TUnit.TestProject.ConfigKind.Mcp}) })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.ArgsAsArrayTests), "TrailingArray_ObjectArrayFromMatrix", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.ConfigKind[]), "configs", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.ConfigKind[])), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -785,10 +794,19 @@ internal static class TUnit_TestProject_ArgsAsArrayTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.ArgsAsArrayTests), "TrailingParamsArray_ObjectArrayFromMatrix", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.ArgsAsArrayTests), "TrailingParamsArray_ObjectArrayFromMatrix", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.ConfigKind[]), "configs", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.ConfigKind[])), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.TestProject.MatrixArrayAttribute(new object[]{global::TUnit.TestProject.ConfigKind.Ai,global::TUnit.TestProject.ConfigKind.Mcp}) })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.ArgsAsArrayTests), "TrailingParamsArray_ObjectArrayFromMatrix", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.ConfigKind[]), "configs", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.ConfigKind[])), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -806,10 +824,19 @@ internal static class TUnit_TestProject_ArgsAsArrayTests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.ArgsAsArrayTests), "TrailingArray_NonZeroLowerBoundArrayFromMatrix", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.ArgsAsArrayTests), "TrailingArray_NonZeroLowerBoundArrayFromMatrix", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.ConfigKind[]), "configs", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.ConfigKind[])), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.TestProject.NonZeroLowerBoundMatrixAttribute() })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.ArgsAsArrayTests), "TrailingArray_NonZeroLowerBoundArrayFromMatrix", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::TUnit.TestProject.ConfigKind[]), "configs", new global::TUnit.Core.ConcreteType(typeof(global::TUnit.TestProject.ConfigKind[])), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,

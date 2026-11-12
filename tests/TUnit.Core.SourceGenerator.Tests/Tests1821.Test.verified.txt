@@ -130,10 +130,19 @@ internal static class TUnit_TestProject_Bugs__1821_Tests__TestSource
     new global::TUnit.Core.ClassDataSourceAttribute<global::TUnit.TestProject.Bugs._1821.MyData>(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.Bugs._1821.Tests), "MatrixDataSource", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.Bugs._1821.Tests), "MatrixDataSource", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "value", new global::TUnit.Core.ConcreteType(typeof(string)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixInstanceMethodAttribute<global::TUnit.TestProject.Bugs._1821.Tests>("DataSource") })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.Bugs._1821.Tests), "MatrixDataSource", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "value", new global::TUnit.Core.ConcreteType(typeof(string)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,

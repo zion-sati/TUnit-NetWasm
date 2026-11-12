@@ -1522,10 +1522,19 @@ internal static class TUnit_TestProject_Bugs__7222_ClosedClassParameterInferredS
         Parent = null
     });
     private static readonly global::System.Type __classType = typeof(global::TUnit.TestProject.Bugs._7222.ClosedClassParameterInferredSourceTests<>);
-    private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("ParameterInferred", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata, genericTypeCount: 1, parameters: global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7222.ClosedClassParameterInferredSourceTests<>), "ParameterInferred", false, 1, new global::TUnit.Core.ParameterMetadata[]
+    private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("ParameterInferred", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata, genericTypeCount: 1, parameters: 
+#if NETWASM
+global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7222.ClosedClassParameterInferredSourceTests<>), "ParameterInferred", false, 1, new global::TUnit.Core.ParameterMetadata[]
 {
 global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "item", new global::TUnit.Core.GenericParameter(0, true, "T"), false)
-}));
+}), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute<int>(1) })
+#else
+global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7222.ClosedClassParameterInferredSourceTests<>), "ParameterInferred", false, 1, new global::TUnit.Core.ParameterMetadata[]
+{
+global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "item", new global::TUnit.Core.GenericParameter(0, true, "T"), false)
+})
+#endif
+);
     private static global::TUnit.TestProject.Bugs._7222.ClosedClassParameterInferredSourceTests<int> __CreateInstance_0(global::System.Type[] typeArgs, object?[] args)
     {
         return new global::TUnit.TestProject.Bugs._7222.ClosedClassParameterInferredSourceTests<int>(global::TUnit.Core.Helpers.CastHelper.Cast<int>(args[0]));
@@ -1607,10 +1616,19 @@ internal static class TUnit_TestProject_Bugs__7222_ExplicitClassParameterInferre
         Parent = null
     });
     private static readonly global::System.Type __classType = typeof(global::TUnit.TestProject.Bugs._7222.ExplicitClassParameterInferredSourceTests<>);
-    private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("ParameterInferred", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata, genericTypeCount: 1, parameters: global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7222.ExplicitClassParameterInferredSourceTests<>), "ParameterInferred", false, 1, new global::TUnit.Core.ParameterMetadata[]
+    private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("ParameterInferred", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata, genericTypeCount: 1, parameters: 
+#if NETWASM
+global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7222.ExplicitClassParameterInferredSourceTests<>), "ParameterInferred", false, 1, new global::TUnit.Core.ParameterMetadata[]
 {
 global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "item", new global::TUnit.Core.GenericParameter(0, true, "T"), false)
-}));
+}), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute<int>(1) })
+#else
+global::TUnit.Core.ParameterMetadataFactory.ForGenericMethod(typeof(global::TUnit.TestProject.Bugs._7222.ExplicitClassParameterInferredSourceTests<>), "ParameterInferred", false, 1, new global::TUnit.Core.ParameterMetadata[]
+{
+global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "item", new global::TUnit.Core.GenericParameter(0, true, "T"), false)
+})
+#endif
+);
     private static global::TUnit.TestProject.Bugs._7222.ExplicitClassParameterInferredSourceTests<int> __CreateInstance_0(global::System.Type[] typeArgs, object?[] args)
     {
         return new global::TUnit.TestProject.Bugs._7222.ExplicitClassParameterInferredSourceTests<int>();

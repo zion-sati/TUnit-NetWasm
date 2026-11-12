@@ -542,7 +542,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         var classMetadataExpr = MetadataGenerationHelper.GenerateClassMetadataGetOrAddWithParentExpression(testMethod.TypeSymbol, writer.IndentLevel);
         writer.AppendLine($"private static readonly global::TUnit.Core.ClassMetadata __classMetadata = {classMetadataExpr};");
         writer.AppendLine($"private static readonly global::System.Type __classType = typeof({className});");
-        writer.AppendLine($"private static readonly global::TUnit.Core.MethodMetadata __mm_0 = {GenerateMethodMetadataFactoryCall(testMethod.MethodSymbol)};");
+        writer.AppendLine($"private static readonly global::TUnit.Core.MethodMetadata __mm_0 = {GenerateMethodMetadataFactoryCall(testMethod)};");
 
         // Emit per-group helpers and TestEntry arrays
         var registrationIndex = 0;
@@ -5240,8 +5240,41 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     /// MethodMetadata itself (return type, generic arity, parameters), omitting factory defaults.
     /// Called during the transform step where ISymbol is available.
     /// </summary>
-    private static string PreGenerateMethodMetadataArguments(IMethodSymbol methodSymbol)
+    /// <summary>
+    /// A NetWasm build keeps no member metadata at run time, so when parameters carry data-source attributes ([Matrix]
+    /// and kin), the generated parameter metadata is wrapped to attach them; other targets read them through
+    /// ParameterInfo as before. Returns <paramref name="parametersExpression"/> unchanged when no parameter has one.
+    /// </summary>
+    private static string WithNetWasmParameterDataSources(TestMethodMetadata testMethod, string parametersExpression)
     {
+        var attributeWriter = testMethod.CompilationContext.AttributeWriter;
+        var perParameter = testMethod.MethodSymbol.Parameters
+            .Select(parameter => parameter.GetAttributes()
+                .Where(static attribute => attribute.AttributeClass is { } attributeClass
+                    && (DataSourceAttributeHelper.IsDataSourceAttribute(attributeClass)
+                        || InterfaceHelper.ImplementsInterface(attributeClass, "global::TUnit.Core.IDataSourceMemberAttribute")))
+                .Select(attribute => attributeWriter.GetAttributeObjectInitializer(attribute).Trim().TrimEnd(','))
+                .ToArray())
+            .ToArray();
+        if (perParameter.All(static attributes => attributes.Length == 0))
+        {
+            return parametersExpression;
+        }
+
+        var arrays = string.Join(", ", perParameter.Select(static attributes =>
+            attributes.Length == 0
+                ? "global::System.Array.Empty<global::System.Attribute>()"
+                : $"new global::System.Attribute[] {{ {string.Join(", ", attributes)} }}"));
+        return "\n#if NETWASM\n"
+            + $"global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes({parametersExpression}, {arrays})\n"
+            + "#else\n"
+            + parametersExpression + "\n"
+            + "#endif\n";
+    }
+
+    private static string PreGenerateMethodMetadataArguments(TestMethodMetadata testMethod)
+    {
+        var methodSymbol = testMethod.MethodSymbol;
         var writer = new CodeWriter(includeHeader: false);
 
         if (!methodSymbol.ReturnsVoid)
@@ -5259,7 +5292,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             var paramExpr = MetadataGenerationHelper.GenerateParameterMetadataArrayForMethodExpression(methodSymbol);
             if (paramExpr != null)
             {
-                writer.AppendLine($"parameters: {paramExpr},");
+                writer.AppendLine($"parameters: {WithNetWasmParameterDataSources(testMethod, paramExpr)},");
             }
         }
 
@@ -5325,8 +5358,9 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     /// <summary>
     /// Generates a MethodMetadataFactory.Create(...) call expression referencing __classType and __classMetadata.
     /// </summary>
-    private static string GenerateMethodMetadataFactoryCall(IMethodSymbol methodSymbol)
+    private static string GenerateMethodMetadataFactoryCall(TestMethodMetadata testMethod)
     {
+        var methodSymbol = testMethod.MethodSymbol;
         var returnType = ReturnTypeForTypeOf(methodSymbol.ReturnType);
         var sb = new System.Text.StringBuilder();
         sb.Append($"global::TUnit.Core.MethodMetadataFactory.Create(\"{methodSymbol.Name}\", __classType, typeof({returnType}), __classMetadata");
@@ -5341,7 +5375,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             var paramExpr = MetadataGenerationHelper.GenerateParameterMetadataArrayForMethodExpression(methodSymbol);
             if (paramExpr != null)
             {
-                sb.Append($", parameters: {paramExpr}");
+                sb.Append($", parameters: {WithNetWasmParameterDataSources(testMethod, paramExpr)}");
             }
         }
 
@@ -5464,7 +5498,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             ReflectionFieldAccessorsCode = classCode.ReflectionFieldAccessorsCode,
             SharedFieldsCode = classCode.SharedFieldsCode,
             AttributesCode = PreGenerateCreateAttributesCode(testMethod),
-            MethodMetadataArgumentsCode = PreGenerateMethodMetadataArguments(testMethod.MethodSymbol),
+            MethodMetadataArgumentsCode = PreGenerateMethodMetadataArguments(testMethod),
             InvokeBodyCode = PreGenerateInvokeBody(testMethod),
             TestEntryDataFieldsCode = PreGenerateTestEntryDataFields(testMethod),
             TestDataSourcesCode = PreGenerateMethodDataSourcesExpression(testMethod),

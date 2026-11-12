@@ -329,11 +329,21 @@ internal static class TUnit_TestProject_TimeoutCancellationTokenTests__TestSourc
     },
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.TimeoutCancellationTokenTests), "MatrixTest", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.TimeoutCancellationTokenTests), "MatrixTest", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "value", new global::TUnit.Core.ConcreteType(typeof(int)), false),
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::System.Threading.CancellationToken), "cancellationToken", new global::TUnit.Core.ConcreteType(typeof(global::System.Threading.CancellationToken)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(1, 2, 3) }, global::System.Array.Empty<global::System.Attribute>())
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.TimeoutCancellationTokenTests), "MatrixTest", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "value", new global::TUnit.Core.ConcreteType(typeof(int)), false),
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(global::System.Threading.CancellationToken), "cancellationToken", new global::TUnit.Core.ConcreteType(typeof(global::System.Threading.CancellationToken)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,

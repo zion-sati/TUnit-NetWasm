@@ -94,10 +94,19 @@ internal static class TUnit_TestProject_Bugs__2085_Tests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.Bugs._2085.Tests), "Double_SpecialConsts", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.Bugs._2085.Tests), "Double_SpecialConsts", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(double), "d", new global::TUnit.Core.ConcreteType(typeof(double)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(double.NaN, double.PositiveInfinity, double.NegativeInfinity) })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.Bugs._2085.Tests), "Double_SpecialConsts", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(double), "d", new global::TUnit.Core.ConcreteType(typeof(double)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
@@ -115,10 +124,19 @@ internal static class TUnit_TestProject_Bugs__2085_Tests__TestSource
     new global::TUnit.Core.MatrixDataSourceAttribute(),
 },
             returnType: typeof(global::System.Threading.Tasks.Task),
-            parameters: global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.Bugs._2085.Tests), "Float_SpecialConsts", false, new global::TUnit.Core.ParameterMetadata[]
+            parameters:
+            #if NETWASM
+            global::TUnit.Core.ParameterMetadataFactory.WithDataSourceAttributes(global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.Bugs._2085.Tests), "Float_SpecialConsts", false, new global::TUnit.Core.ParameterMetadata[]
             {
             global::TUnit.Core.ParameterMetadataFactory.Create(typeof(float), "d", new global::TUnit.Core.ConcreteType(typeof(float)), false)
-            }),
+            }), new global::System.Attribute[] { new global::TUnit.Core.MatrixAttribute(float.NaN, float.PositiveInfinity, float.NegativeInfinity) })
+            #else
+            global::TUnit.Core.ParameterMetadataFactory.ForMethod(typeof(global::TUnit.TestProject.Bugs._2085.Tests), "Float_SpecialConsts", false, new global::TUnit.Core.ParameterMetadata[]
+            {
+            global::TUnit.Core.ParameterMetadataFactory.Create(typeof(float), "d", new global::TUnit.Core.ConcreteType(typeof(float)), false)
+            })
+            #endif
+            ,
             classMetadata: __classMetadata,
             createInstance: __createInstance,
             invokeBody: __invoke,
