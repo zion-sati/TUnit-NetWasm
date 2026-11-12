@@ -158,10 +158,7 @@ public class TestMetadataIncrementalTests
 
         // ...so grouping and every source output are skipped.
         await AssertAllReasons(GetStepReasons(runResult2, TestMetadataGenerator.ClassTestGroupsStep), IncrementalStepRunReason.Cached);
-        await Assert.That(GetSourceOutputReasons(runResult2)
-                .Where(static reason => reason is not IncrementalStepRunReason.Cached
-                    and not IncrementalStepRunReason.Unchanged))
-            .IsEmpty();
+        await AssertAllReasons(GetSourceOutputReasons(runResult2), IncrementalStepRunReason.Cached);
     }
 
     [Test]

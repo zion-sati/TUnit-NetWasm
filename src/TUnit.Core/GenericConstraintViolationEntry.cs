@@ -223,7 +223,4 @@ internal sealed class GenericConstraintViolationEntrySource : ITestEntrySource
     {
         return [Resolve()[index].ToTestMetadata(_genericTypeDefinition, testSessionId)];
     }
-
-    // The closed-world catalog emits its own failed cases for these violations.
-    public IReadOnlyList<GeneratedTestCase> GetGeneratedCases() => [];
 }

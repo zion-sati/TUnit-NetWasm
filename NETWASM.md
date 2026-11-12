@@ -3,8 +3,8 @@
 [![NetWasm publication](https://img.shields.io/github/actions/workflow/status/zion-sati/TUnit-NetWasm/netwasm-release.yml?label=NetWasm%20publish&event=release)](https://github.com/zion-sati/TUnit-NetWasm/actions/workflows/netwasm-release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-This fork runs TUnit on `netwasm0.1`, with a source-generated test catalog,
-sequential runner and VSTest adapter.
+This fork runs TUnit on `netwasm0.1`: upstream TUnit's source generator, engine and
+assertions, hosted for NetWasm, with a VSTest adapter for `dotnet test`.
 
 ## Prerequisites
 
@@ -30,40 +30,25 @@ dotnet test --filter "FullyQualifiedName=MyProject.Tests.Tests.AnswerIsFortyTwo"
 dotnet test --filter "Category=smoke"
 ```
 
-## Supported test attributes
+## How tests run
 
-A `netwasm0.1` test project runs a catalog that the TUnit source generator
-builds at compile time. The catalog supports:
+A `netwasm0.1` test project compiles TUnit's source-generated test metadata, and the
+package's entry point runs TUnit's engine inside the test program, in place of
+Microsoft.Testing.Platform's test application. Discovery, data sources, attributes,
+hooks, retries, timeouts, parallel constraints and `TestContext.Current` therefore
+behave as upstream's do. The VSTest adapter starts the program to list and run tests.
 
-- Tests and data: `[Test]`, `[Arguments]`, `[MethodDataSource]`,
-  `[ClassDataSource<T>]`, `[DisplayName]`, `[InheritsTests]` and
-  `[GenerateGenericTest]`.
-- Metadata and selection: `[Category]`, `[Property]`, `[Skip]`, `[Explicit]`
-  and `[NotDiscoverable]`.
-- Execution: `[DependsOn]`, `[ExecutionPriority]`, `[Repeat]`, `[Retry]` and
-  `[Timeout]`.
-- Parallelism: `[NotInParallel]`, `[ParallelGroup]` and
-  `[ParallelLimiter<T>]`. The runner executes one test at a time, which
-  satisfies every constraint. Tests keep TUnit's order: unconstrained tests,
-  keyed `[NotInParallel]` tests, parallel groups, then global
-  `[NotInParallel]` tests, each by `Order`.
-- Hooks: test and class `[Before]` and `[After]` hooks, which may take a
-  `CancellationToken`.
+## Differences on `netwasm0.1`
 
-The build reports any other TUnit attribute as unsupported instead of
-ignoring it. Features that need runtime reflection are not available.
-
-## Test context
-
-`TestContext.Current` is the running test's context, in its test-level
-`[Before]` and `[After]` hooks, in its body and after its awaits. Its
-`Metadata` carries what the catalog records for the test, under upstream
-TUnit's names: `TestName`, `DisplayName`, `DefinitionId` and `TestDetails`,
-which has `TestId`, `TestName`, `MethodName`, `ClassType`, `ClassInstance`,
-`TestMethodArguments`, `TestClassArguments`, `Categories`, `CustomProperties`,
-`Timeout`, `RetryLimit`, `TestFilePath` and `TestLineNumber`. Upstream's other
-context members, such as output capture, the state bag and events, are not
-available on `netwasm0.1`.
+- TUnit's reflection mode is not available, nor are the reflection fallbacks of its
+  source-generated mode. A custom data source attribute's `DisplayName`, `Skip` and
+  `Categories` properties are not read; TUnit's own attributes are unaffected.
+- `[MatrixDataSource]` is not supported yet.
+- Test classes are treated as top-level types of the test program's assembly, so a
+  nested test class is named without its enclosing class.
+- Test projects build at `NetWasmOptimization=O0` for now: an optimized build of
+  TUnit's engine exceeds WebAssembly's function size limit (NW1013). Pass
+  `-p:NetWasmOptimization=O0` to a Release build.
 
 ## Packages
 

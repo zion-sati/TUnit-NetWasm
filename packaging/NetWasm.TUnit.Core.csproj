@@ -33,8 +33,7 @@
     <None Include="..\LICENSE" Pack="true" PackagePath="LICENSE" Condition="'$(NetWasmSdkCustomProfileEnabled)' == 'true'" Visible="false" />
   </ItemGroup>
 
-  <!-- Both targets compile upstream's TUnit.Core, which includes the fork's source-generated catalog types;
-       netwasm0.1 as the .NET 10 code it is. -->
+  <!-- Both targets compile upstream's TUnit.Core; netwasm0.1 as the .NET 10 code it is. -->
   <ItemGroup>
     <Compile Include="..\src\TUnit.Core\**\*.cs"
              Exclude="..\src\TUnit.Core\IClassDataSourceAttribute.cs;..\src\TUnit.Core\Interfaces\INestedClassDataSourceInitializer.cs;..\src\TUnit.Core\TUnit.Core.GeneratedNamespace.cs;..\src\TUnit.Core\obj\**\*;..\src\TUnit.Core\bin\**\*" />
@@ -46,7 +45,7 @@
   <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <SignAssembly>false</SignAssembly>
-    <!-- TUnit.Engine assigns some of TestContext's internal fields; netwasm0.1 runs the catalog's runner instead. -->
+    <!-- TUnit.Engine assigns some of TestContext's internal fields from its own assembly. -->
     <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
   <ItemGroup>

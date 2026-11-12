@@ -9,7 +9,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TUnit.Core.SourceGenerator.CodeGenerators.Helpers;
 using TUnit.Core.SourceGenerator.Extensions;
 using TUnit.Core.SourceGenerator.Models;
-using TUnit.Core.SourceGenerator.Utilities;
 
 namespace TUnit.Core.SourceGenerator.Generators;
 
@@ -32,7 +31,11 @@ public class AotConverterGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select(static (options, _) => SourceGenerationMode.Read(options).IsDesktop);
+            .Select((options, _) =>
+            {
+                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
+                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+            });
 
         var testMethods = context.SyntaxProvider
             .ForAttributeWithMetadataName(

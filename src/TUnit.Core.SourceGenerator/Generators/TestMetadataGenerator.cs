@@ -12,12 +12,10 @@ using TUnit.Analyzers.Extensions;
 using TUnit.Core.SourceGenerator.CodeGenerators.Formatting;
 using TUnit.Core.SourceGenerator.CodeGenerators.Helpers;
 using TUnit.Core.SourceGenerator.CodeGenerators.Writers;
-using TUnit.Core.SourceGenerator.ClosedWorldCatalog;
 using TUnit.Core.SourceGenerator.Extensions;
 using TUnit.Core.SourceGenerator.Helpers;
 using TUnit.Core.SourceGenerator.Models;
 using TUnit.Core.SourceGenerator.Utilities;
-using TUnit.Core.SourceGenerator.Utilities.CapabilityValidation;
 using TUnit.Inference;
 
 namespace TUnit.Core.SourceGenerator.Generators;
@@ -53,8 +51,12 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var modeProvider = context.AnalyzerConfigOptionsProvider
-            .Select(static (options, _) => SourceGenerationMode.Read(options));
+        var enabledProvider = context.AnalyzerConfigOptionsProvider
+            .Select((options, _) =>
+            {
+                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
+                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+            });
 
         var generationStates = new ConditionalWeakTable<Compilation, GenerationState>();
 
@@ -73,13 +75,13 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 predicate: static (node, _) => node is MethodDeclarationSyntax,
                 transform: static (ctx, _) => (MethodDeclarationSyntax)ctx.TargetNode)
             .WithTrackingName(TestMethodSyntaxStep)
-            .Combine(modeProvider)
+            .Combine(enabledProvider)
             .Combine(context.CompilationProvider)
             .Select((data, cancellationToken) =>
             {
-                var ((methodSyntax, mode), compilation) = data;
-                return mode.Enabled
-                    ? GenerateTestMethod(methodSyntax, GetGenerationState(compilation), mode.IsClosedWorldCatalog, cancellationToken)
+                var ((methodSyntax, isEnabled), compilation) = data;
+                return isEnabled
+                    ? GenerateTestMethod(methodSyntax, GetGenerationState(compilation), cancellationToken)
                     : null;
             })
             .WithTrackingName(TestMethodResultsStep)
@@ -91,13 +93,13 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 predicate: static (node, _) => node is ClassDeclarationSyntax,
                 transform: static (ctx, _) => (ClassDeclarationSyntax)ctx.TargetNode)
             .WithTrackingName(InheritsTestsSyntaxStep)
-            .Combine(modeProvider)
+            .Combine(enabledProvider)
             .Combine(context.CompilationProvider)
             .Select((data, cancellationToken) =>
             {
-                var ((classSyntax, mode), compilation) = data;
-                return mode.Enabled
-                    ? GenerateInheritedTests(classSyntax, GetGenerationState(compilation), mode.IsClosedWorldCatalog, cancellationToken)
+                var ((classSyntax, isEnabled), compilation) = data;
+                return isEnabled
+                    ? GenerateInheritedTests(classSyntax, GetGenerationState(compilation), cancellationToken)
                     : null;
             })
             .WithTrackingName(InheritsTestsResultsStep)
@@ -127,53 +129,6 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 foreach (var result in classResult!.Methods)
                 {
                     EmitTestMethodResult(context, result);
-                }
-            });
-
-        var generatedEntryPointProvider = testMethodResultsProvider
-            .Collect()
-            .Combine(inheritsTestsResultsProvider.Collect())
-            .Combine(modeProvider);
-
-        context.RegisterSourceOutput(generatedEntryPointProvider,
-            static (context, data) =>
-            {
-                if (data.Right.IsClosedWorldCatalog)
-                {
-                    GenerateGeneratedEntryPoint(context, data.Left.Left, data.Left.Right);
-                }
-            });
-
-        var validationPipeline = new CompositeClosedWorldCapabilityValidator(
-        [
-            new ClosedWorldMethodCapabilityValidator(),
-            new ClosedWorldLifecycleCapabilityValidator(),
-            new ClosedWorldDataCapabilityValidator(),
-            new ClosedWorldActivationCapabilityValidator(),
-            new ClosedWorldAssemblyCapabilityValidator(),
-            new ClosedWorldSemanticCapabilityValidator(),
-        ]);
-        context.RegisterSourceOutput(
-            context.CompilationProvider.Combine(modeProvider),
-            (context, data) =>
-            {
-                if (!data.Right.IsClosedWorldCatalog)
-                {
-                    return;
-                }
-
-                foreach (var capability in validationPipeline.Validate((CSharpCompilation)data.Left))
-                {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        new DiagnosticDescriptor(
-                            "TUNIT1001",
-                            "Unsupported closed-world test capability",
-                            "{0}",
-                            "TUnit",
-                            DiagnosticSeverity.Error,
-                            true),
-                        capability.Location,
-                        capability.Message));
                 }
             });
     }
@@ -267,32 +222,9 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         }
     }
 
-    private static void GenerateGeneratedEntryPoint(
-        SourceProductionContext context,
-        ImmutableArray<TestMethodGenerationResult?> directResults,
-        ImmutableArray<InheritsTestsClassResult?> inheritedResults)
-    {
-        var sourceNames = directResults
-            .Where(static result => !string.IsNullOrEmpty(result?.CatalogRootName))
-            .Select(static result => result!.CatalogRootName! )
-            .Concat(inheritedResults
-                .Where(static result => result is not null)
-                .SelectMany(static result => result!.Methods)
-                .Where(static result => !string.IsNullOrEmpty(result.CatalogRootName))
-                .Select(static result => result.CatalogRootName!))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(static name => name, StringComparer.Ordinal)
-            .ToImmutableArray();
-
-        var source = ClosedWorldCatalogComposition.CreateEntryPointSourceEmitter()
-            .Emit(new EntryPointSourceRequest(sourceNames));
-        context.AddSource("TUnit.Generated.EntryPoint.g.cs", SourceText.From(source, Encoding.UTF8));
-    }
-
     private static TestMethodGenerationResult? GenerateTestMethod(
         MethodDeclarationSyntax methodSyntax,
         GenerationState state,
-        bool catalogOnly,
         CancellationToken cancellationToken)
     {
         if (state.GetSemanticModel(methodSyntax.SyntaxTree)?.GetDeclaredSymbol(methodSyntax, cancellationToken) is not IMethodSymbol methodSymbol)
@@ -311,20 +243,14 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         // class are emitted together in the per-class TestSource.
         if (testMethod.IsGenericType || testMethod.IsGenericMethod)
         {
-            return GenerateTestMethodSource(testMethod, catalogOnly);
+            return GenerateTestMethodSource(testMethod);
         }
 
         try
         {
             return new TestMethodGenerationResult
             {
-                CatalogRootName = catalogOnly
-                    ? state.GetClassLevelCode(testMethod.TypeSymbol).TestSourceName
-                    : null,
-                PerClassMethod = PreGeneratePerClassMethodCode(
-                    testMethod,
-                    state.GetClassLevelCode(testMethod.TypeSymbol),
-                    catalogOnly)
+                PerClassMethod = PreGeneratePerClassMethodCode(testMethod, state.GetClassLevelCode(testMethod.TypeSymbol))
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -343,7 +269,6 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     private static InheritsTestsClassResult? GenerateInheritedTests(
         ClassDeclarationSyntax classSyntax,
         GenerationState state,
-        bool catalogOnly,
         CancellationToken cancellationToken)
     {
         if (state.GetSemanticModel(classSyntax.SyntaxTree)?.GetDeclaredSymbol(classSyntax, cancellationToken) is not INamedTypeSymbol classSymbol)
@@ -417,7 +342,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 InheritanceDepth = inheritanceDepth
             };
 
-            results.Add(GenerateTestMethodSource(testMethodMetadata, catalogOnly));
+            results.Add(GenerateTestMethodSource(testMethodMetadata));
         }
 
         return new InheritsTestsClassResult(results.ToEquatableArray());
@@ -511,31 +436,16 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     /// <summary>
     /// Generates the standalone source file for a generic or inherited test method.
     /// </summary>
-    private static TestMethodGenerationResult GenerateTestMethodSource(
-        TestMethodMetadata testMethod,
-        bool catalogOnly)
+    private static TestMethodGenerationResult GenerateTestMethodSource(TestMethodMetadata testMethod)
     {
         try
         {
             var writer = new CodeWriter();
             GenerateFileHeader(writer);
-            if (catalogOnly)
-            {
-                GenerateCatalogOnlyTestMetadata(writer, testMethod);
-            }
-            else
-            {
-                GenerateTestMetadata(writer, testMethod);
-            }
+            GenerateTestMetadata(writer, testMethod);
 
             var fileName = FileNameHelper.GetDeterministicFileNameForMethod(testMethod.TypeSymbol, testMethod.MethodSymbol);
-            return new TestMethodGenerationResult
-            {
-                Source = new GeneratedTestSource(fileName, writer.ToString()),
-                CatalogRootName = catalogOnly
-                    ? fileName.Replace(".g.cs", "_TestSource")
-                    : null
-            };
+            return new TestMethodGenerationResult { Source = new GeneratedTestSource(fileName, writer.ToString()) };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -593,12 +503,26 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
             if (concreteInstantiations.Count == 0 && classConstraintViolations.Count == 0)
             {
-                if (UninferredTypeArgumentsViolation(testMethod, hadConcreteInstantiations, hadClassTypeArguments) is not { } violation)
+                // Successfully inferred types may have no matching method rows after filtering.
+                if (hadConcreteInstantiations)
                 {
                     return;
                 }
 
-                classConstraintViolations.Add(violation);
+                // An open generic template without data is not a runnable test. A class with data,
+                // however, must not silently disappear when only its runtime rows reveal the types.
+                if (!hadClassTypeArguments && !testMethod.TypeSymbol.GetAttributesIncludingBaseTypes().Any(a =>
+                        a.AttributeClass is { } attributeClass && DataSourceAttributeHelper.IsDataSourceAttribute(attributeClass)))
+                {
+                    return;
+                }
+
+                classConstraintViolations.Add(hadClassTypeArguments && testMethod.IsGenericMethod
+                    ? $"The type arguments of generic test method '{testMethod.MethodSymbol.Name}' cannot be inferred at compile time from its data sources. " +
+                      "Use [GenerateGenericTest] on the method to specify its type arguments."
+                    : "The generic test class type arguments cannot be inferred at compile time from its data sources. " +
+                    "Source-generated mode requires concrete types to preserve Native AOT compatibility. " +
+                    "Use [GenerateGenericTest] to specify the class type arguments.");
             }
         }
 
@@ -767,91 +691,6 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             EmitRegistrationField(writer, $"{uniqueClassName}_ConstraintViolations",
                 $"global::TUnit.Core.SourceRegistrar.RegisterGenericConstraintViolations(typeof({className}), static () => {uniqueClassName}.ConstraintViolations)");
         }
-    }
-
-    /// <summary>
-    /// The failure to report for a generic test whose instantiations yielded nothing, or null when it is not a
-    /// runnable test: successfully inferred types may have no matching method rows after filtering, and an open
-    /// generic template without data is not a test. A class with data, however, must not silently disappear when
-    /// only its runtime rows reveal the types. The closed-world catalog reports the same failure.
-    /// </summary>
-    internal static string? UninferredTypeArgumentsViolation(TestMethodMetadata testMethod, bool hadConcreteInstantiations, bool hadClassTypeArguments)
-    {
-        if (hadConcreteInstantiations)
-        {
-            return null;
-        }
-
-        if (!hadClassTypeArguments && !testMethod.TypeSymbol.GetAttributesIncludingBaseTypes().Any(a =>
-                a.AttributeClass is { } attributeClass && DataSourceAttributeHelper.IsDataSourceAttribute(attributeClass)))
-        {
-            return null;
-        }
-
-        return hadClassTypeArguments && testMethod.IsGenericMethod
-            ? $"The type arguments of generic test method '{testMethod.MethodSymbol.Name}' cannot be inferred at compile time from its data sources. " +
-              "Use [GenerateGenericTest] on the method to specify its type arguments."
-            : "The generic test class type arguments cannot be inferred at compile time from its data sources. " +
-            "Source-generated mode requires concrete types to preserve Native AOT compatibility. " +
-            "Use [GenerateGenericTest] to specify the class type arguments.";
-    }
-
-    private static void GenerateCatalogOnlyTestMetadata(
-        CodeWriter writer,
-        TestMethodMetadata testMethod)
-    {
-        var className = testMethod.TypeSymbol.GloballyQualified();
-        List<ConcreteInstantiation> concreteInstantiations;
-
-        if (!testMethod.IsGenericType && !testMethod.IsGenericMethod)
-        {
-            concreteInstantiations =
-            [
-                new ConcreteInstantiation
-                {
-                    ConcreteClassName = className,
-                    TypeArguments = [],
-                    ClassTypeArgs = [],
-                    MethodTypeArgs = [],
-                    TestName = testMethod.MethodSymbol.Name,
-                    MethodName = testMethod.MethodSymbol.Name,
-                }
-            ];
-        }
-        else
-        {
-            // No resolvable instantiation still emits the method's (empty) source, which the catalog's
-            // entry point names.
-            concreteInstantiations = CollectConcreteInstantiations(testMethod, className, out var classConstraintViolations, out var hadConcreteInstantiations, out var hadClassTypeArguments);
-            if (concreteInstantiations.Count == 0 && classConstraintViolations.Count == 0
-                && UninferredTypeArgumentsViolation(testMethod, hadConcreteInstantiations, hadClassTypeArguments) is { } violation)
-            {
-                classConstraintViolations.Add(violation);
-            }
-
-            if (classConstraintViolations.Count > 0)
-            {
-                // One failed test per message on the open generic class, as the desktop engine
-                // reports the violations it registers (#7107).
-                concreteInstantiations.Add(new ConcreteInstantiation
-                {
-                    ConcreteClassName = className,
-                    TypeArguments = [],
-                    ClassTypeArgs = [],
-                    MethodTypeArgs = [],
-                    TestName = testMethod.MethodSymbol.Name,
-                    MethodName = testMethod.MethodSymbol.Name,
-                    MethodConstraintViolations = classConstraintViolations
-                        .Select(static message => new MethodConstraintViolation(message, RowSource: null, AllMethodDataSources: false))
-                        .ToList(),
-                });
-            }
-        }
-
-        writer.AppendRaw(ClosedWorldCatalogComposition.CreateCatalogOnlyMethodSourceEmitter()
-            .Emit(new CatalogOnlyMethodSourceRequest(
-                testMethod,
-                concreteInstantiations.ToImmutableArray())));
     }
 
     private static IEnumerable<AttributeData> GetConstraintViolationAttributes(TestMethodMetadata testMethod) =>
@@ -1053,7 +892,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     /// [Arguments] row infers. Keep in step with <c>ReflectionTestDataCollector.NoClassRowForMethodRowMessage</c>
     /// in TUnit.Engine, so both modes report the same message (#7118).
     /// </summary>
-    internal const string NoClassRowForMethodRowMessage =
+    private const string NoClassRowForMethodRowMessage =
         "This method-level [Arguments] row infers class type arguments that none of the class-level data rows infer, " +
         "so no class row supplies the constructor arguments for this instantiation. " +
         "Add a class-level row with matching types, or change the method row to match an existing class row.";
@@ -1061,7 +900,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     /// <summary>
     /// Represents a single concrete instantiation of a generic test.
     /// </summary>
-    internal sealed class ConcreteInstantiation
+    private sealed class ConcreteInstantiation
     {
         public required string ConcreteClassName { get; init; }
         public required ITypeSymbol[] TypeArguments { get; init; }
@@ -1175,7 +1014,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     /// <param name="RowSource">The data attribute whose rows inferred the type arguments, if any.</param>
     /// <param name="AllMethodDataSources">The type arguments came from the method's parameters
     /// (<c>IInfersType&lt;T&gt;</c>), so every method data source's rows report the failure.</param>
-    internal sealed record MethodConstraintViolation(string Message, AttributeData? RowSource, bool AllMethodDataSources)
+    private sealed record MethodConstraintViolation(string Message, AttributeData? RowSource, bool AllMethodDataSources)
     {
         /// <summary>
         /// The method-level [GenerateGenericTest] that supplied the type arguments, if any. Reflection mode
@@ -3046,7 +2885,65 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
             ? HasSingleElementTupleParameter(closedParameters)
             : HasSingleElementTupleParameter(methodSymbol.Parameters);
 
-        var (methodDataSources, classDataSources, classDataSourcePartition) = SelectEntryDataSources(testMethod, entry);
+        // Method data sources
+        List<AttributeData> methodDataSources;
+        AttributeData[] classDataSources;
+        ClassDataSourcePartition? classDataSourcePartition = null;
+
+        if (entry.SpecificArgumentsAttribute != null)
+        {
+            if (!MethodParametersReferenceTypeParameters(testMethod))
+            {
+                // The method's parameters do not depend on any inferred type, so its data sources
+                // play no part in choosing the instantiation: every one of them applies, as on a
+                // non-generic class (#7106).
+                methodDataSources = methodSymbol.GetAttributes()
+                    .Where(a => DataSourceAttributeHelper.IsDataSourceAttribute(a.AttributeClass))
+                    .ToList();
+            }
+            else
+            {
+                methodDataSources = methodSymbol.GetAttributes()
+                    .Where(entry.IsSpecificMethodDataSource)
+                    .ToList();
+
+                if (testMethod is { IsGenericType: true, IsGenericMethod: true } && !entry.HasMethodRows)
+                {
+                    // Only the method rows that infer this entry's method type arguments: a row that
+                    // infers other types belongs to another instantiation (or fails its constraints).
+                    var compilation = testMethod.CompilationContext.Compilation;
+                    var additionalMethodDataSources = methodSymbol.GetAttributes()
+                        .Where(a => DataSourceAttributeHelper.IsArguments(a.AttributeClass) &&
+                                    !entry.IsSpecificMethodDataSource(a) &&
+                                    InferredTypesMatch(InferTypesFromArgumentsAttribute(methodSymbol, a, compilation), entry.MethodTypeArgs));
+                    methodDataSources.AddRange(additionalMethodDataSources);
+                }
+            }
+
+            classDataSourcePartition = GetClassDataSourcePartition(testMethod, entry);
+            classDataSources = classDataSourcePartition is not null
+                ? classDataSourcePartition.DataSources
+                : entry.HasClassRows || entry.HasNoClassRow
+                ? typeSymbol.GetAttributesIncludingBaseTypes()
+                    .Where(entry.IsSpecificClassDataSource)
+                    .ToArray()
+                // Only method rows inferred this instantiation, so no class row is scoped to it. Its
+                // constructor arguments come from every class-level data source, as for a
+                // [GenerateGenericTest] instantiation, and as reflection mode builds it (#7161).
+                : typeSymbol.GetAttributesIncludingBaseTypes()
+                    .Where(a => DataSourceAttributeHelper.IsDataSourceAttribute(a.AttributeClass))
+                    .ToArray();
+        }
+        else
+        {
+            methodDataSources = methodSymbol.GetAttributes()
+                .Where(a => DataSourceAttributeHelper.IsDataSourceAttribute(a.AttributeClass))
+                .ToList();
+
+            classDataSources = typeSymbol.GetAttributesIncludingBaseTypes()
+                .Where(a => DataSourceAttributeHelper.IsDataSourceAttribute(a.AttributeClass))
+                .ToArray();
+        }
 
         if (entry.MethodConstraintViolations is { Count: > 0 } violations)
         {
@@ -3142,84 +3039,10 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
     }
 
     /// <summary>
-    /// The method-level and class-level data sources whose rows a concrete entry runs, or every data
-    /// source without an entry, with the partition of an instantiation's class rows that upstream's generator
-    /// splits at run time. Shared with the closed-world catalog, so both report the same rows for every
-    /// instantiation.
-    /// </summary>
-    internal static (List<AttributeData> MethodDataSources, AttributeData[] ClassDataSources, ClassDataSourcePartition? ClassDataSourcePartition) SelectEntryDataSources(
-        TestMethodMetadata testMethod,
-        ConcreteInstantiation? entry)
-    {
-        var methodSymbol = testMethod.MethodSymbol;
-        var typeSymbol = testMethod.TypeSymbol;
-        List<AttributeData> methodDataSources;
-        AttributeData[] classDataSources;
-        ClassDataSourcePartition? classDataSourcePartition = null;
-
-        if (entry?.SpecificArgumentsAttribute != null)
-        {
-            if (!MethodParametersReferenceTypeParameters(testMethod))
-            {
-                // The method's parameters do not depend on any inferred type, so its data sources
-                // play no part in choosing the instantiation: every one of them applies, as on a
-                // non-generic class (#7106).
-                methodDataSources = methodSymbol.GetAttributes()
-                    .Where(a => DataSourceAttributeHelper.IsDataSourceAttribute(a.AttributeClass))
-                    .ToList();
-            }
-            else
-            {
-                methodDataSources = methodSymbol.GetAttributes()
-                    .Where(entry.IsSpecificMethodDataSource)
-                    .ToList();
-
-                if (testMethod is { IsGenericType: true, IsGenericMethod: true } && !entry.HasMethodRows)
-                {
-                    // Only the method rows that infer this entry's method type arguments: a row that
-                    // infers other types belongs to another instantiation (or fails its constraints).
-                    var compilation = testMethod.CompilationContext.Compilation;
-                    var additionalMethodDataSources = methodSymbol.GetAttributes()
-                        .Where(a => DataSourceAttributeHelper.IsArguments(a.AttributeClass) &&
-                                    !entry.IsSpecificMethodDataSource(a) &&
-                                    InferredTypesMatch(InferTypesFromArgumentsAttribute(methodSymbol, a, compilation), entry.MethodTypeArgs));
-                    methodDataSources.AddRange(additionalMethodDataSources);
-                }
-            }
-
-            classDataSourcePartition = GetClassDataSourcePartition(testMethod, entry);
-            classDataSources = classDataSourcePartition is not null
-                ? classDataSourcePartition.DataSources
-                : entry.HasClassRows || entry.HasNoClassRow
-                ? typeSymbol.GetAttributesIncludingBaseTypes()
-                    .Where(entry.IsSpecificClassDataSource)
-                    .ToArray()
-                // Only method rows inferred this instantiation, so no class row is scoped to it. Its
-                // constructor arguments come from every class-level data source, as for a
-                // [GenerateGenericTest] instantiation, and as reflection mode builds it (#7161).
-                : typeSymbol.GetAttributesIncludingBaseTypes()
-                    .Where(a => DataSourceAttributeHelper.IsDataSourceAttribute(a.AttributeClass))
-                    .ToArray();
-        }
-        else
-        {
-            methodDataSources = methodSymbol.GetAttributes()
-                .Where(a => DataSourceAttributeHelper.IsDataSourceAttribute(a.AttributeClass))
-                .ToList();
-
-            classDataSources = typeSymbol.GetAttributesIncludingBaseTypes()
-                .Where(a => DataSourceAttributeHelper.IsDataSourceAttribute(a.AttributeClass))
-                .ToArray();
-        }
-
-        return (methodDataSources, classDataSources, classDataSourcePartition);
-    }
-
-    /// <summary>
     /// The class data sources of an instantiation whose rows are split at run time by the class type arguments they
     /// infer. <paramref name="PartitionedIndices"/> are the sources whose row types the generator cannot see.
     /// </summary>
-    internal sealed record ClassDataSourcePartition(AttributeData[] DataSources, int[] PartitionedIndices, GenericClassInferencePolicy.RowFallback Fallback);
+    private sealed record ClassDataSourcePartition(AttributeData[] DataSources, int[] PartitionedIndices, GenericClassInferencePolicy.RowFallback Fallback);
 
     /// <summary>
     /// For an instantiation of a generic class whose class-level data sources include one whose row types the
@@ -5398,30 +5221,6 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         return writer.ToString();
     }
 
-    private static string PreGenerateCatalogGeneratedCaseData(
-        TestMethodMetadata testMethod,
-        string concreteClassName,
-        string groupIdentity,
-        string fullyQualifiedName,
-        string generatedIdentitySuffix,
-        ConcreteInstantiation? concreteInstantiation,
-        string lifecycleName = "__Lifecycle")
-    {
-        var classTypeArguments = concreteInstantiation?.ClassTypeArgs ?? Array.Empty<ITypeSymbol>();
-        var methodTypeArguments = concreteInstantiation?.MethodTypeArgs ?? Array.Empty<ITypeSymbol>();
-        return ClosedWorldCatalogComposition.CreateCatalogRoslynAdapter()
-            .Emit(new CatalogRoslynEmissionRequest(
-                testMethod,
-                concreteClassName,
-                groupIdentity,
-                fullyQualifiedName,
-                generatedIdentitySuffix,
-                classTypeArguments,
-                methodTypeArguments,
-                concreteInstantiation,
-                lifecycleName));
-    }
-
     /// <summary>
     /// Generates __classMetadata and __classType as static readonly fields instead of local variables.
     /// Used by the per-class path to inline MethodMetadata construction into field initializers,
@@ -5651,49 +5450,19 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
         return string.IsNullOrWhiteSpace(result) ? "" : result;
     }
 
-    private static string PreGenerateLifecycleExpression(
-        INamedTypeSymbol typeSymbol,
-        string concreteClassName)
-    {
-        return ClosedWorldCatalogComposition.CreateLifecycleRoslynAdapter()
-            .Format(new LifecycleRoslynRequest(typeSymbol, concreteClassName));
-    }
-
     /// <summary>
     /// Pre-generates everything the per-class TestSource needs from one test method, while its symbols
     /// are available. Index-dependent parts (method index, attribute group) are assigned when grouping.
     /// </summary>
-    private static PerClassTestMethodCode PreGeneratePerClassMethodCode(
-        TestMethodMetadata testMethod,
-        ClassLevelCode classCode,
-        bool catalogOnly)
+    private static PerClassTestMethodCode PreGeneratePerClassMethodCode(TestMethodMetadata testMethod, ClassLevelCode classCode)
     {
-        var namespaceName = testMethod.TypeSymbol.ContainingNamespace?.ToDisplayString() ?? string.Empty;
-        var simpleClassName = testMethod.TypeSymbol.GetNestedClassName();
-        var fullyQualifiedName = string.IsNullOrEmpty(namespaceName)
-            ? $"{simpleClassName}.{testMethod.MethodSymbol.Name}"
-            : $"{namespaceName}.{simpleClassName}.{testMethod.MethodSymbol.Name}";
-
         return new PerClassTestMethodCode
         {
-            IsCatalogOnly = catalogOnly,
             ClassFullyQualified = classCode.ClassFullyQualified,
             TestSourceName = classCode.TestSourceName,
             InstanceFactoryBodyCode = classCode.InstanceFactoryBodyCode,
             ReflectionFieldAccessorsCode = classCode.ReflectionFieldAccessorsCode,
             SharedFieldsCode = classCode.SharedFieldsCode,
-            LifecycleCode = catalogOnly
-                ? PreGenerateLifecycleExpression(testMethod.TypeSymbol, classCode.ClassFullyQualified)
-                : string.Empty,
-            CatalogGeneratedCaseDataCode = catalogOnly
-                ? PreGenerateCatalogGeneratedCaseData(
-                    testMethod,
-                    classCode.ClassFullyQualified,
-                    classCode.ClassFullyQualified,
-                    fullyQualifiedName,
-                    generatedIdentitySuffix: string.Empty,
-                    concreteInstantiation: null)
-                : string.Empty,
             AttributesCode = PreGenerateCreateAttributesCode(testMethod),
             MethodMetadataArgumentsCode = PreGenerateMethodMetadataArguments(testMethod.MethodSymbol),
             InvokeBodyCode = PreGenerateInvokeBody(testMethod),
@@ -5738,7 +5507,6 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                         AttributeGroupIndex = attributeGroupIndex,
                         MethodMetadataArgumentsCode = m.MethodMetadataArgumentsCode,
                         InvokeBodyCode = m.InvokeBodyCode,
-                        CatalogGeneratedCaseDataCode = m.CatalogGeneratedCaseDataCode,
                         TestEntryDataFieldsCode = m.TestEntryDataFieldsCode,
                         TestDataSourcesCode = m.TestDataSourcesCode,
                         ClassDataSourcesCode = m.ClassDataSourcesCode,
@@ -5748,7 +5516,6 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
                 return new ClassTestGroup
                 {
-                    IsCatalogOnly = first.IsCatalogOnly,
                     ClassFullyQualified = first.ClassFullyQualified,
                     TestSourceName = first.TestSourceName,
                     Methods = methodSourceCodes.ToEquatableArray(),
@@ -5756,19 +5523,12 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                     InstanceFactoryBodyCode = first.InstanceFactoryBodyCode,
                     ReflectionFieldAccessorsCode = first.ReflectionFieldAccessorsCode,
                     SharedFieldsCode = first.SharedFieldsCode,
-                    LifecycleCode = first.LifecycleCode,
                 };
             });
     }
 
     private static void GeneratePerClassTestSource(SourceProductionContext context, ClassTestGroup classGroup)
     {
-        if (classGroup.IsCatalogOnly)
-        {
-            GenerateCatalogOnlyPerClassTestSource(context, classGroup);
-            return;
-        }
-
         try
         {
             var writer = new CodeWriter();
@@ -5908,39 +5668,6 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 Location.None,
                 classGroup.ClassFullyQualified,
                 ex.ToString()));
-        }
-    }
-
-    private static void GenerateCatalogOnlyPerClassTestSource(
-        SourceProductionContext context,
-        ClassTestGroup classGroup)
-    {
-        try
-        {
-            var source = ClosedWorldCatalogComposition.CreatePerClassSourceEmitter()
-                .Emit(new PerClassSourceRequest(
-                    classGroup.TestSourceName,
-                    classGroup.LifecycleCode,
-                    classGroup.Methods
-                        .Select(static method => method.CatalogGeneratedCaseDataCode)
-                        .ToImmutableArray()));
-            context.AddSource(
-                $"{classGroup.TestSourceName}.g.cs",
-                SourceText.From(source, Encoding.UTF8));
-        }
-        catch (Exception ex)
-        {
-            context.ReportDiagnostic(Diagnostic.Create(
-                new DiagnosticDescriptor(
-                    "TUNIT0997",
-                    "Catalog Source Generation Error",
-                    "Failed to generate closed-world catalog source for {0}: {1}",
-                    "TUnit",
-                    DiagnosticSeverity.Error,
-                    true),
-                Location.None,
-                classGroup.ClassFullyQualified,
-                ex.Message));
         }
     }
 

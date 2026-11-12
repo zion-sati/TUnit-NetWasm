@@ -45,7 +45,7 @@ public sealed class PackageSmokeTests
 
     [Test]
     [MethodDataSource(nameof(Values))]
-    public async Task MethodDataSourceRunsThroughTheGeneratedCatalog(int value)
+    public async Task MethodDataSourceRunsOnNetWasm(int value)
     {
         await Assert.That(value % 21).IsEqualTo(0);
     }
@@ -53,7 +53,7 @@ public sealed class PackageSmokeTests
     [Test]
     [Repeat(1)]
     [ClassDataSource<PackageCaseData>]
-    public async Task ClassDataSourceRunsThroughTheGeneratedCatalog(PackageCaseData data)
+    public async Task ClassDataSourceRunsOnNetWasm(PackageCaseData data)
     {
         await Assert.That(data.Value).IsEqualTo(42);
     }

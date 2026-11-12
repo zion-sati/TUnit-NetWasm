@@ -3,12 +3,9 @@
   <PropertyGroup>
     <TUnitImplicitUsings Condition="'$(TUnitImplicitUsings)' == ''">true</TUnitImplicitUsings>
     <EnableTUnitSourceGeneration Condition="'$(EnableTUnitSourceGeneration)' == ''">true</EnableTUnitSourceGeneration>
-    <!-- Upstream's source-generated metadata, which TUnit's engine runs on NetWasm as on desktop. -->
-    <TUnitSourceGenerationMode Condition="'$(TUnitSourceGenerationMode)' == ''">Desktop</TUnitSourceGenerationMode>
   </PropertyGroup>
 
   <ItemGroup>
     <CompilerVisibleProperty Include="EnableTUnitSourceGeneration" />
-    <CompilerVisibleProperty Include="TUnitSourceGenerationMode" />
   </ItemGroup>
 </Project>

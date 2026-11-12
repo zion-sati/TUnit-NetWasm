@@ -10,7 +10,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using TUnit.Core.SourceGenerator.Extensions;
 using TUnit.Core.SourceGenerator.Helpers;
-using TUnit.Core.SourceGenerator.Utilities;
 using TUnit.Core.SourceGenerator.CodeGenerators.Helpers;
 using TUnit.Core.SourceGenerator.Models;
 using TUnit.Core.SourceGenerator.CodeGenerators.Formatting;
@@ -33,7 +32,11 @@ public class StaticPropertyInitializationGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select(static (options, _) => SourceGenerationMode.Read(options).IsDesktop);
+            .Select((options, _) =>
+            {
+                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
+                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+            });
 
         // Only classes that can contribute a static data-source property are inspected semantically:
         // classes declaring an attributed static property, classes with a base list (which may inherit
@@ -571,7 +574,7 @@ public class StaticPropertyInitializationGenerator : IIncrementalGenerator
 
         if (attr.ConstructorArguments is
             [
-            { Value: ITypeSymbol type } _, _
+                { Value: ITypeSymbol type } _, _
             ])
         {
             targetType = type;
