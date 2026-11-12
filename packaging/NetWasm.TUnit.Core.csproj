@@ -33,39 +33,19 @@
     <None Include="..\LICENSE" Pack="true" PackagePath="LICENSE" Condition="'$(NetWasmSdkCustomProfileEnabled)' == 'true'" Visible="false" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' != 'netwasm0.1'">
+  <!-- Both targets compile upstream's TUnit.Core, which includes the fork's source-generated catalog types;
+       netwasm0.1 as the .NET 10 code it is. -->
+  <ItemGroup>
     <Compile Include="..\src\TUnit.Core\**\*.cs"
              Exclude="..\src\TUnit.Core\IClassDataSourceAttribute.cs;..\src\TUnit.Core\Interfaces\INestedClassDataSourceInitializer.cs;..\src\TUnit.Core\TUnit.Core.GeneratedNamespace.cs;..\src\TUnit.Core\obj\**\*;..\src\TUnit.Core\bin\**\*" />
   </ItemGroup>
-
-  <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
-    <Compile Include="NetWasmTarget\GlobalUsings.cs" />
-    <Compile Include="NetWasmTarget\TUnitCoreAuthoringContracts.cs" />
-    <Compile Include="NetWasmTarget\TUnitCoreContextContracts.cs" />
-    <Compile Include="NetWasmTarget\TUnitCoreDataSourceContracts.cs" />
-    <Compile Include="NetWasmTarget\TUnitCoreMetadataContracts.cs" />
-    <Compile Include="NetWasmTarget\TUnitCoreParallelContracts.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedParallelConstraint.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedCompletionPolicy.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedInvocationKind.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedCaseData.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedCaseDataDisposal.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedCancellationException.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedLifecycle.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedRetryPolicy.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedTestCase.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedTestCaseRow.cs" />
-    <Compile Include="..\src\TUnit.Core\GeneratedTimeoutException.cs" />
-    <Compile Include="..\src\TUnit.Core\ITestEntryCatalog.cs" />
-    <Compile Include="..\src\TUnit.Core\SourceGeneratedTestCatalog.cs" />
-  </ItemGroup>
-
+  <Import Project="NetWasmUpstreamSources.props" />
   <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
-    <ImplicitUsings>disable</ImplicitUsings>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <SignAssembly>false</SignAssembly>
+    <!-- TUnit.Engine assigns some of TestContext's internal fields; netwasm0.1 runs the catalog's runner instead. -->
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
-
   <ItemGroup>
     <InternalsVisibleTo Include="TUnit.Engine" />
     <InternalsVisibleTo Include="TUnit.UnitTests" />

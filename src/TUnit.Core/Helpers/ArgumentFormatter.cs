@@ -168,7 +168,11 @@ public static class ArgumentFormatter
         return (type.IsPrimitive && o is IFormattable)
             || o is decimal or BigInteger or Complex
 #if NET
-            || o is Half or Int128 or UInt128 or System.Runtime.InteropServices.NFloat
+            || o is Half or Int128 or UInt128
+#endif
+#if NET && !NETWASM
+            // NetWasm's one framework serves wasm32 and wasm64, and NFloat's size follows the pointer's.
+            || o is System.Runtime.InteropServices.NFloat
 #endif
 #if NET11_0_OR_GREATER
             || o is Decimal32 or Decimal64 or Decimal128 or BFloat16

@@ -288,10 +288,25 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
             ? _legacyCreateInstance!(Row.CreateConstructorArguments())
             : _typedCreateInstance();
 #if NETWASM
-        // Set in this async method, the context flows into the test's hooks and
-        // body and is gone again when the runner resumes.
-        TestContext.Current = new TestContext(this, typeof(T), instance);
+        // Set in this async method, the context flows into the test's hooks and body and is gone again when the
+        // runner resumes. Its registry entry, which TestContext.GetById reads, ends with the case.
+        var context = GeneratedTestContexts.Create(this, typeof(T), instance, cancellationToken);
+        TestContext.Current = context;
+        try
+        {
+            await RunAsync(instance, cancellationToken);
+        }
+        finally
+        {
+            context.RemoveFromRegistry();
+        }
+#else
+        await RunAsync(instance, cancellationToken);
 #endif
+    }
+
+    private async ValueTask RunAsync(T instance, CancellationToken cancellationToken)
+    {
         // Class lifecycle is retained as catalog metadata for the sequential runner. It is
         // scoped around a class's complete case group, so executing it here would repeat
         // class setup/teardown once per row. A case owns only its test-level lifecycle.
@@ -380,7 +395,6 @@ public sealed class GeneratedTestCase<T> : GeneratedTestCase where T : class
         {
             throw new AggregateException(teardownExceptions);
         }
-
     }
 
     private async ValueTask InvokeBodyAsync(T instance, CancellationToken cancellationToken)
