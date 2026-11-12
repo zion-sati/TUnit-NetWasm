@@ -18,7 +18,9 @@ namespace TUnit.Engine.Extensions;
 
 internal static class TestExtensions
 {
+#if !NETWASM
     private static bool? _cachedIsTrxEnabled;
+#endif
 
     private static readonly ConcurrentDictionary<Assembly, string> AssemblyFullNameCache = new();
     // Changing the scope invalidates entries even when callers retain a context
@@ -43,7 +45,9 @@ internal static class TestExtensions
         AssemblyFullNameCache.Clear();
         Volatile.Write(ref _reportingCacheScope, new object());
         TestContext.ClearReportingCaches();
+#if !NETWASM
         _cachedIsTrxEnabled = null;
+#endif
     }
 
     private static string GetCachedAssemblyFullName(Assembly assembly)
