@@ -122,7 +122,9 @@
     </PackageReference>
   </ItemGroup>
 
-  <PropertyGroup>
+  <!-- Shipped assemblies carry no local paths. Upstream's test projects are not shipped, and their snapshot tests
+       find their .verified files through the caller's source path, so they keep real paths. -->
+  <PropertyGroup Condition="!$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)').StartsWith($([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'tests'))))">
     <NetWasmTUnitSourcePackageCacheRoot Condition="'$(NUGET_PACKAGES)' != ''">$([System.IO.Path]::GetFullPath('$(NUGET_PACKAGES)'))</NetWasmTUnitSourcePackageCacheRoot>
     <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
     <PathMap Condition="'$(NetWasmTUnitSourcePackageCacheRoot)' != ''">$(PathMap),$(NetWasmTUnitSourcePackageCacheRoot)=/_/nuget</PathMap>
