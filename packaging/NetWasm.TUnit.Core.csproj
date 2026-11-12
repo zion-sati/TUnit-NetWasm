@@ -39,6 +39,9 @@
     <Compile Include="..\src\TUnit.Core\**\*.cs"
              Exclude="..\src\TUnit.Core\IClassDataSourceAttribute.cs;..\src\TUnit.Core\Interfaces\INestedClassDataSourceInitializer.cs;..\src\TUnit.Core\TUnit.Core.GeneratedNamespace.cs;..\src\TUnit.Core\obj\**\*;..\src\TUnit.Core\bin\**\*" />
   </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <Compile Include="NetWasmTarget\TUnitCoreFriends.cs" />
+  </ItemGroup>
   <Import Project="NetWasmUpstreamSources.props" />
   <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

@@ -1,10 +1,9 @@
 <Project Sdk="NetWasm.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <!-- Directory.Build.props supplies the upstream multi-target default when
-         no framework is known during props evaluation. This opt-in wrapper is
-         deliberately single-target and must clear that inherited list. -->
-    <TargetFrameworks></TargetFrameworks>
+    <!-- net10.0 packs upstream's own build of TUnit.Engine (BuildForkEngine); netwasm0.1 compiles upstream's
+         sources here, for the NetWasm host. -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net10.0;netwasm0.1</TargetFrameworks>
     <AssemblyName>TUnit.Engine</AssemblyName>
     <RootNamespace>TUnit.Engine</RootNamespace>
     <PackageId>NetWasm.TUnit.Engine</PackageId>
@@ -19,12 +18,29 @@
     <NetWasmTUnitUseRepositoryReadme>false</NetWasmTUnitUseRepositoryReadme>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <IncludeBuildOutput>false</IncludeBuildOutput>
     <Deterministic>true</Deterministic>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);NU5129</NoWarn>
     <SetLinkMetadataAutomatically>false</SetLinkMetadataAutomatically>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <SignAssembly>false</SignAssembly>
+    <!-- Microsoft.Testing.Platform and System.Threading.Channels restore their .NET Standard assets. -->
+    <NoWarn>$(NoWarn);NU1510;NU1701</NoWarn>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <Compile Include="..\src\TUnit.Engine\**\*.cs"
+             Exclude="..\src\TUnit.Engine\obj\**\*;..\src\TUnit.Engine\bin\**\*" />
+    <Compile Include="..\src\TUnit.Core.SourceGenerator\Helpers\GenericMethodInferencePolicy.cs" Link="Discovery\GenericMethodInferencePolicy.cs" />
+    <Compile Include="..\src\TUnit.Core.SourceGenerator\Helpers\GenericClassInferencePolicy.cs" Link="Discovery\GenericClassInferencePolicy.cs" />
+    <PackageReference Include="System.Threading.Channels" Version="[9.0.0]" />
+  </ItemGroup>
+  <Import Project="NetWasmUpstreamSources.props" />
 
   <ItemGroup>
     <None Update="..\README.md" Pack="false" />
@@ -40,16 +56,14 @@
     <PackageReference Include="Microsoft.Testing.Platform" Version="[2.5.2]">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="[2.5.2]">
+    <PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="[2.5.2]" Condition="'$(TargetFramework)' == 'net10.0'">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' != ''">
-    <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
-          PackagePath="build/NetWasm.TUnit.Engine.props" Visible="false" />
-    <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
-          PackagePath="buildTransitive/NetWasm.TUnit.Engine.props" Visible="false" />
+  <!-- Package-owned files, emitted once from the outer evaluation. The build props are upstream's
+       Microsoft.Testing.Platform hooks, so they apply to net10.0 consumers only. -->
+  <ItemGroup Condition="'$(TargetFramework)' == ''">
     <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
           PackagePath="build/net10.0/NetWasm.TUnit.Engine.props" Visible="false" />
     <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
