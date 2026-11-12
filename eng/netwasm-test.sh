@@ -292,8 +292,13 @@ EOF
     echo "A netwasm0.1 dependency of NetWasm.TUnit restored from a .NET Standard asset (NU1701)." >&2
     exit 1
   fi
-  dotnet test DualTarget.Tests.csproj -c Release --no-restore --disable-build-servers --nologo \
-    | tee "${test_root}/dual-run.log"
+  # Each framework runs as its suites do: netwasm0.1 through dotnet test's VSTest adapter, and desktop .NET as
+  # the Microsoft.Testing.Platform application TUnit builds, since .NET 10's dotnet test has no VSTest mode for it.
+  dotnet test DualTarget.Tests.csproj -c Release -f netwasm0.1 --no-restore --disable-build-servers --nologo \
+    | tee "${test_root}/dual-netwasm.log"
+  assert_vstest_pass_summary "${test_root}/dual-netwasm.log" 1
+  dotnet run --project DualTarget.Tests.csproj -c Release -f net10.0 --no-restore --disable-build-servers \
+    | tee "${test_root}/dual-desktop.log"
 )
 
 echo "NetWasm TUnit package, runner, VSTest, template and dual-target tests passed."
