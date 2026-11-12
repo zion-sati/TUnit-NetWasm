@@ -70,11 +70,11 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             .Where(static parameter => parameter.Type.GloballyQualified() != "global::System.Threading.CancellationToken")
             .ToImmutableArray();
         var methodRows = methodDataSources
-            .Where(static attribute => attribute.AttributeClass?.Name == "ArgumentsAttribute")
+            .Where(static attribute => DataSourceAttributeHelper.IsArguments(attribute.AttributeClass))
             .Select(ToArgumentRow)
             .ToImmutableArray();
         var constructorRows = classDataSources
-            .Where(static attribute => attribute.AttributeClass?.Name == "ArgumentsAttribute")
+            .Where(static attribute => DataSourceAttributeHelper.IsArguments(attribute.AttributeClass))
             .Select(ToArgumentRow)
             .ToImmutableArray();
         var rows = _rowPlanner.Plan(new CatalogRowRequest(
@@ -82,7 +82,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             request.Instantiation?.TestName ?? testMethod.MethodSymbol.Name,
             methodRows,
             constructorRows,
-            methodDataSources.Any(static attribute => attribute.AttributeClass?.Name != "ArgumentsAttribute") ||
+            methodDataSources.Any(static attribute => !DataSourceAttributeHelper.IsArguments(attribute.AttributeClass)) ||
             testMethod.MethodSymbol.Parameters.Any(static parameter => parameter.GetAttributes().Any(attribute =>
                 IsClassDataSource(attribute.AttributeClass))),
             GetMethodDisplayName(testMethod),
@@ -224,7 +224,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
             {
                 var attribute = rowSources[sourceIndex];
                 var sourcePrefix = $"{prefix}:source-{sourceIndex.ToString(CultureInfo.InvariantCulture)}";
-                if (attribute.AttributeClass?.Name == "ArgumentsAttribute")
+                if (DataSourceAttributeHelper.IsArguments(attribute.AttributeClass))
                 {
                     EmitViolationCase(writer, request, failure, $"\"{sourcePrefix}\"");
                     continue;

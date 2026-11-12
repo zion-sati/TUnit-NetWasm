@@ -25,7 +25,7 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
                 var attributes = method.GetAttributes();
                 foreach (var attribute in attributes.Where(static attribute =>
                              DataSourceAttributeHelper.IsDataSourceAttribute(attribute.AttributeClass) &&
-                             attribute.AttributeClass!.Name != "ArgumentsAttribute"))
+                             !DataSourceAttributeHelper.IsArguments(attribute.AttributeClass)))
                 {
                     if (attribute.AttributeClass!.Name is "MethodDataSourceAttribute" or "ClassDataSourceAttribute" &&
                         attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core")
@@ -43,11 +43,11 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
                 }
 
                 var argumentAttributes = attributes.Where(static attribute =>
-                             attribute.AttributeClass!.Name == "ArgumentsAttribute")
+                             DataSourceAttributeHelper.IsArguments(attribute.AttributeClass))
                     .ToArray();
                 var hasRuntimeDataSource = attributes.Any(static attribute =>
                     DataSourceAttributeHelper.IsDataSourceAttribute(attribute.AttributeClass) &&
-                    attribute.AttributeClass!.Name != "ArgumentsAttribute") ||
+                    !DataSourceAttributeHelper.IsArguments(attribute.AttributeClass)) ||
                     method.Parameters.Any(static parameter => parameter.GetAttributes().Any(attribute =>
                         attribute.AttributeClass!.Name == "ClassDataSourceAttribute" &&
                         attribute.AttributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core"));
@@ -102,7 +102,7 @@ internal sealed class ClosedWorldDataCapabilityValidator : IClosedWorldCapabilit
                 }
 
                 var classArgumentAttributes = type.GetAttributes().Where(static attribute =>
-                             attribute.AttributeClass!.Name == "ArgumentsAttribute")
+                             DataSourceAttributeHelper.IsArguments(attribute.AttributeClass))
                     .ToArray();
                 var hasClassDataSource = type.GetAttributes().Any(static attribute =>
                     attribute.AttributeClass!.Name == "ClassDataSourceAttribute" &&

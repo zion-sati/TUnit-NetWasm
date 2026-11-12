@@ -139,8 +139,7 @@ internal sealed class ClosedWorldSemanticCapabilityValidator : IClosedWorldCapab
         InterfaceHelper.ImplementsInterface(attributeClass, "global::TUnit.Core.IDataSourceMemberAttribute");
 
     private static bool IsArguments(INamedTypeSymbol attributeClass) =>
-        attributeClass.Name == "ArgumentsAttribute" &&
-        attributeClass.ContainingNamespace?.ToDisplayString() == "TUnit.Core";
+        DataSourceAttributeHelper.IsArguments(attributeClass);
 
     private static bool IsDependsOn(INamedTypeSymbol attributeClass) =>
         attributeClass.Name == "DependsOnAttribute" &&
