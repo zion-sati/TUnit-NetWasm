@@ -19,7 +19,7 @@ The upstream TUnit documentation follows.
 
 # TUnit
 
-A modern .NET testing framework. Tests are discovered at compile time via source generators, run in parallel by default, and work under Native AOT — all built on [Microsoft.Testing.Platform](https://learn.microsoft.com/en-us/dotnet/core/testing/microsoft-testing-platform-intro).
+A modern .NET testing framework. Tests are discovered at compile time via source generators, run in parallel by default, and work under Native AOT — all built on [Microsoft.Testing.Platform](https://learn.microsoft.com/en-us/dotnet/core/testing/microsoft-testing-platform-intro). 
 
 <div align="center">
 
@@ -76,16 +76,16 @@ at Assert.That(actualEmployee).IsEqualTo(expectedEmployee)
 Source generation shifts work from run time to build time: you pay a little up front at build, and every test run after that starts faster — dramatically so under Native AOT. The same test suites, run on every framework:
 
 <!-- benchmarks:start -->
-| Scenario | TUnit (AOT) | TUnit | xUnit v3 | NUnit | MSTest |
-|----------|---|---|---|---|---|
-| Data-driven tests | 16.94 ms | 215.91 ms | 615.90 ms | 422.34 ms | 464.19 ms |
-| Async-heavy tests | 120.6 ms | 549.6 ms | 963.1 ms | 884.3 ms | 882.0 ms |
-| Matrix combinations | 129.6 ms | 619.3 ms | 1,305.9 ms | 1,951.7 ms | 1,774.3 ms |
-| Large suites (scale) | 29.11 ms | 504.60 ms | 1,039.88 ms | 950.59 ms | 806.55 ms |
-| Massive parallelism | 219.4 ms | 571.1 ms | 1,457.9 ms | 1,424.4 ms | 3,167.1 ms |
-| Setup/teardown lifecycle | 65.53 ms | 334.52 ms | 748.72 ms | 1,177.50 ms | 1,092.32 ms |
+| Scenario | TUnit (AOT) | xUnit v3 (AOT) | TUnit | xUnit v3 | NUnit | MSTest |
+|----------|---|---|---|---|---|---|
+| Data-driven tests | 15.96 ms | 18.54 ms | 376.60 ms | 426.69 ms | 400.71 ms | 292.19 ms |
+| Async-heavy tests | 114.7 ms | 119.4 ms | 411.8 ms | 512.6 ms | 529.9 ms | 452.9 ms |
+| Matrix combinations | 161.1 ms | 266.9 ms | 473.0 ms | 664.3 ms | 1,395.9 ms | 1,305.3 ms |
+| Large suites (scale) | 9.420 ms | 16.612 ms | 334.749 ms | 418.516 ms | 405.436 ms | 292.948 ms |
+| Massive parallelism | 363.5 ms | 675.4 ms | 709.5 ms | 1,104.3 ms | 1,045.3 ms | 2,812.0 ms |
+| Setup/teardown lifecycle | 94.64 ms | 171.90 ms | 420.16 ms | 589.01 ms | 985.63 ms | 911.71 ms |
 
-<sub>Mean wall-clock time to run the same test suite. TUnit (AOT) 1.76.28 · TUnit 1.76.28 · xUnit v3 4.0.2 · NUnit 5.0.0 · MSTest 4.5.2. .NET SDK 10.0.403, .NET 10.0.14 (10.0.14, 10.0.1426.52326), X64 RyuJIT x86-64-v4. Updated 2026-11-01 — regenerated weekly by the [Speed Comparison workflow](https://github.com/thomhurst/TUnit/actions/workflows/speed-comparison.yml). Full results and methodology: [tunit.dev/docs/benchmarks](https://tunit.dev/docs/benchmarks/).</sub>
+<sub>Mean wall-clock time to run the same test suite. TUnit (AOT) 1.83.0 · xUnit v3 (AOT) 4.0.3 · TUnit 1.83.0 · xUnit v3 4.0.3 · NUnit 5.0.0 · MSTest 4.5.2. .NET SDK 11.0.100, .NET 11.0.0 (11.0.0, 11.0.26.53018), X64 RyuJIT x86-64-v4. Updated 2026-11-11 — regenerated weekly by the [Speed Comparison workflow](https://github.com/thomhurst/TUnit/actions/workflows/speed-comparison.yml). Full results and methodology: [tunit.dev/docs/benchmarks](https://tunit.dev/docs/benchmarks/).</sub>
 <!-- benchmarks:end -->
 
 ## Getting Started

@@ -7,7 +7,7 @@ using TUnit.Core.SourceGenerator.Extensions;
 
 namespace TUnit.Core.SourceGenerator.CodeGenerators.Formatting;
 
-public class TypedConstantFormatter : ITypedConstantFormatter
+public class TypedConstantFormatter(Compilation? compilation = null) : ITypedConstantFormatter
 {
 
     public string FormatForCode(TypedConstant constant, ITypeSymbol? targetType = null)
@@ -46,7 +46,9 @@ public class TypedConstantFormatter : ITypedConstantFormatter
 
             case TypedConstantKind.Type:
                 var type = (ITypeSymbol)constant.Value!;
-                return $"typeof({type.GloballyQualified()})";
+                return compilation is not null && !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly)
+                    ? Helpers.AttributeTypeExpression.Format(type)
+                    : $"typeof({type.GloballyQualified()})";
 
             case TypedConstantKind.Array:
                 return FormatArrayForCode(constant, targetType);
@@ -203,7 +205,7 @@ public class TypedConstantFormatter : ITypedConstantFormatter
                     }
                     if (value is string s)
                     {
-                        return $"global::TUnit.Core.Helpers.DecimalParsingHelper.ParseDecimalWithCultureFallback(\"{s.ToInvariantString()}\")";
+                        return $"global::TUnit.Core.Helpers.DecimalParsingHelper.ParseDecimalWithCultureFallback({SymbolDisplay.FormatLiteral(s, quote: true)})";
                     }
                     if (value is double d)
                     {
@@ -255,7 +257,10 @@ public class TypedConstantFormatter : ITypedConstantFormatter
         }
         else
         {
-            enumType = targetType as INamedTypeSymbol ?? constant.Type as INamedTypeSymbol;
+            // Boxing an enum must retain its runtime type, including inside object arrays.
+            enumType = targetType?.SpecialType == SpecialType.System_Object
+                ? constant.Type as INamedTypeSymbol
+                : targetType as INamedTypeSymbol ?? constant.Type as INamedTypeSymbol;
         }
         
         if (enumType == null)

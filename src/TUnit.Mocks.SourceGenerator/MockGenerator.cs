@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using TUnit.Mocks.SourceGenerator.Builders;
 using TUnit.Mocks.SourceGenerator.Discovery;
+using TUnit.Mocks.SourceGenerator.Extensions;
 using TUnit.Mocks.SourceGenerator.Models;
 
 namespace TUnit.Mocks.SourceGenerator;
@@ -102,13 +103,20 @@ public class MockGenerator : IIncrementalGenerator
             })
             .WithTrackingName(MockTrackingNames.DistinctRequests);
 
+        // The extern aliases of the compilation's references, so files naming an aliased type can
+        // declare them (#7300). Equal across edits that do not change references, so it never
+        // invalidates cached output on its own.
+        var externAliases = context.CompilationProvider
+            .Select(static (compilation, _) => ExternAliasQualification.GetAliases(compilation));
+
         // Step 3: Generate source for each unique type. The request's location is dropped first,
         // so a call site that merely moves (an edit above it) leaves the model — and with it the
         // generated source — cached.
         var emitResults = distinctRequests
             .Select(static (request, _) => request.Model)
             .WithTrackingName(MockTrackingNames.DistinctModels)
-            .Select((model, _) => Emit(model))
+            .Combine(externAliases)
+            .Select((input, _) => Emit(input.Left, input.Right))
             .WithTrackingName(MockTrackingNames.EmitResults);
 
         context.RegisterSourceOutput(emitResults, AddEmittedSources);
@@ -132,10 +140,12 @@ public class MockGenerator : IIncrementalGenerator
                 transform: MockTypeDiscovery.TransformGenerateMockAttributeToClosedGenericRegistrations)
             .SelectMany((registrations, _) => registrations.AsImmutableArray());
 
-        var closedEmissions = closedFromMockOf
+        var closedInputs = closedFromMockOf
             .Collect()
             .Combine(closedFromAttributes.Collect())
-            .Combine(distinctRequests.Select(static (request, _) => request.Model).Collect())
+            .Combine(distinctRequests.Select(static (request, _) => request.Model).Collect());
+
+        var closedEmissions = closedInputs
             .Select(static (input, _) =>
             {
                 var ((mockOf, attributes), models) = input;
@@ -143,11 +153,35 @@ public class MockGenerator : IIncrementalGenerator
             })
             .WithTrackingName(MockTrackingNames.ClosedGenericEmissions);
 
-        context.RegisterSourceOutput(closedEmissions, static (spc, emissions) =>
+        // Step 3c: generic-method setups on Mock<IFoo<int>> need a closed receiver to accept explicit
+        // method type arguments, which members of the open extension<T> block cannot. See issue #7302.
+        var closedMethodSetups = closedInputs
+            .Select(static (input, _) =>
+            {
+                var ((mockOf, attributes), models) = input;
+                return ClosedGenericRegistrationBuilder.ResolveMethodSetups(mockOf.AddRange(attributes), models);
+            })
+            .WithTrackingName(MockTrackingNames.ClosedGenericMethodSetupEmissions);
+
+        context.RegisterSourceOutput(closedMethodSetups.Combine(externAliases), static (spc, input) =>
         {
+            var (emissions, aliases) = input;
             if (emissions.Length > 0)
             {
-                spc.AddSource(ClosedGenericRegistrationBuilder.HintName, ClosedGenericRegistrationBuilder.Build(emissions));
+                spc.AddSource(
+                    ClosedGenericRegistrationBuilder.MethodSetupsHintName,
+                    ExternAliasQualification.AddExternAliasDirectives(ClosedGenericRegistrationBuilder.BuildMethodSetups(emissions), aliases));
+            }
+        });
+
+        context.RegisterSourceOutput(closedEmissions.Combine(externAliases), static (spc, input) =>
+        {
+            var (emissions, aliases) = input;
+            if (emissions.Length > 0)
+            {
+                spc.AddSource(
+                    ClosedGenericRegistrationBuilder.HintName,
+                    ExternAliasQualification.AddExternAliasDirectives(ClosedGenericRegistrationBuilder.Build(emissions), aliases));
             }
         });
 
@@ -161,9 +195,9 @@ public class MockGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(failures, ReportGenerationFailures);
     }
 
-    private MockEmitResult Emit(MockTypeModel model)
+    private MockEmitResult Emit(MockTypeModel model, EquatableArray<string> externAliases)
     {
-        var sink = new MockSourceSink();
+        var sink = new MockSourceSink(externAliases);
 
         try
         {

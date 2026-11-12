@@ -114,6 +114,41 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
 
     private async Task RegisterTest(AbstractExecutableTest test, bool isForExecution)
     {
+        try
+        {
+            await RegisterTestCore(test, isForExecution).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Registration callbacks are user code. Preserve the failure on this test so
+            // neither sequential nor parallel registration aborts the rest of the request.
+            if (isForExecution)
+            {
+                try
+                {
+                    // Track only objects that already exist. Tracking is idempotent if
+                    // argument registration completed before a later callback failed.
+                    testArgumentRegistrationService.TrackSkippedTestArguments(test.Context);
+                }
+                catch (Exception trackingException)
+                {
+                    logger.LogDebug($"Could not track the objects of registration-failed test '{test.TestId}' for disposal: {trackingException.Message}");
+                }
+            }
+
+            // A callback failure takes precedence over an earlier request to skip.
+            test.Context.SkipReason = null;
+            test.SetResult(TestState.Failed, ex);
+        }
+        finally
+        {
+            // Callbacks may have changed display formatting before failing.
+            test.Context.InvalidateDisplayNameCache();
+        }
+    }
+
+    private async Task RegisterTestCore(AbstractExecutableTest test, bool isForExecution)
+    {
         var registeredReceivers = test.Context.GetTestRegisteredReceivers();
         TestRegisteredContext? registeredContext = null;
         HashSet<ITestRegisteredEventReceiver>? invokedReceivers = null;
@@ -129,6 +164,28 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
             invokedReceivers = new HashSet<ITestRegisteredEventReceiver>(Core.Helpers.ReferenceEqualityComparer.Instance);
 
             await InvokeTestRegisteredReceivers(registeredReceivers, registeredContext, invokedReceivers).ConfigureAwait(false);
+        }
+
+        HashSet<AsyncEvent<TestContext>.Invocation>? invokedDelegates = null;
+        await InvokeRegistrationDelegatesAsync().ConfigureAwait(false);
+
+        async Task InvokeRegistrationDelegatesAsync()
+        {
+            if (test.Context.InternalEventsIfCreated?.OnTestRegistered is not { } onRegistered)
+            {
+                return;
+            }
+
+            // Snapshot because a handler can subscribe another handler while it runs.
+            // Invocation identity preserves duplicate subscriptions while skipping the earlier pass.
+            foreach (var handler in onRegistered.InvocationList)
+            {
+                invokedDelegates ??= [];
+                if (invokedDelegates.Add(handler))
+                {
+                    await handler.InvokeAsync(test.Context, test.Context).ConfigureAwait(false);
+                }
+            }
         }
 
         // If the test was marked as skipped by an event receiver, skip argument registration entirely.
@@ -147,8 +204,8 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
                 catch (Exception ex)
                 {
                     // A property getter in the arguments' object graph threw. The test still never
-                    // runs, so it stays skipped rather than failing the whole run: its objects are
-                    // left untracked (and so not disposed), as they were before #7156.
+                    // runs, so it stays skipped rather than failing the whole run. Its root objects
+                    // are still tracked, so they are disposed when it completes (#7213).
                     // Tracking is synchronous and takes no cancellation token, so an
                     // OperationCanceledException here can only come from that user getter, never from
                     // run cancellation; it is contained like any other getter failure.
@@ -156,7 +213,6 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
                 }
             }
 
-            test.Context.InvalidateDisplayNameCache();
             return;
         }
 
@@ -191,12 +247,12 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
 
                 await InvokeTestRegisteredReceivers(test.Context.GetTestRegisteredReceivers(), registeredContext, invokedReceivers).ConfigureAwait(false);
             }
-        }
 
-        // Clear the cached display name after registration events
-        // This ensures that ArgumentDisplayFormatterAttribute and similar attributes
-        // have a chance to register their formatters before the display name is finalized
-        test.Context.InvalidateDisplayNameCache();
+            if (argumentsRegistered)
+            {
+                await InvokeRegistrationDelegatesAsync().ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>

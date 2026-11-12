@@ -242,6 +242,226 @@ public class TimeoutHelperTests
         }
     }
 
+    [Test]
+    public async Task Queued_Body_Does_Not_Consume_Its_Timeout()
+    {
+        using var timeoutCts = new CancellationTokenSource();
+        var execution = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = timeoutCts.Token.Register(() => execution.TrySetCanceled(timeoutCts.Token));
+        Action? start = null;
+
+        var timeoutTask = TimeoutHelper.ExecuteWithTimeoutFromStartAsync(
+            (_, startTimeout) =>
+            {
+                // Model a queued invocation without starving the process-wide thread pool.
+                start = startTimeout;
+                return execution.Task;
+            }, TimeSpan.FromMilliseconds(50), timeoutCts, CancellationToken.None);
+
+        try
+        {
+            await Task.Delay(150);
+            await Assert.That(timeoutCts.IsCancellationRequested).IsFalse();
+            await Assert.That(timeoutTask.IsCompleted).IsFalse();
+            start!();
+            await Assert.That(() => timeoutTask!).ThrowsExactly<TimeoutException>();
+        }
+        finally
+        {
+            execution.TrySetResult();
+        }
+    }
+
+    [Test]
+    public async Task External_Cancellation_Remains_Active_While_Body_Is_Queued()
+    {
+        using var externalCts = new CancellationTokenSource();
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(externalCts.Token);
+        var execution = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var timeoutTask = TimeoutHelper.ExecuteWithTimeoutFromStartAsync(
+            (_, _) => execution.Task, TimeSpan.FromMilliseconds(50), timeoutCts, externalCts.Token);
+
+        externalCts.Cancel();
+        var exception = await Assert.That(() => timeoutTask!).ThrowsExactly<OperationCanceledException>();
+        await Assert.That(exception!.CancellationToken).IsEqualTo(externalCts.Token);
+
+        // Even a late fault after external cancellation must be observed by the helper.
+        execution.SetException(new InvalidOperationException("Fault after cancellation"));
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task Late_Fault_After_Cancellation_Is_Observed(bool externalCancellation)
+    {
+        var message = Guid.NewGuid().ToString();
+        var unobserved = false;
+        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs args)
+        {
+            if (args.Exception.Flatten().InnerExceptions.Any(exception => exception.Message == message))
+            {
+                unobserved = true;
+                args.SetObserved();
+            }
+        }
+
+        TaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            var execution = await CreateLateFaultAsync(message, externalCancellation);
+            // Completion continuations can still hold the task on another thread's stack.
+            // Yield between collections until those frames unwind and the task is reclaimed.
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            while (execution.IsAlive && elapsed.Elapsed < TimeSpan.FromSeconds(5))
+            {
+                await Task.Delay(10);
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+
+            await Assert.That(execution.IsAlive).IsFalse();
+            await Assert.That(unobserved).IsFalse();
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+    }
+
+    private static async Task<WeakReference> CreateLateFaultAsync(string message, bool externalCancellation)
+    {
+        using var externalCts = new CancellationTokenSource();
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(externalCts.Token);
+        TaskCompletionSource? execution = new();
+        Task? timeoutTask = TimeoutHelper.ExecuteWithTimeoutAsync(
+            _ => execution!.Task, Timeout.InfiniteTimeSpan, timeoutCts, externalCts.Token);
+
+        if (externalCancellation)
+        {
+            externalCts.Cancel();
+            await Assert.That(() => timeoutTask!).ThrowsExactly<OperationCanceledException>();
+        }
+        else
+        {
+            timeoutCts.Cancel();
+            await Assert.That(() => timeoutTask!).ThrowsExactly<TimeoutException>();
+        }
+
+        var reference = new WeakReference(execution.Task);
+        execution.SetException(new InvalidOperationException(message));
+        // Do not keep the task alive through this method's completed async state machine.
+        execution = null;
+        timeoutTask = null;
+        return reference;
+    }
+
+    [Test]
+    public async Task Started_Synchronously_Blocking_Body_Times_Out()
+    {
+        using var timeoutCts = new CancellationTokenSource();
+        using var release = new ManualResetEventSlim();
+        var executionFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var timeoutTask = TimeoutHelper.ExecuteWithTimeoutFromStartAsync(
+            (token, startTimeout) => Task.Run(() =>
+            {
+                try
+                {
+                    startTimeout();
+                    release.Wait(TimeSpan.FromSeconds(10));
+                }
+                finally
+                {
+                    executionFinished.SetResult();
+                }
+            }, token), TimeSpan.FromMilliseconds(50), timeoutCts, CancellationToken.None);
+
+        try
+        {
+            await Assert.That(() => timeoutTask!).ThrowsExactly<TimeoutException>();
+        }
+        finally
+        {
+            release.Set();
+            await executionFinished.Task;
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task Ordinary_Factory_Has_Timeout_Armed_Before_Invocation(bool throwsSynchronously)
+    {
+        var exception = await Assert.That(() => TimeoutHelper.ExecuteWithTimeoutAsync(
+                token =>
+                {
+                    // This factory does not return its task until the timeout is signalled.
+                    // Starting the timer after the factory returned would miss this cancellation.
+                    token.WaitHandle.WaitOne(TimeSpan.FromSeconds(5));
+                    if (throwsSynchronously)
+                    {
+                        token.ThrowIfCancellationRequested();
+                    }
+
+                    return Task.FromCanceled(token);
+                }, TimeSpan.FromMilliseconds(50), CancellationToken.None))
+            .ThrowsExactly<TimeoutException>();
+
+        await Assert.That(exception!.InnerException).IsNull();
+        await Assert.That(exception.Message).DoesNotContain(nameof(OperationCanceledException));
+        await Assert.That(exception.Message).DoesNotContain(nameof(TaskCanceledException));
+    }
+
+    [Test]
+    public async Task Synchronous_External_Cancellation_Preserves_External_Token()
+    {
+        using var externalCts = new CancellationTokenSource();
+        var exception = await Assert.That(() => TimeoutHelper.ExecuteWithTimeoutAsync(
+                token =>
+                {
+                    externalCts.Cancel();
+                    token.ThrowIfCancellationRequested();
+                    return Task.CompletedTask;
+                }, Timeout.InfiniteTimeSpan, externalCts.Token))
+            .ThrowsExactly<OperationCanceledException>();
+
+        await Assert.That(exception!.CancellationToken).IsEqualTo(externalCts.Token);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task Synchronous_Independent_Cancellation_Is_Preserved(bool tokenless)
+    {
+        var expected = tokenless
+            ? new OperationCanceledException("Independent cancellation")
+            : new OperationCanceledException(new CancellationToken(true));
+
+        var exception = await Assert.That(() => ExecuteWithControlledTimeoutAsync(
+                _ => throw expected, executionCompletesFirst: true))
+            .ThrowsExactly<OperationCanceledException>();
+
+        await Assert.That(exception).IsSameReferenceAs(expected);
+    }
+
+    [Test]
+    public async Task Synchronous_Timeout_Cancellation_Preserves_Diagnostics()
+    {
+        OperationCanceledException? expected = null;
+        var exception = await Assert.That(() => ExecuteWithControlledTimeoutAsync(
+                token =>
+                {
+                    expected = new OperationCanceledException("Timeout diagnostic", token);
+                    throw expected;
+                },
+                executionCompletesFirst: true))
+            .ThrowsExactly<TimeoutException>();
+
+        await Assert.That(exception!.InnerException).IsSameReferenceAs(expected);
+        await Assert.That(exception.Message).Contains("Timeout diagnostic");
+    }
+
     private static TestContext CreateContext()
     {
         var currentContext = TestContext.Current!;

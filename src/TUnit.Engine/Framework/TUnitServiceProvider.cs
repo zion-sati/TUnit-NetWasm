@@ -216,7 +216,8 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
                 ContextProvider,
                 EventReceiverOrchestrator));
 
-        DiscoveryService = Register(new TestDiscoveryService(TestExecutor, TestBuilderPipeline, TestFilterService, dependencyExpander));
+        var dependencyResolver = Register(new TestDependencyResolver());
+        DiscoveryService = Register(new TestDiscoveryService(TestExecutor, TestBuilderPipeline, TestFilterService, dependencyExpander, dependencyResolver));
 
         // Create test finder service after discovery service so it can use its cache
         TestFinder = Register<ITestFinder>(new TestFinder(DiscoveryService));
@@ -246,11 +247,9 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
         var testRunner = Register(
             new TestRunner(
                 testCoordinator,
-                MessageBus,
                 isFailFastEnabled,
                 FailFastCancellationSource,
                 Logger,
-                testStateManager,
                 ParallelLimitLockProvider,
                 notInParallelLock));
 
@@ -268,11 +267,11 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
             hashSetPool,
             maxParallelismLimiter));
 
-        var staticPropertyHandler = Register(new StaticPropertyHandler(Logger, objectTracker, trackableObjectGraphProvider, lazyPropertyInjector, objectGraphDiscoveryService));
+        var staticPropertyHandler = Register(new StaticPropertyHandler(Logger, objectTracker, trackableObjectGraphProvider, lazyPropertyInjector, objectGraphDiscoveryService, ContextProvider.TestSessionContext));
 
         var dynamicTestQueue = Register<IDynamicTestQueue>(new DynamicTestQueue(MessageBus));
 
-        var deferredTestExpander = Register(new DeferredTestExpander(TestBuilderPipeline, TestFilterService));
+        var deferredTestExpander = Register(new DeferredTestExpander(TestBuilderPipeline, TestFilterService, objectTracker));
 
         var testScheduler = Register<ITestScheduler>(new TestScheduler(
             Logger,
@@ -298,9 +297,10 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
             MessageBus,
             staticPropertyInitializer,
             objectTracker,
-            deferredTestExpander));
+            deferredTestExpander,
+            dependencyResolver));
 
-        Register<ITestRegistry>(new TestRegistry(TestBuilderPipeline, testCoordinator, dynamicTestQueue, TestFilterService, TestSessionId, CancellationToken.Token));
+        Register<ITestRegistry>(new TestRegistry(TestBuilderPipeline, testCoordinator, dynamicTestQueue, TestFilterService, objectTracker, TestSessionId, CancellationToken.Token));
 
         InitializeConsoleInterceptors();
     }
@@ -335,6 +335,13 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await TestOnDisposeRaiser.RaiseDeferredForSessionAsync(ContextProvider.TestSessionContext, Logger).ConfigureAwait(false);
+        // Generated/reflection static initializers can fail before the scheduler starts.
+        if (_services.TryGetValue(typeof(StaticPropertyHandler), out var staticPropertyHandler))
+        {
+            await ((StaticPropertyHandler)staticPropertyHandler).ReleaseSessionCallbacksAfterFailedInitializationAsync().ConfigureAwait(false);
+        }
+
         foreach (var service in _services.Values)
         {
             if (service is IAsyncDisposable asyncDisposable)

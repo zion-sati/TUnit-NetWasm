@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using TUnit.Core.Helpers;
 
 namespace TUnit.Core.Tracking;
@@ -10,8 +11,7 @@ namespace TUnit.Core.Tracking;
 /// </summary>
 /// <remarks>
 /// The static <c>s_trackedObjects</c> dictionary is shared across all tests.
-/// Call <see cref="DisposeAndClearStaticTrackingAsync"/> at the end of a run session to
-/// dispose any leftovers and release memory.
+/// Each tracker owns its session references. Session cleanup releases only those references.
 /// </remarks>
 internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphProvider, Disposer disposer)
 {
@@ -19,8 +19,13 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
     private static readonly ConcurrentDictionary<object, Counter> s_trackedObjects =
         new(Helpers.ReferenceEqualityComparer.Instance);
 
-    // Serializes retiring a cached shared instance (count reached zero) with a running test taking
-    // a reference to it, so the instance is either retired or held, never both.
+    // Each active context retains its own handles, including handles shared by cloned rows.
+    // Removing one context cannot release another context's ownership.
+    private readonly Dictionary<TestContext, DataRowScopeCollection.ScopeOwner[]> _externalOwners = [];
+
+    private readonly Dictionary<object, int> _sessionReferences = new(Helpers.ReferenceEqualityComparer.Instance);
+
+    // Keeps session ownership and global counts atomic with retirement and shared-instance holds.
     private static readonly object s_sharedInstanceLock = new();
 
     // Collects errors from async disposal callbacks for post-session review
@@ -33,30 +38,25 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
     public static IReadOnlyCollection<Exception> GetAsyncCallbackErrors() => s_asyncCallbackErrors.ToArray();
 
     /// <summary>
-    /// Disposes any objects still tracked with a positive reference count, then clears all
-    /// static tracking state. Call at the end of a run session: every executed test has
-    /// already decremented its references by then, so anything still alive would otherwise
-    /// leak (e.g. its remaining consumers were cancelled or a path miscounted). Clearing also
-    /// ensures a subsequent run request in the same process starts with fresh state.
-    /// Intentionally an instance method despite operating on static state: disposal needs the
-    /// injected <see cref="Disposer"/> (for error logging), which only instances carry.
+    /// Releases this session's remaining references without retiring objects held by other sessions.
     /// </summary>
-    /// <returns>Any exceptions thrown by the disposals, or null if none.</returns>
     public async ValueTask<List<Exception>?> DisposeAndClearStaticTrackingAsync()
     {
         List<Exception>? exceptions = null;
-
-        foreach (var kvp in s_trackedObjects)
+        object[] objects;
+        lock (s_sharedInstanceLock)
         {
-            // TryRemove guards against racing disposals (e.g. a late UntrackObject call)
-            if (!s_trackedObjects.TryRemove(kvp.Key, out _))
-            {
-                continue;
-            }
+            objects = _sessionReferences.Keys.ToArray();
+        }
 
+        foreach (var obj in objects)
+        {
             try
             {
-                await disposer.DisposeAsync(kvp.Key).ConfigureAwait(false);
+                while (HasSessionReference(obj))
+                {
+                    await UntrackObjectAsync(obj).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
@@ -64,9 +64,32 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
             }
         }
 
+        lock (s_sharedInstanceLock) _externalOwners.Clear();
         s_asyncCallbackErrors.Clear();
 
         return exceptions;
+    }
+
+    private bool HasSessionReference(object obj)
+    {
+        lock (s_sharedInstanceLock) return _sessionReferences.ContainsKey(obj);
+    }
+
+    internal async ValueTask DisposeUnleasedTrackedObjectAsync(object obj)
+    {
+        lock (s_sharedInstanceLock)
+        {
+            // Static leases can outlive this session. Retiring a counter and acquiring a
+            // lease must be atomic so a sweep cannot remove a newly protected counter.
+            if (s_staticLeaseObjects.TryGetValue(obj, out var leases) && leases.Count > 0) return;
+            // Counted consumers pin their owner via RetainWhileCounted until zero;
+            // contexts also retain their own row handles until untracking finishes.
+            // Thus a live ownership entry is backed by a deterministic strong link,
+            // including across sessions, rather than depending on GC timing.
+            if (!s_trackedObjects.TryGetValue(obj, out var counter) || counter.CurrentCount > 0
+                || !RemoveCounter(obj, counter) || ExternalObjectOwnership.IsOwned(obj)) return;
+        }
+        await disposer.DisposeAsync(obj).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -125,12 +148,41 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
 
     public void TrackObjects(TestContext testContext)
     {
+        var owners = RetainExternalOwners(testContext);
         var alreadyTrackedSnapshot = SnapshotTrackedObjects(testContext.TrackedObjectsIfCreated);
 
         SortedList<int, HashSet<object>> trackableDict;
         try
         {
+            foreach (var owner in owners)
+                owner.CaptureOwnership(testContext.TestDetails?.TestClassInjectedPropertyArguments.Values ?? []);
+            HashSet<object>? refreshed = null;
+            void RefreshOwner(object? instance)
+            {
+                if (instance is null) return;
+                var registeredOwners = ExternalObjectOwnership.FindOwners(instance);
+                if (registeredOwners.Count > 0
+                    && (refreshed ??= new(Helpers.ReferenceEqualityComparer.Instance)).Add(instance))
+                {
+                    foreach (var owner in registeredOwners)
+                    {
+                        if (!owners.Contains(owner))
+                            owner.CaptureOwnershipFor(instance, testContext.TestDetails?.TestClassInjectedPropertyArguments.Values ?? []);
+                    }
+                }
+            }
+
+            // Include non-disposable roots: they may expose disposable initializer dependencies.
+            foreach (var root in testContext.TestDetails?.TestClassArguments ?? []) RefreshOwner(root);
+            foreach (var root in testContext.TestDetails?.TestMethodArguments ?? []) RefreshOwner(root);
+            foreach (var root in testContext.TestDetails?.TestClassInjectedPropertyArguments.Values ?? []) RefreshOwner(root);
+
             trackableDict = trackableObjectGraphProvider.GetTrackableObjects(testContext);
+            // Also cover shared services discovered through another root.
+            foreach (var bucket in trackableDict.Values)
+            {
+                foreach (var instance in bucket) RefreshOwner(instance);
+            }
         }
         catch
         {
@@ -139,6 +191,10 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
             // test does not release references it never took (which could dispose a shared instance
             // that another test still holds).
             RemoveObjectsNotIn(testContext.TrackedObjectsIfCreated, alreadyTrackedSnapshot);
+
+            // The test's root objects already exist, so track and count them; otherwise nothing
+            // disposes them, not even the session-end sweep (#7213). Only nested discovery is dropped.
+            TrackRootObjects(testContext, alreadyTrackedSnapshot);
             throw;
         }
         if (trackableDict.Count == 0 && alreadyTrackedSnapshot is null)
@@ -151,6 +207,33 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
         foreach (var kvp in trackableDict)
         {
             foreach (var obj in kvp.Value)
+            {
+                if (alreadyTrackedSnapshot?.Contains(obj) != true)
+                {
+                    TrackObject(obj);
+                }
+            }
+        }
+    }
+
+    private void TrackRootObjects(TestContext testContext, HashSet<object>? alreadyTrackedSnapshot)
+    {
+        SortedList<int, HashSet<object>> tracked;
+        try
+        {
+            tracked = trackableObjectGraphProvider.GetTrackableRootObjects(testContext);
+        }
+        catch
+        {
+            // Best effort: never let this fallback replace the discovery exception the caller rethrows.
+            // Nothing has been counted yet, so dropping what it added keeps the references balanced.
+            RemoveObjectsNotIn(testContext.TrackedObjectsIfCreated, alreadyTrackedSnapshot);
+            return;
+        }
+
+        if (tracked.TryGetValue(0, out var roots))
+        {
+            foreach (var obj in roots)
             {
                 if (alreadyTrackedSnapshot?.Contains(obj) != true)
                 {
@@ -193,47 +276,60 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
 
         if (CountTrackedObjects(trackedObjects) == 0 && heldSharedInstances is not { Count: > 0 })
         {
+            ReleaseExternalOwners(testContext);
             return new ValueTask<List<Exception>?>((List<Exception>?)null);
         }
 
-        return UntrackObjectsAsync(trackedObjects, heldSharedInstances);
+        return UntrackObjectsAsync(testContext, trackedObjects, heldSharedInstances);
     }
 
-    private async ValueTask<List<Exception>?> UntrackObjectsAsync(SortedList<int, HashSet<object>>? trackedObjects, HashSet<object>? heldSharedInstances)
+    private async ValueTask<List<Exception>?> UntrackObjectsAsync(TestContext testContext, SortedList<int, HashSet<object>>? trackedObjects, HashSet<object>? heldSharedInstances)
     {
-        // SortedList keeps keys in ascending order; iterate in ascending order (shallowest depth first).
-        // This ensures disposal happens in reverse order of initialization (which goes deepest first).
-        // Dependents (shallow) are disposed before their dependencies (deep).
-        List<Exception>? cleanupExceptions = null;
-
-        if (trackedObjects is not null)
+        try
         {
-            var values = trackedObjects.Values;
+            // SortedList keeps keys in ascending order; iterate in ascending order (shallowest depth first).
+            // This ensures disposal happens in reverse order of initialization (which goes deepest first).
+            // Dependents (shallow) are disposed before their dependencies (deep).
+            List<Exception>? cleanupExceptions = null;
 
-            for (var i = 0; i < values.Count; i++)
+            if (trackedObjects is not null)
             {
-                cleanupExceptions = await UntrackBucketAsync(values[i], cleanupExceptions).ConfigureAwait(false);
+                var values = trackedObjects.Values;
+
+                for (var i = 0; i < values.Count; i++)
+                {
+                    cleanupExceptions = await UntrackBucketAsync(testContext, values[i], cleanupExceptions).ConfigureAwait(false);
+                }
             }
-        }
 
-        // Released last: the test's own objects may depend on the shared instances it fetched.
-        if (heldSharedInstances is { Count: > 0 })
+            // Released last: the test's own objects may depend on the shared instances it fetched.
+            if (heldSharedInstances is { Count: > 0 })
+            {
+                cleanupExceptions = await UntrackBucketAsync(testContext, heldSharedInstances, cleanupExceptions, sessionReference: false).ConfigureAwait(false);
+            }
+
+            return cleanupExceptions;
+        }
+        finally
         {
-            cleanupExceptions = await UntrackBucketAsync(heldSharedInstances, cleanupExceptions).ConfigureAwait(false);
+            ReleaseExternalOwners(testContext);
         }
-
-        return cleanupExceptions;
     }
 
-    private async ValueTask<List<Exception>?> UntrackBucketAsync(HashSet<object> bucket, List<Exception>? cleanupExceptions)
+    private async ValueTask<List<Exception>?> UntrackBucketAsync(TestContext? testContext, HashSet<object> bucket, List<Exception>? cleanupExceptions, bool sessionReference = true)
     {
         List<Task>? disposalTasks = null;
 
         foreach (var obj in bucket)
         {
+            if (testContext?.InternalEventsIfCreated?.DataRowScopes is { } scopes)
+            {
+                cleanupExceptions = await scopes.ReleaseAsync(obj, cleanupExceptions).ConfigureAwait(false);
+            }
+
             try
             {
-                var task = UntrackObject(obj);
+                var task = UntrackObject(obj, testContext, sessionReference);
 
                 if (!task.IsCompletedSuccessfully)
                 {
@@ -263,6 +359,65 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
         return cleanupExceptions;
     }
 
+    // Lease state and counters share one lock: zero-count callbacks can acquire a lease
+    // reentrantly, so a separate lease lock would invert the counter/lease lock order.
+    private static readonly ConditionalWeakTable<object, StaticLease> s_staticLeaseObjects = new();
+
+    private sealed class StaticLease
+    {
+        public int Count;
+        public List<Func<ValueTask>>? OnReleased;
+    }
+
+    internal void TrackStaticLeaseObject(object obj)
+    {
+        lock (s_sharedInstanceLock)
+        {
+            s_staticLeaseObjects.GetValue(obj, static _ => new()).Count++;
+            // The final static-property owner releases this lease, which may outlive this session.
+            TrackObject(obj, sessionReference: false);
+        }
+    }
+
+    internal async ValueTask ReleaseStaticLeaseObjectAsync(object obj, Func<ValueTask>? onFinalRelease = null)
+    {
+        List<Exception>? errors = null;
+        try
+        {
+            // Keep sweep protection while asynchronous fixture teardown is in progress.
+            await UntrackObject(obj, testContext: null, sessionReference: false).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            (errors ??= []).Add(ex);
+        }
+
+        List<Func<ValueTask>>? callbacks = null;
+        lock (s_sharedInstanceLock)
+        {
+            if (!s_staticLeaseObjects.TryGetValue(obj, out var lease) || lease.Count <= 0)
+            {
+                throw new InvalidOperationException("Static lease release has no matching acquisition.");
+            }
+            if (onFinalRelease is not null) (lease.OnReleased ??= []).Add(onFinalRelease);
+            if (--lease.Count == 0)
+            {
+                callbacks = lease.OnReleased;
+                lease.OnReleased = null;
+            }
+        }
+
+        if (callbacks is not null)
+        {
+            foreach (var callback in callbacks)
+            {
+                try { await callback().ConfigureAwait(false); }
+                catch (Exception ex) { (errors ??= []).Add(ex); }
+            }
+        }
+        if (errors is { Count: > 0 }) throw new AggregateException("Errors occurred while releasing a static fixture", errors);
+    }
+
     /// <summary>
     /// Track static property objects (session-level)
     /// </summary>
@@ -277,20 +432,58 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
         }
     }
 
+    private DataRowScopeCollection.ScopeOwner[] RetainExternalOwners(TestContext context)
+    {
+        var scopes = context.InternalEventsIfCreated?.DataRowScopes;
+        if (scopes is null) return [];
+        var owners = scopes.GetOwners();
+        if (owners.Length > 0)
+        {
+            lock (s_sharedInstanceLock)
+                _externalOwners[context] = owners;
+        }
+        return owners;
+    }
+
+    private void ReleaseExternalOwners(TestContext context)
+    {
+        lock (s_sharedInstanceLock) _externalOwners.Remove(context);
+    }
+
     /// <summary>
     /// Tracks a single object for a test context.
     /// For backward compatibility - adds to existing tracked objects for the context.
     /// </summary>
     /// <param name="obj">The object to track</param>
-    private void TrackObject(object? obj)
+    private void TrackObject(object? obj, bool sessionReference = true)
     {
         if (obj == null || ShouldSkipTracking(obj))
         {
             return;
         }
 
-        var counter = GetOrCreateCounter(obj);
-        counter.Increment();
+        lock (s_sharedInstanceLock)
+        {
+            if (sessionReference)
+            {
+                _sessionReferences.TryGetValue(obj, out var count);
+                _sessionReferences[obj] = count + 1;
+            }
+            GetOrCreateCounter(obj).Increment();
+        }
+        ExternalObjectOwnership.FindOwner(obj)?.RetainWhileCounted(obj);
+    }
+
+    internal static void UpdateExternalOwnerPin(object instance, DataRowScopeCollection.ScopeOwner owner, bool release)
+    {
+        lock (s_sharedInstanceLock)
+        {
+            if (release) owner.RemoveCountedPin(instance);
+            // A zero-count callback can itself acquire a new reference. Re-arm its pin
+            // if that happened, as well as serializing against other threads' retirement.
+            if (!release || (s_trackedObjects.TryGetValue(instance, out var counter) && counter.CurrentCount > 0))
+                owner.RetainWhileCountedCore(instance);
+        }
     }
 
     /// <summary>
@@ -300,44 +493,134 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
     /// instead of bypassing it — a direct dispose would leave a stale entry that the session-end
     /// sweep would dispose a second time.
     /// </summary>
-    public ValueTask UntrackObjectAsync(object? obj) => UntrackObject(obj);
+    public ValueTask UntrackObjectAsync(object? obj) => UntrackObject(obj, testContext: null);
 
-    private async ValueTask UntrackObject(object? obj)
+    // Failed factories never produce a TestContext to own these references. Keep them
+    // outside session accounting and release them with their row, through the same global counts.
+    internal static IAsyncDisposable RetainForRowCleanup(object obj)
     {
-        if (obj == null || ShouldSkipTracking(obj))
+        lock (s_sharedInstanceLock)
+        {
+            GetOrCreateCounter(obj).Increment();
+        }
+        return new RowCleanupReference(obj, GlobalContext.Current.Disposer);
+    }
+
+    private sealed class RowCleanupReference(object obj, Disposer disposer) : IAsyncDisposable
+    {
+        private int _released;
+
+        public ValueTask DisposeAsync() => Interlocked.Exchange(ref _released, 1) == 0
+            ? UntrackObjectCore(obj, null, false, null, disposer)
+            : default;
+    }
+
+    private ValueTask UntrackObject(object? obj, TestContext? testContext, bool sessionReference = true)
+        => UntrackObjectCore(obj, testContext, sessionReference, _sessionReferences, disposer);
+
+    private static async ValueTask UntrackObjectCore(object? obj, TestContext? testContext,
+        bool sessionReference, Dictionary<object, int>? sessionReferences, Disposer disposer)
+    {
+        // Every disposable is counted, including externally owned objects. Ownership changes only
+        // who disposes it, so each test always releases exactly the reference it took.
+        if (obj is not IDisposable and not IAsyncDisposable)
         {
             return;
         }
 
+        // A count callback may release the last strong owner handle during Decrement. Keep the
+        // handle through the disposal decision, including after its originating session ended.
+        var externalOwner = ExternalObjectOwnership.FindOwner(obj);
         var shouldDispose = false;
 
-        if (s_trackedObjects.TryGetValue(obj, out var counter))
+        lock (s_sharedInstanceLock)
         {
-            int count;
-            try { count = counter.Decrement(); }
-            catch { s_trackedObjects.TryRemove(obj, out _); throw; }
-
-            if (count < 0)
+            if (sessionReference)
             {
-                throw new InvalidOperationException("Reference count for object went below zero. This indicates a bug in the reference counting logic.");
+                if (!sessionReferences!.TryGetValue(obj, out var ownedCount)) return;
+                if (ownedCount == 1) sessionReferences!.Remove(obj);
+                else sessionReferences![obj] = ownedCount - 1;
             }
-
-            if (count == 0)
+            if (s_trackedObjects.TryGetValue(obj, out var counter))
             {
-                shouldDispose = TestDataContainer.IsCached(obj)
-                    ? TryRetireSharedInstance(obj, counter)
-                    : RemoveCounter(obj, counter);
+                int count;
+                try { count = counter.Decrement(); }
+                catch { s_trackedObjects.TryRemove(obj, out _); throw; }
+
+                if (count < 0)
+                {
+                    throw new InvalidOperationException("Reference count for object went below zero. This indicates a bug in the reference counting logic.");
+                }
+
+                // A zero-count subscriber may synchronously acquire another reference.
+                // Retire only if the counter is still empty after callbacks complete.
+                if (count == 0 && counter.CurrentCount == 0)
+                {
+                    shouldDispose = TestDataContainer.IsCached(obj)
+                        ? TryRetireSharedInstance(obj, counter)
+                        : RemoveCounter(obj, counter);
+                }
             }
         }
 
-        if (shouldDispose)
+        if (shouldDispose && externalOwner is null && !ExternalObjectOwnership.IsOwned(obj))
         {
-            // TODO: Add disposal span for shared objects here to match the init spans
-            // created in ObjectLifecycleService.InitializeWithSpanAsync. Currently only
-            // per-test disposal gets a span (via TestCoordinator.DisposeTestInstanceWithSpanAsync).
+#if NET
+            if (TryGetSharedDisposeScope(obj, out var sharedType))
+            {
+                await DisposeWithSpanAsync(obj, testContext, sharedType, disposer).ConfigureAwait(false);
+                return;
+            }
+#endif
             await disposer.DisposeAsync(obj).ConfigureAwait(false);
         }
+        GC.KeepAlive(externalOwner);
     }
+
+#if NET
+    /// <summary>
+    /// Whether disposing <paramref name="obj"/> should get a span: it is a disposable shared
+    /// data-source object (its scope registered in <see cref="TraceScopeRegistry"/>) and the
+    /// lifecycle source has a listener. Mirrors the <c>initialize</c> spans emitted by the engine.
+    /// </summary>
+    private static bool TryGetSharedDisposeScope(object obj, out SharedType sharedType)
+    {
+        sharedType = SharedType.None;
+
+        if (obj is not (IAsyncDisposable or IDisposable)
+            || !TUnitActivitySource.LifecycleSource.HasListeners()
+            || TraceScopeRegistry.GetSharedType(obj) is not { } registered
+            || registered == SharedType.None)
+        {
+            return false;
+        }
+
+        sharedType = registered;
+        return true;
+    }
+
+    /// <summary>
+    /// Disposes a shared object inside a <c>dispose &lt;Type&gt;</c> span, parented by the same rules as
+    /// its <c>initialize</c> span, so the timeline shows fixture teardown cost next to its setup cost.
+    /// </summary>
+    private static Task DisposeWithSpanAsync(object obj, TestContext? testContext, SharedType sharedType, Disposer disposer)
+    {
+        KeyValuePair<string, object?>[] tags = testContext is null
+            ? [new(TUnitActivitySource.TagTraceScope, TUnitActivitySource.GetScopeTag(sharedType))]
+            :
+            [
+                new(TUnitActivitySource.TagTestClass, testContext.ClassContext.ClassType.FullName),
+                new(TUnitActivitySource.TagTraceScope, TUnitActivitySource.GetScopeTag(sharedType))
+            ];
+
+        return TUnitActivitySource.RunWithSpanAsync(
+            TUnitActivitySource.LifecycleSource,
+            $"dispose {TUnitActivitySource.GetReadableTypeName(obj.GetType())}",
+            TUnitActivitySource.GetSharedObjectParentContext(testContext, sharedType),
+            tags,
+            () => disposer.DisposeAsync(obj).AsTask());
+    }
+#endif
 
     /// <summary>
     /// Removes <paramref name="counter"/> from the tracking dictionary (preventing a memory leak),
@@ -419,6 +702,125 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
         }
     }
 
+    // Set while tests built at run time (dynamic tests, variants, deferred expansions) are built and
+    // registered, so the shared instances they fetch cannot be retired before registration counts them.
+    private static readonly AsyncLocal<RegistrationHolds?> s_registrationHolds = new();
+
+    // Lets cache fetches skip the AsyncLocal read when no registration is in progress.
+    private static int s_activeRegistrationHolds;
+
+    /// <summary>
+    /// Shared instances fetched while tests that run alongside other tests are built and registered.
+    /// Each holds one reference until its registration scope is disposed.
+    /// </summary>
+    internal sealed class RegistrationHolds
+    {
+        internal readonly HashSet<object> Instances = new(Helpers.ReferenceEqualityComparer.Instance);
+
+        internal bool Released;
+    }
+
+    /// <summary>
+    /// Starts holding every cached shared instance fetched in the current async flow, until
+    /// the returned scope is disposed. Use around building and registering tests while
+    /// other tests run: otherwise the last running holder of an instance can end between the new test
+    /// receiving it and registration counting it, and the new test would run with a disposed
+    /// instance (#7263). Call from an async method, so the holds do not flow back to its caller, and
+    /// dispose the scope with await using.
+    /// </summary>
+    internal RegistrationScope BeginRegistrationScope()
+    {
+        var holds = new RegistrationHolds();
+        Interlocked.Increment(ref s_activeRegistrationHolds);
+        s_registrationHolds.Value = holds;
+        return new RegistrationScope(this, holds);
+    }
+
+    internal readonly struct RegistrationScope(ObjectTracker tracker, RegistrationHolds holds) : IAsyncDisposable
+    {
+        internal HashSet<object> Instances => holds.Instances;
+
+        public ValueTask DisposeAsync() => tracker.ReleaseRegistrationHoldsAsync(holds);
+
+        // Keep await using configuration on the value type: the IAsyncDisposable extension boxes it.
+        public ConfiguredRegistrationScope ConfigureAwait(bool continueOnCapturedContext) =>
+            new(this, continueOnCapturedContext);
+    }
+
+    internal readonly struct ConfiguredRegistrationScope(RegistrationScope scope, bool continueOnCapturedContext)
+    {
+        public ConfiguredValueTaskAwaitable DisposeAsync() =>
+            scope.DisposeAsync().ConfigureAwait(continueOnCapturedContext);
+    }
+
+    /// <summary>
+    /// Releases the references taken since <see cref="BeginRegistrationScope"/>. Registration has
+    /// counted the references its tests keep by now, so this disposes only instances that no test holds.
+    /// Disposal errors are logged by the <see cref="Disposer"/> and not rethrown: no test owns them.
+    /// </summary>
+    private async ValueTask ReleaseRegistrationHoldsAsync(RegistrationHolds holds)
+    {
+        // The async flow keeps the holds until the method that began them returns; Released makes
+        // later fetches in that flow skip them.
+        lock (holds.Instances)
+        {
+            if (holds.Released)
+            {
+                return;
+            }
+
+            holds.Released = true;
+        }
+
+        Interlocked.Decrement(ref s_activeRegistrationHolds);
+
+        // No longer changes: TryHoldForRegistration checks Released under the same lock.
+        if (holds.Instances.Count > 0)
+        {
+            await UntrackBucketAsync(testContext: null, holds.Instances, cleanupExceptions: null, sessionReference: false).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Holds a cached shared instance that was just fetched, when tests are being registered in this
+    /// async flow (<see cref="BeginRegistrationScope"/>).
+    /// </summary>
+    /// <returns>
+    /// False only when the instance has already been retired, in which case the caller must fetch it
+    /// again; the cache then creates a new one. True otherwise.
+    /// </returns>
+    internal static bool TryHoldForRegistration(object instance)
+    {
+        if (Volatile.Read(ref s_activeRegistrationHolds) == 0
+            || s_registrationHolds.Value is not { } holds
+            || ShouldSkipTracking(instance))
+        {
+            return true;
+        }
+
+        // Building can fetch shared instances concurrently.
+        lock (holds.Instances)
+        {
+            if (holds.Released || holds.Instances.Contains(instance))
+            {
+                return true;
+            }
+
+            lock (s_sharedInstanceLock)
+            {
+                if (!TestDataContainer.IsCached(instance))
+                {
+                    return false;
+                }
+
+                GetOrCreateCounter(instance).Increment();
+            }
+
+            holds.Instances.Add(instance);
+            return true;
+        }
+    }
+
     private static bool Contains(SortedList<int, HashSet<object>>? trackedObjects, object obj)
     {
         if (trackedObjects is null)
@@ -445,6 +847,8 @@ internal class ObjectTracker(TrackableObjectGraphProvider trackableObjectGraphPr
     {
         return obj is not IDisposable and not IAsyncDisposable;
     }
+
+    internal static bool IsExternallyOwned(object obj) => ExternalObjectOwnership.IsOwned(obj);
 
     /// <summary>
     /// Registers a callback to be invoked when the object is disposed (ref count reaches 0).

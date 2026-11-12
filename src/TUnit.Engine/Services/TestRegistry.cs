@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using TUnit.Core;
 using TUnit.Core.Interfaces;
+using TUnit.Core.Tracking;
 using TUnit.Engine.Building;
 using TUnit.Engine.Helpers;
 using TUnit.Engine.Interfaces;
@@ -21,6 +22,7 @@ internal sealed class TestRegistry : ITestRegistry
     private readonly ITestCoordinator _testCoordinator;
     private readonly IDynamicTestQueue _dynamicTestQueue;
     private readonly TestFilterService _testFilterService;
+    private readonly ObjectTracker _objectTracker;
     private readonly CancellationToken _sessionCancellationToken;
     private readonly string? _sessionId;
 
@@ -28,6 +30,7 @@ internal sealed class TestRegistry : ITestRegistry
         ITestCoordinator testCoordinator,
         IDynamicTestQueue dynamicTestQueue,
         TestFilterService testFilterService,
+        ObjectTracker objectTracker,
         string sessionId,
         CancellationToken sessionCancellationToken)
     {
@@ -35,6 +38,7 @@ internal sealed class TestRegistry : ITestRegistry
         _testCoordinator = testCoordinator;
         _dynamicTestQueue = dynamicTestQueue;
         _testFilterService = testFilterService;
+        _objectTracker = objectTracker;
         _sessionId = sessionId;
         _sessionCancellationToken = sessionCancellationToken;
     }
@@ -100,11 +104,18 @@ internal sealed class TestRegistry : ITestRegistry
 
         // These are dynamic tests registered after discovery, so not in execution mode with a filter
         var buildingContext = new Building.TestBuildingContext(IsForExecution: false, Filter: null);
-        var builtTests = await _testBuilderPipeline!.BuildTestsFromMetadataAsync(testMetadataList, buildingContext);
 
-        // Dynamic tests bypass the discovery pipeline's post-filter registration, so register them
-        // here (event receivers + argument registration/reference counting) before they execute.
-        await _testFilterService.RegisterTestsAsync(builtTests, isForExecution: true);
+        // Other tests are running, so hold the shared instances these tests fetch until
+        // registration has counted them (#7263).
+        IEnumerable<AbstractExecutableTest> builtTests;
+        await using (var holds = _objectTracker.BeginRegistrationScope())
+        {
+            builtTests = await _testBuilderPipeline!.BuildTestsFromMetadataAsync(testMetadataList, buildingContext);
+
+            // Dynamic tests bypass the discovery pipeline's post-filter registration, so register them
+            // here (event receivers + argument registration/reference counting) before they execute.
+            await _testFilterService.RegisterTestsAsync(builtTests, isForExecution: true);
+        }
 
         foreach (var test in builtTests)
         {
@@ -267,14 +278,21 @@ internal sealed class TestRegistry : ITestRegistry
         // Use IsForExecution: false to bypass filtering — this variant was explicitly requested
         // by the test and should always be registered, regardless of any active test filter.
         var buildingContext = new Building.TestBuildingContext(IsForExecution: false, Filter: null);
-        var builtTests = await _testBuilderPipeline.BuildTestsFromMetadataAsync([metadata], buildingContext);
 
-        var builtTest = builtTests.FirstOrDefault()
-            ?? throw new InvalidOperationException("Failed to build test variant");
+        // Other tests are running, so hold the shared instances the variant fetches until
+        // registration has counted them (#7263).
+        AbstractExecutableTest builtTest;
+        await using (var holds = _objectTracker.BeginRegistrationScope())
+        {
+            var builtTests = await _testBuilderPipeline.BuildTestsFromMetadataAsync([metadata], buildingContext);
 
-        // Variants bypass the discovery pipeline's post-filter registration, so register here
-        // (event receivers + argument registration/reference counting) before execution.
-        await _testFilterService.RegisterTestsAsync([builtTest], isForExecution: true);
+            builtTest = builtTests.FirstOrDefault()
+                ?? throw new InvalidOperationException("Failed to build test variant");
+
+            // Variants bypass the discovery pipeline's post-filter registration, so register here
+            // (event receivers + argument registration/reference counting) before execution.
+            await _testFilterService.RegisterTestsAsync([builtTest], isForExecution: true);
+        }
 
         _dynamicTestQueue.Enqueue(builtTest);
 
@@ -345,23 +363,68 @@ internal sealed class TestRegistry : ITestRegistry
         var lambdaExpression = result.TestMethod as LambdaExpression
             ?? throw new InvalidOperationException("Dynamic test method must be a lambda expression");
 
-        var compiledExpression = lambdaExpression.Compile();
-        var invokeMethod = compiledExpression.GetType().GetMethod("Invoke")!;
+        var invoker = CompileRuntimeTestInvoker(lambdaExpression);
 
         return async (instance, args) =>
         {
             var testInstance = instance ?? throw new InvalidOperationException("Test instance is null");
-            var invokeResult = invokeMethod.Invoke(compiledExpression, [testInstance]);
+            var invokeResult = invoker(testInstance);
 
             if (invokeResult is Task task)
             {
-                await task;
+                await task.ConfigureAwait(false);
             }
             else if (invokeResult is ValueTask valueTask)
             {
-                await valueTask;
+                await valueTask.ConfigureAwait(false);
             }
         };
+    }
+
+    // DynamicTest<T>.TestMethod is an Expression<Action<T>>, so compiling it as-is would discard the
+    // value of its body, such as the Task of an async test method (#7249). Re-type the body as the
+    // lambda's return value and box it, so the invoker can await it.
+    [RequiresUnreferencedCode("Dynamic test invocation requires LambdaExpression.Compile() which is not supported in native AOT scenarios.")]
+    // Native AOT keeps no reflection metadata for ValueTask<T>.AsTask unless something asks for it, so
+    // the GetMethod lookup below returns null there. This keeps it for every ValueTask<T> instantiation.
+    [DynamicDependency(nameof(ValueTask<object>.AsTask), typeof(ValueTask<>))]
+    private static Func<object, object?> CompileRuntimeTestInvoker(LambdaExpression lambdaExpression)
+    {
+        if (lambdaExpression.Parameters.Count != 1)
+        {
+            throw new InvalidOperationException("Dynamic test method must be a lambda expression with a single test class parameter");
+        }
+
+        var testClassParameter = lambdaExpression.Parameters[0];
+        var instanceParameter = Expression.Parameter(typeof(object), "instance");
+        var typedInstance = Expression.Variable(testClassParameter.Type, "testClass");
+        var testBody = new ParameterReplacer(testClassParameter, typedInstance).Visit(lambdaExpression.Body);
+
+        if (testBody.Type.IsGenericType && testBody.Type.GetGenericTypeDefinition() == typeof(ValueTask<>))
+        {
+            // A boxed ValueTask<T> matches neither Task nor ValueTask in the invoker, so convert it
+            // to its Task<T>. AsTask is a member of the closed type the test method already returns,
+            // so this needs no runtime generic instantiation.
+            testBody = Expression.Call(testBody, testBody.Type.GetMethod(nameof(ValueTask<object>.AsTask), Type.EmptyTypes)!);
+        }
+
+        Expression result = testBody.Type == typeof(void)
+            ? Expression.Block(testBody, Expression.Constant(null, typeof(object)))
+            : Expression.Convert(testBody, typeof(object));
+
+        var body = Expression.Block(
+            typeof(object),
+            [typedInstance],
+            Expression.Assign(typedInstance, Expression.Convert(instanceParameter, testClassParameter.Type)),
+            result);
+
+        return Expression.Lambda<Func<object, object?>>(body, instanceParameter).Compile();
+    }
+
+    private sealed class ParameterReplacer(ParameterExpression parameter, Expression replacement) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node)
+            => node == parameter ? replacement : base.VisitParameter(node);
     }
 
     private sealed class PendingDynamicTest

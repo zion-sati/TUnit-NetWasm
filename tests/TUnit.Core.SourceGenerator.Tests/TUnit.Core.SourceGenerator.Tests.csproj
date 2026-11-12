@@ -3,7 +3,7 @@
   <PropertyGroup>
     <!-- Multi-target to verify generator output across consumer TFMs (snapshot tests). -->
     <!-- net472 is added on Windows only; see WindowsNetFrameworkTestTarget in Directory.Build.props. -->
-    <TargetFrameworks>$(WindowsNetFrameworkTestTarget)net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>$(WindowsNetFrameworkTestTarget)net10.0;net11.0</TargetFrameworks>
   </PropertyGroup>
 
   <Import Project="..\..\eng\TestProject.props" />
@@ -15,9 +15,11 @@
 
   <ItemGroup>
     <Compile Include="..\SharedTestHelpers\TestHostReferences.cs" Link="Shared\TestHostReferences.cs" />
+    <Compile Include="..\SharedTestHelpers\GeneratorTestInput.cs" Link="Shared\GeneratorTestInput.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\TUnit.Analyzers\TUnit.Analyzers.csproj" />
     <ProjectReference Include="..\..\src\TUnit.Core.SourceGenerator\TUnit.Core.SourceGenerator.csproj" />
     <ProjectReference Include="..\..\src\TUnit.Core\TUnit.Core.csproj" />
     <ProjectReference Include="..\TUnit.TestProject.Library\TUnit.TestProject.Library.csproj" />

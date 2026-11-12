@@ -46,18 +46,35 @@ internal static class AnalyzerTestCompatibility
         return ns20Path;
     }
 
-    public static string GetSystemTextJson9DllPath()
+    /// <summary>
+    /// Resolves a third-party package's net8.0 build that the test csproj copies into the output
+    /// directory as <c>{assemblyName}.net8.0.dll</c>. Packages that ship a net10.0 build (NUnit 5,
+    /// Polly.Core 8.9+) reference System.Runtime 10.0 and raise CS1705 against the Net90 reference
+    /// assemblies when loaded via <c>typeof(...).Assembly.Location</c> on net10.0.
+    /// </summary>
+    public static string GetNet8DllPath(string assemblyName)
     {
-        const string fileName = "System.Text.Json.9.0.dll";
-        var path = Path.Combine(AppContext.BaseDirectory, fileName);
+        var path = Path.Combine(AppContext.BaseDirectory, $"{assemblyName}.net8.0.dll");
         if (!File.Exists(path))
         {
             throw new FileNotFoundException(
-                $"System.Text.Json 9.0 reference not found at '{path}'. " +
+                $"net8.0 build of {assemblyName} not found at '{path}'. " +
                 "Run 'dotnet build' before running analyzer tests.",
                 path);
         }
 
         return path;
     }
+
+    /// <summary>
+    /// Reference assemblies for tests that reference TUnit's runtime-loaded builds
+    /// (<c>typeof(...).Assembly</c>): at least as new as the newest target framework those builds
+    /// compile for, so they never reference a higher System.Runtime than the compilation (CS1705).
+    /// </summary>
+    public static Microsoft.CodeAnalysis.Testing.ReferenceAssemblies RuntimeReferenceAssemblies { get; } =
+#if NET11_0_OR_GREATER
+        new("net11.0", new Microsoft.CodeAnalysis.Testing.PackageIdentity("Microsoft.NETCore.App.Ref", "11.0.0"), Path.Combine("ref", "net11.0"));
+#else
+        new("net10.0", new Microsoft.CodeAnalysis.Testing.PackageIdentity("Microsoft.NETCore.App.Ref", "10.0.0"), Path.Combine("ref", "net10.0"));
+#endif
 }

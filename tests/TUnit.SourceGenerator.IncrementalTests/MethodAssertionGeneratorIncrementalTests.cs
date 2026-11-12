@@ -1,4 +1,4 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using TUnit.Assertions.SourceGenerator.Generators;
 
@@ -114,6 +114,68 @@ public class MethodAssertionGeneratorIncrementalTests
     }
 
     [Test]
+    public async Task AddDocumentationShouldRegenerate()
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(DefaultAssertion, CSharpParseOptions.Default);
+        var compilation1 = Fixture.CreateLibrary(syntaxTree);
+
+        var driver1 = TestHelper.GenerateTracked<MethodAssertionGenerator>(compilation1);
+        await AssertRunReasons(driver1, IncrementalGeneratorRunReasons.New);
+
+        var compilation2 = TestHelper.ReplaceMethodDeclaration(compilation1, "IsPositive",
+            """
+            /// <summary>Checks that the value is greater than zero.</summary>
+            [GenerateAssertion(ExpectationMessage = "to be positive")]
+            public static bool IsPositive(this int value)
+            {
+                return value > 0;
+            }
+            """
+            );
+        var driver2 = driver1.RunGenerators(compilation2);
+        await AssertRunReasons(driver2, IncrementalGeneratorRunReasons.Modified);
+    }
+
+    [Test]
+    public async Task ModifyDocumentationTextShouldNotRegenerate()
+    {
+        var compilation1 = Fixture.CreateLibrary(CSharpSyntaxTree.ParseText(
+            """
+            using TUnit.Assertions.Attributes;
+
+            public static partial class IntAssertionExtensions
+            {
+                /// <summary>Checks that the value is greater than zero.</summary>
+                [GenerateAssertion(ExpectationMessage = "to be positive")]
+                public static bool IsPositive(this int value)
+                {
+                    return value > 0;
+                }
+            }
+            """,
+            CSharpParseOptions.Default));
+
+        var driver1 = TestHelper.GenerateTracked<MethodAssertionGenerator>(compilation1);
+        await AssertRunReasons(driver1, IncrementalGeneratorRunReasons.New);
+
+        var compilation2 = TestHelper.ReplaceMethodDeclaration(compilation1, "IsPositive",
+            """
+            /// <summary>Checks that the value is strictly greater than zero.</summary>
+            [GenerateAssertion(ExpectationMessage = "to be positive")]
+            public static bool IsPositive(this int value)
+            {
+                return value > 0;
+            }
+            """
+            );
+        var driver2 = driver1.RunGenerators(compilation2);
+
+        // The generated method references the documentation by ID, so its text is not part of the output.
+        await AssertRunReasons(driver2, IncrementalGeneratorRunReasons.Cached);
+        await TestHelper.AssertSourceOutputsCached(driver2.GetRunResult().Results[0]);
+    }
+
+    [Test]
     public async Task ModifyOneContainingTypeShouldOnlyRegenerateThatType()
     {
         var compilation1 = Fixture.CreateLibrary(
@@ -180,7 +242,7 @@ public class MethodAssertionGeneratorIncrementalTests
             brokenTree);
 
         var driver1 = TestHelper.GenerateTracked<MethodAssertionGenerator>(compilation1);
-        await Assert.That(driver1.GetRunResult().Diagnostics).Contains(d => d.Id == "TUNITGEN001");
+        await Assert.That(driver1.GetRunResult().Diagnostics).Contains(d => d.Id == "TUNITGEN006");
 
         var compilation2 = compilation1.AddSyntaxTrees(CSharpSyntaxTree.ParseText("struct MyValue {}"));
         var driver2 = driver1.RunGenerators(compilation2);
@@ -197,7 +259,7 @@ public class MethodAssertionGeneratorIncrementalTests
             .ToArray();
         await Assert.That(sourceOutputReasons).HasSingleItem(reason => reason != IncrementalStepRunReason.Cached);
 
-        var diagnostic = await Assert.That(runResult.Diagnostics).HasSingleItem(d => d.Id == "TUNITGEN001");
+        var diagnostic = await Assert.That(runResult.Diagnostics).HasSingleItem(d => d.Id == "TUNITGEN006");
         await Assert.That(diagnostic.Location.GetLineSpan().StartLinePosition.Line).IsEqualTo(4);
 
         // The location must stay tied to the syntax tree so #pragma and per-file severities apply.
@@ -222,13 +284,13 @@ public class MethodAssertionGeneratorIncrementalTests
         var compilation1 = Fixture.CreateLibrary(CSharpSyntaxTree.ParseText(DefaultAssertion), brokenTree);
 
         var driver1 = TestHelper.GenerateTracked<MethodAssertionGenerator>(compilation1);
-        var firstDiagnostic = await Assert.That(driver1.GetRunResult().Diagnostics).HasSingleItem(d => d.Id == "TUNITGEN001");
+        var firstDiagnostic = await Assert.That(driver1.GetRunResult().Diagnostics).HasSingleItem(d => d.Id == "TUNITGEN006");
         await Assert.That(firstDiagnostic.Location.SourceTree).IsSameReferenceAs(brokenTree);
 
         var compilation2 = compilation1.AddSyntaxTrees(CSharpSyntaxTree.ParseText("struct MyValue {}"));
         var driver2 = driver1.RunGenerators(compilation2);
 
-        var diagnostic = await Assert.That(driver2.GetRunResult().Diagnostics).HasSingleItem(d => d.Id == "TUNITGEN001");
+        var diagnostic = await Assert.That(driver2.GetRunResult().Diagnostics).HasSingleItem(d => d.Id == "TUNITGEN006");
         await Assert.That(diagnostic.Location.IsInSource).IsTrue();
         await Assert.That(diagnostic.Location.SourceTree).IsSameReferenceAs(brokenTree);
     }

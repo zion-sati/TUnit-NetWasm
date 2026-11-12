@@ -20,6 +20,11 @@ public static class CastHelper
         Justification = "Cast<T> is called from source-generated code that handles parseable types at compile time. The runtime TryParsableConvert fallback is only used in non-AOT scenarios.")]
     public static T? Cast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] T>(object? value)
     {
+        if (value is TupleArgument retained)
+        {
+            value = retained.Materialize();
+        }
+
         if (value is T t)
         {
             return t;
@@ -32,8 +37,8 @@ public static class CastHelper
     /// <summary>
     /// Binds a single non-null argument to a trailing <c>T[]</c> parameter when the argument is not
     /// already a <c>T[]</c>. Applies C# params expansion first (a <typeparamref name="T"/> value becomes
-    /// a one-element array), then converts any other array element-wise, and otherwise wraps the
-    /// converted scalar.
+    /// a one-element array), then converts any other array element-wise. For other values, tries
+    /// a conversion to the declared array type before wrapping the converted scalar.
     /// </summary>
     /// <remarks>
     /// The element-wise branch exists because data sources often supply arrays whose runtime type is
@@ -45,6 +50,11 @@ public static class CastHelper
     /// </remarks>
     public static T[] ToTrailingArray<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] T>(object value)
     {
+        if (value is TupleArgument retained)
+        {
+            value = retained.Materialize();
+        }
+
         if (value is T element)
         {
             return [element];
@@ -64,7 +74,36 @@ public static class CastHelper
             return result;
         }
 
+        if (TryConvertTrailingArray(typeof(T[]), value, out var converted))
+        {
+            return (T[])converted!;
+        }
+
         return [Cast<T>(value)!];
+    }
+
+    // Shared by generated row binders and reflection constructor discovery. Try the declared
+    // array conversion before scalar packing, without treating a missing conversion as an error.
+    internal static bool TryConvertTrailingArray(Type arrayType, object value, out object? result)
+    {
+        var sourceType = value.GetType();
+        if (AotConverterRegistry.TryConvert(sourceType, arrayType, value, out result))
+        {
+            return true;
+        }
+
+        if (!IsAotMode())
+        {
+            var conversion = GetConversionMethodCached(sourceType, arrayType);
+            if (conversion != null)
+            {
+                result = conversion.Invoke(null, [value]);
+                return true;
+            }
+        }
+
+        result = null;
+        return false;
     }
 
     /// <summary>
@@ -81,6 +120,11 @@ public static class CastHelper
             | DynamicallyAccessedMemberTypes.PublicMethods)] Type type,
         object? value)
     {
+        if (value is TupleArgument retained)
+        {
+            value = retained.Materialize();
+        }
+
         if (value is null || value.GetType().IsAssignableTo(type))
         {
             return value;
@@ -95,10 +139,17 @@ public static class CastHelper
     /// 1. Fast path: null handling, direct cast, nullable unwrapping
     /// 2. AOT-safe: AotConverterRegistry, primitives, enums
     /// 3. Reflection fallback: custom operators, arrays (throws in AOT)
+    /// Built-in decimal-to-integral conversions round midpoint values to even and throw
+    /// OverflowException for out-of-range values. Explicitly registered converters take priority.
     /// </summary>
     [UnconditionalSuppressMessage("AOT", "IL3050:Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.")]
     public static object? Cast([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | DynamicallyAccessedMemberTypes.Interfaces | DynamicallyAccessedMemberTypes.PublicMethods)] Type type, object? value)
     {
+        if (value is TupleArgument retained)
+        {
+            value = retained.Materialize();
+        }
+
         // Fast path: handle null
         if (value is null)
         {
@@ -107,6 +158,7 @@ public static class CastHelper
                 : null;
         }
 
+        // TestDataAnalyzer.CanConvertReferenceTupleElement mirrors these element conversion limits.
         var targetType = Nullable.GetUnderlyingType(type) ?? type;
         var sourceType = value.GetType();
 
@@ -164,6 +216,18 @@ public static class CastHelper
         // Try AOT converter registry first
         if (AotConverterRegistry.TryConvert(sourceType, targetType, value, out result))
         {
+            return true;
+        }
+
+        // Decimal operators truncate integral results, whereas the primitive fallback
+        // rounds to nearest even. Generated numeric converters use this same policy;
+        // explicitly registered converters retain priority above.
+        if (value is decimal && (targetType == typeof(sbyte) || targetType == typeof(byte) ||
+            targetType == typeof(short) || targetType == typeof(ushort) ||
+            targetType == typeof(int) || targetType == typeof(uint) ||
+            targetType == typeof(long) || targetType == typeof(ulong)))
+        {
+            result = Convert.ChangeType(value, targetType);
             return true;
         }
 

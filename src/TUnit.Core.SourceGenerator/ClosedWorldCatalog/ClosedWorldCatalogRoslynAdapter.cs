@@ -61,7 +61,7 @@ internal sealed class ClosedWorldCatalogRoslynAdapter : IClosedWorldCatalogRosly
 
         // The rows an instantiation runs, as the desktop source generator selects them: every
         // [Arguments] row that infers its type arguments, multiplied by its class rows.
-        var (methodDataSources, classDataSources) =
+        var (methodDataSources, classDataSources, _) =
             TestMetadataGenerator.SelectEntryDataSources(testMethod, request.Instantiation);
         var runtimeMethodDataSources = methodDataSources
             .Where(static attribute => IsMethodDataSource(attribute.AttributeClass))

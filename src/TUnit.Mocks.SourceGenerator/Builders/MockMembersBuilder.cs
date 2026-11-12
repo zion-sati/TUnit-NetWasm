@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TUnit.Mocks.SourceGenerator.Models;
 using static TUnit.Mocks.SourceGenerator.IdentifierEscaping;
 
@@ -260,7 +263,30 @@ internal static class MockMembersBuilder
         writer.AppendLine();
     }
 
-    private const string EngineExpression = "global::TUnit.Mocks.MockRegistry.GetEngine(mock)";
+    // Extension-block receivers share a scope with every setup signature. Reserve names
+    // across the model so the receiver and all setup bodies use the same identifier.
+    internal static string GetSetupIdentifier(MockTypeModel model, string preferredName)
+    {
+        static bool IsOccupied(MockTypeModel model, string name)
+        {
+            foreach (var member in model.Methods.Concat(model.Properties))
+            {
+                foreach (var parameter in member.Parameters)
+                    if (parameter.Name.TrimStart('@') == name) return true;
+                foreach (var parameter in member.TypeParameters)
+                    if (parameter.Name.TrimStart('@') == name) return true;
+            }
+            foreach (var parameter in model.TypeParameters)
+                if (parameter.Name.TrimStart('@') == name) return true;
+            return false;
+        }
+
+        while (IsOccupied(model, preferredName)) preferredName += "_";
+        return preferredName;
+    }
+
+    private static string GetEngineExpression(MockTypeModel model)
+        => $"global::TUnit.Mocks.MockRegistry.GetEngine({GetSetupIdentifier(model, "mock")})";
 
     /// <summary>
     /// Emits the engine lookup for an extension body and returns the expression later code should
@@ -271,10 +297,10 @@ internal static class MockMembersBuilder
     {
         if (!model.IsSecondaryMemberSurface)
         {
-            return EngineExpression;
+            return GetEngineExpression(model);
         }
-        writer.AppendLine($"var __engine = {EngineExpression};");
-        return "__engine";
+        writer.AppendLine($"var {GetSetupIdentifier(model, "__engine")} = {GetEngineExpression(model)};");
+        return GetSetupIdentifier(model, "__engine");
     }
 
     /// <summary>
@@ -283,7 +309,7 @@ internal static class MockMembersBuilder
     /// secondary (pair) surfaces.
     /// </summary>
     private static string FormatMemberId(MockTypeModel model, int memberId)
-        => model.IsSecondaryMemberSurface ? $"__Id(__engine, {memberId.ToString(CultureInfo.InvariantCulture)})" : memberId.ToString(CultureInfo.InvariantCulture);
+        => model.IsSecondaryMemberSurface ? $"__Id({GetSetupIdentifier(model, "__engine")}, {memberId.ToString(CultureInfo.InvariantCulture)})" : memberId.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Emits namespace-scoped delegate types so non-span ref struct out/ref values can travel
@@ -556,12 +582,13 @@ internal static class MockMembersBuilder
                 writer.AppendLine($"public {wrapperTypeName} Returns({spanReturnType} value) {{ EnsureSetup().SetsOutParameter(global::TUnit.Mocks.Setup.OutRefContext.SpanReturnValueIndex, value.ToArray()); return this; }}");
             }
 
+            string? asyncTaskType = null;
             if (isAsync)
             {
-                var taskType = isValueTask
+                asyncTaskType = isValueTask
                     ? "global::System.Threading.Tasks.ValueTask"
                     : "global::System.Threading.Tasks.Task";
-                EmitReturnsAsyncOverloads(writer, wrapperTypeName, taskType, isValueTask, GetAsyncAliasTypeParamName(model, method), GetDefaultableTypeParameterNames(model, method), GetTypeParameterNames(model, method));
+                EmitReturnsAsyncOverloads(writer, wrapperTypeName, asyncTaskType, isValueTask, GetAsyncAliasTypeParamName(model, method), GetDefaultableTypeParameterNames(model, method), GetTypeParameterNames(model, method));
             }
 
             // Typed parameter overloads (only for methods with typed params within the arity limit).
@@ -571,20 +598,14 @@ internal static class MockMembersBuilder
                 if (hasRefStructParams)
                 {
                     writer.AppendLine("#if NET9_0_OR_GREATER");
-                    GenerateTypedCallbackOverload(writer, nonOutParams, wrapperTypeName, allNonOutParams);
-                    writer.AppendLine();
-                    GenerateTypedThrowsOverload(writer, nonOutParams, wrapperTypeName, allNonOutParams);
+                    EmitVoidTypedOverloads(writer, nonOutParams, wrapperTypeName, asyncTaskType, allNonOutParams);
                     writer.AppendLine("#else");
-                    GenerateTypedCallbackOverload(writer, nonOutParams, wrapperTypeName);
-                    writer.AppendLine();
-                    GenerateTypedThrowsOverload(writer, nonOutParams, wrapperTypeName);
+                    EmitVoidTypedOverloads(writer, nonOutParams, wrapperTypeName, asyncTaskType);
                     writer.AppendLine("#endif");
                 }
                 else
                 {
-                    GenerateTypedCallbackOverload(writer, nonOutParams, wrapperTypeName);
-                    writer.AppendLine();
-                    GenerateTypedThrowsOverload(writer, nonOutParams, wrapperTypeName);
+                    EmitVoidTypedOverloads(writer, nonOutParams, wrapperTypeName, asyncTaskType);
                 }
             }
 
@@ -633,6 +654,37 @@ internal static class MockMembersBuilder
         GenerateTypedCallbackOverload(writer, nonOutParams, wrapperName, allNonOutParams);
         writer.AppendLine();
         GenerateTypedThrowsOverload(writer, nonOutParams, wrapperName, allNonOutParams);
+    }
+
+    private static void EmitVoidTypedOverloads(CodeWriter writer, List<MockParameterModel> nonOutParams,
+        string wrapperName, string? asyncTaskType, List<MockParameterModel>? allNonOutParams = null)
+    {
+        if (asyncTaskType is not null)
+        {
+            GenerateTypedNonGenericTaskReturnsOverloads(writer, nonOutParams, asyncTaskType, wrapperName, allNonOutParams);
+            writer.AppendLine();
+        }
+        GenerateTypedCallbackOverload(writer, nonOutParams, wrapperName, allNonOutParams);
+        writer.AppendLine();
+        GenerateTypedThrowsOverload(writer, nonOutParams, wrapperName, allNonOutParams);
+    }
+
+    // Argument-aware task factories for members returning bare Task/ValueTask (#7301), matching
+    // what Task<T>/ValueTask<T> members get from GenerateTypedReturnsAsyncOverload. Both spellings
+    // hand the factory's task back as-is. Bare Task/ValueTask wrappers have no synchronous
+    // Returns(Func<...>) sibling, so the Returns alias needs neither the generic shape nor ORP.
+    private static void GenerateTypedNonGenericTaskReturnsOverloads(CodeWriter writer, List<MockParameterModel> nonOutParams,
+        string taskType, string wrapperName, List<MockParameterModel>? allNonOutParams)
+    {
+        var typeList = string.Join(", ", nonOutParams.Select(p => p.FullyQualifiedType));
+        var funcType = $"global::System.Func<{typeList}, {taskType}>";
+        var castArgs = BuildCastArgs(nonOutParams, allNonOutParams);
+        var body = $"{{ EnsureSetup().ReturnsRaw(args => (object?)factory({castArgs})); return this; }}";
+
+        writer.AppendLine("/// <summary>Configure a typed computed async return value using the actual method parameters.</summary>");
+        writer.AppendLine($"public {wrapperName} ReturnsAsync({funcType} factory) {body}");
+        writer.AppendLine("/// <summary>Configure a typed computed async return value using the actual method parameters. The returned task is handed back as-is, so an async factory stays pending until it completes.</summary>");
+        writer.AppendLine($"public {wrapperName} Returns({funcType} factory) {body}");
     }
 
     private static void GenerateTypedReturnsAsyncOverload(CodeWriter writer, List<MockParameterModel> nonOutParams,
@@ -858,7 +910,7 @@ internal static class MockMembersBuilder
         var modelTypeParams = MockImplBuilder.GetTypeParameterList(model);
         var modelConstraints = MockImplBuilder.GetConstraintClauses(model);
 
-        using (writer.Block($"extension{modelTypeParams}(global::TUnit.Mocks.Mock<{MockImplBuilder.GetMockableTypeName(model)}> mock){modelConstraints}"))
+        using (writer.Block($"extension{modelTypeParams}(global::TUnit.Mocks.Mock<{MockImplBuilder.GetMockableTypeName(model)}> {GetSetupIdentifier(model, "mock")}){modelConstraints}"))
         {
             GenerateGenericMethodMembersInCurrentBlock(writer, method, model, safeName);
         }
@@ -867,26 +919,29 @@ internal static class MockMembersBuilder
         {
             var wrapperSafeName = MockImplBuilder.GetCompositeShortSafeName(model);
             var wrapperTypeName = $"{MockImplBuilder.GetGlobalMockNamespacePrefix(model)}{MockImplBuilder.GetGeneratedTypeName($"{wrapperSafeName}Mock", model)}";
-            using (writer.Block($"extension{modelTypeParams}({wrapperTypeName} mock){modelConstraints}"))
+            using (writer.Block($"extension{modelTypeParams}({wrapperTypeName} {GetSetupIdentifier(model, "mock")}){modelConstraints}"))
             {
                 GenerateGenericMethodMembersInCurrentBlock(writer, method, model, safeName);
             }
         }
     }
 
-    private static void GenerateGenericMethodMembersInCurrentBlock(CodeWriter writer, MockMemberModel method, MockTypeModel model, string safeName)
+    // GetClosedReceiverGenericMethods(model, typeArguments) parses this output to detect
+    // closed-signature collisions. Analysis emits all framework overloads together; the
+    // emission coverage regression verifies that no conditional signature is hidden.
+    internal static void GenerateGenericMethodMembersInCurrentBlock(CodeWriter writer, MockMemberModel method, MockTypeModel model, string safeName, bool includeAllFrameworkOverloads = false)
     {
         if (method.HasRefStructParams)
         {
-            writer.AppendLine("#if NET9_0_OR_GREATER");
+            if (!includeAllFrameworkOverloads) writer.AppendLine("#if NET9_0_OR_GREATER");
             EmitMemberMethodBody(writer, method, model, safeName, includeRefStructArgs: true, captureModelTypeParameters: true, receiverIsThis: false);
             EmitFuncOverloads(writer, method, model, safeName, includeRefStructArgs: true, captureModelTypeParameters: true, receiverIsThis: false);
             EmitParamsExpandedOverload(writer, method, model, safeName, includeRefStructArgs: true, captureModelTypeParameters: true, receiverIsThis: false);
-            writer.AppendLine("#else");
+            if (!includeAllFrameworkOverloads) writer.AppendLine("#else");
             EmitMemberMethodBody(writer, method, model, safeName, includeRefStructArgs: false, captureModelTypeParameters: true, receiverIsThis: false);
             EmitFuncOverloads(writer, method, model, safeName, includeRefStructArgs: false, captureModelTypeParameters: true, receiverIsThis: false);
             EmitParamsExpandedOverload(writer, method, model, safeName, includeRefStructArgs: false, captureModelTypeParameters: true, receiverIsThis: false);
-            writer.AppendLine("#endif");
+            if (!includeAllFrameworkOverloads) writer.AppendLine("#endif");
         }
         else
         {
@@ -897,6 +952,209 @@ internal static class MockMembersBuilder
 
         EmitAnyArgsOverload(writer, method, model, safeName, captureModelTypeParameters: true, receiverIsThis: false);
     }
+
+    /// <summary>
+    /// The generic methods of a generic mocked type whose setups can be re-emitted on a closed
+    /// receiver (<c>extension(Mock&lt;IFoo&lt;int&gt;&gt; mock)</c>) where the model's type parameters are
+    /// file aliases for the closed type arguments. C# does not bind a member of a generic extension
+    /// block when the call supplies explicit method type arguments, so without these copies
+    /// <c>Mock.Of&lt;IFoo&lt;int&gt;&gt;().Invoke&lt;T&gt;()</c> fails with CS1061 (#7302).
+    /// </summary>
+    /// <remarks>
+    /// Methods are skipped where an alias would change the meaning of the emitted code: a
+    /// constraint naming a model type parameter (<c>where TOther : T</c> is invalid once <c>T</c>
+    /// is a struct or sealed class), or an unconstrained model type parameter written as
+    /// <c>T?</c> (which becomes <c>Nullable&lt;T&gt;</c> for a value-type argument). Those keep the
+    /// typed wrapper (<c>IFoo&lt;int&gt;.Mock()</c>) and inferred calls on <c>Mock&lt;T&gt;</c>.
+    /// </remarks>
+    internal static List<MockMemberModel> GetClosedReceiverGenericMethods(MockTypeModel model)
+    {
+        var result = new List<MockMemberModel>();
+        if (model.TypeParameters.Length == 0)
+        {
+            return result;
+        }
+
+        var instanceMethods = new EquatableArray<MockMemberModel>(
+            model.Methods.Where(IsConfigurableMethod).ToImmutableArray());
+        foreach (var method in ApplyOutDisambiguation(instanceMethods))
+        {
+            if (method.TypeParameters.Length > 0 && CanAliasModelTypeParameters(method, model))
+            {
+                result.Add(method);
+            }
+        }
+
+        return result;
+    }
+
+    // Compare the actual emitted signatures, including predicate and params-expanded overloads.
+    // A closed substitution can collapse distinct open overloads; omit both rather than choosing
+    // which underlying member an identical setup should configure.
+    // Model parameter types alone do not describe the generated matcher, predicate, expanded
+    // params and framework-specific ref-struct overloads. Parse the emitter's output so this
+    // check shares that signature definition instead of maintaining a second overload model.
+    // Only same-name, same-arity overload groups need parsing; resolution stores the filtered
+    // methods in the emission model so BuildMethodSetups does not repeat this analysis.
+    internal static List<MockMemberModel> GetClosedReceiverGenericMethods(MockTypeModel model, EquatableArray<string> typeArguments)
+    {
+        var methods = GetClosedReceiverGenericMethods(model);
+        var collisions = new HashSet<int>();
+        foreach (var group in methods.GroupBy(m => (m.Name, m.TypeParameters.Length)).Where(g => g.Count() > 1))
+        {
+            var signatures = new Dictionary<string, int>(System.StringComparer.Ordinal);
+            foreach (var method in group)
+            {
+                var writer = new CodeWriter();
+                GenerateGenericMethodMembersInCurrentBlock(writer, method, model, MockImplBuilder.GetCompositeSafeName(model), includeAllFrameworkOverloads: true);
+                var source = "class Signatures { " + writer + " }";
+                // The emitter includes every framework branch without directives, so one parse
+                // sees all signatures without a separate list of preprocessor configurations.
+                var declarations = CSharpSyntaxTree.ParseText(source).GetRoot()
+                    .DescendantNodes().OfType<MethodDeclarationSyntax>();
+                var rewriter = new ClosedSignatureRewriter(model, typeArguments, method);
+                foreach (var declaration in declarations)
+                {
+                    var key = declaration.Identifier.ValueText + "`" + (declaration.TypeParameterList?.Parameters.Count ?? 0).ToString(CultureInfo.InvariantCulture)
+                        + "(" + string.Join(",", declaration.ParameterList.Parameters.Select(p =>
+                            string.Concat(p.Modifiers.Select(t => t.ValueText)) + ":" + rewriter.Visit(p.Type!)!.WithoutTrivia().NormalizeWhitespace().ToFullString())) + ")";
+                    if (signatures.TryGetValue(key, out var other) && other != method.MemberId)
+                    {
+                        collisions.Add(other);
+                        collisions.Add(method.MemberId);
+                    }
+                    else
+                    {
+                        signatures[key] = method.MemberId;
+                    }
+                }
+            }
+        }
+
+        return methods.Where(m => !collisions.Contains(m.MemberId)).ToList();
+    }
+
+    private sealed class ClosedSignatureRewriter : CSharpSyntaxRewriter
+    {
+        private readonly Dictionary<string, TypeSyntax> _substitutions = new(System.StringComparer.Ordinal);
+
+        private ClosedSignatureRewriter() { }
+
+        public ClosedSignatureRewriter(MockTypeModel model, EquatableArray<string> arguments, MockMemberModel method)
+        {
+            // Closed arguments contain no model or method parameters. Normalize them separately
+            // so a canonical method name can never capture a name inside a replacement.
+            var normalizer = new ClosedSignatureRewriter();
+            for (var i = 0; i < model.TypeParameters.Length; i++)
+                _substitutions[model.TypeParameters[i].Name] = (TypeSyntax)normalizer.Visit(SyntaxFactory.ParseTypeName(arguments[i]))!;
+            for (var i = 0; i < method.TypeParameters.Length; i++)
+                _substitutions[method.TypeParameters[i].Name] = SyntaxFactory.IdentifierName("__MethodType" + i.ToString(CultureInfo.InvariantCulture));
+        }
+
+        public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
+        {
+            if (node.Parent is QualifiedNameSyntax or AliasQualifiedNameSyntax)
+                return base.VisitIdentifierName(node);
+            if (_substitutions.TryGetValue(node.Identifier.ValueText, out var replacement))
+                return replacement;
+            return node.Identifier.ValueText switch
+            {
+                "dynamic" => SyntaxFactory.ParseTypeName("global::System.Object"),
+                "nint" => SyntaxFactory.ParseTypeName("global::System.IntPtr"),
+                "nuint" => SyntaxFactory.ParseTypeName("global::System.UIntPtr"),
+                _ => base.VisitIdentifierName(node)
+            };
+        }
+
+        public override SyntaxNode? VisitPredefinedType(PredefinedTypeSyntax node)
+            => SyntaxFactory.ParseTypeName("global::System." + (node.Keyword.ValueText switch
+            {
+                "bool" => "Boolean", "byte" => "Byte", "sbyte" => "SByte", "short" => "Int16",
+                "ushort" => "UInt16", "int" => "Int32", "uint" => "UInt32", "long" => "Int64",
+                "ulong" => "UInt64", "char" => "Char", "float" => "Single", "double" => "Double",
+                "decimal" => "Decimal", "string" => "String", "object" => "Object", _ => node.Keyword.ValueText
+            }));
+
+        // Nullability and tuple element names cannot distinguish overloads. Removing nullable
+        // value annotations too is conservative: it can only omit an additional closed copy.
+        public override SyntaxNode? VisitNullableType(NullableTypeSyntax node) => Visit(node.ElementType);
+        public override SyntaxNode? VisitTupleType(TupleTypeSyntax node)
+            => TupleType(node.Elements.Select(e => Visit(e.Type)!.NormalizeWhitespace().ToFullString()).ToArray());
+
+        private static TypeSyntax TupleType(string[] elements)
+        {
+            var arguments = elements.Length <= 7 ? elements
+                : elements.Take(7).Concat(new[] { TupleType(elements.Skip(7).ToArray()).ToFullString() }).ToArray();
+            return SyntaxFactory.ParseTypeName("global::System.ValueTuple<" + string.Join(",", arguments) + ">");
+        }
+    }
+
+    internal static void GenerateClosedReceiverGenericMethodMembers(CodeWriter writer, MockMemberModel method, MockTypeModel model, string safeName)
+        => GenerateGenericMethodMembersInCurrentBlock(writer, method, model, safeName);
+
+    private static bool CanAliasModelTypeParameters(MockMemberModel method, MockTypeModel model)
+    {
+        foreach (var typeParameter in method.TypeParameters)
+        {
+            foreach (var modelTypeParameter in model.TypeParameters)
+            {
+                if (ContainsIdentifier(typeParameter.Constraints, modelTypeParameter.Name, requireNullableSuffix: false))
+                {
+                    return false;
+                }
+            }
+        }
+
+        foreach (var modelTypeParameter in model.TypeParameters)
+        {
+            if (modelTypeParameter.HasReferenceTypeConstraint || modelTypeParameter.HasValueTypeConstraint)
+            {
+                continue;
+            }
+
+            if (ContainsIdentifier(method.ReturnType, modelTypeParameter.Name, requireNullableSuffix: true)
+                || method.Parameters.Any(p => ContainsIdentifier(p.FullyQualifiedType, modelTypeParameter.Name, requireNullableSuffix: true)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool ContainsIdentifier(string text, string identifier, bool requireNullableSuffix)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        for (var index = text.IndexOf(identifier, System.StringComparison.Ordinal); index >= 0; index = text.IndexOf(identifier, index + 1, System.StringComparison.Ordinal))
+        {
+            var end = index + identifier.Length;
+            if (index > 0 && IsIdentifierOrQualifierChar(text[index - 1]))
+            {
+                continue;
+            }
+
+            if (end < text.Length && IsIdentifierChar(text[end]))
+            {
+                continue;
+            }
+
+            if (!requireNullableSuffix || (end < text.Length && text[end] == '?'))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsIdentifierChar(char c) => char.IsLetterOrDigit(c) || c == '_';
+
+    // A '.' or ':' before the name means a member or namespace-qualified type that merely shares it.
+    private static bool IsIdentifierOrQualifierChar(char c) => IsIdentifierChar(c) || c == '.' || c == ':';
 
     internal static void GenerateGenericMethodMembersForWrapper(CodeWriter writer, MockMemberModel method, MockTypeModel model, string safeName)
     {
@@ -1034,7 +1292,7 @@ internal static class MockMembersBuilder
         {
             if (receiverIsThis)
             {
-                writer.AppendLine("var mock = this;");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "mock")} = this;");
             }
 
             EmitOutParamDefaults(writer, method);
@@ -1046,12 +1304,12 @@ internal static class MockMembersBuilder
 
             if (matchableParams.Count == 0)
             {
-                writer.AppendLine("var matchers = global::System.Array.Empty<global::TUnit.Mocks.Arguments.IArgumentMatcher>();");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "matchers")} = global::System.Array.Empty<global::TUnit.Mocks.Arguments.IArgumentMatcher>();");
             }
             else
             {
                 var matcherArgs = string.Join(", ", matchableParams.Select(p => $"{p.Name}.Matcher"));
-                writer.AppendLine($"var matchers = new global::TUnit.Mocks.Arguments.IArgumentMatcher[] {{ {matcherArgs} }};");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "matchers")} = new global::TUnit.Mocks.Arguments.IArgumentMatcher[] {{ {matcherArgs} }};");
             }
 
             EmitReturnConstruction(writer, method, model, safeName, useTypedWrapper, setupReturnType);
@@ -1078,19 +1336,19 @@ internal static class MockMembersBuilder
         if (useTypedWrapper)
         {
             var wrapperName = GetWrapperTypeName(safeName, method, model);
-            writer.AppendLine($"return new {wrapperName}({engineExpr}, {memberIdExpr}, \"{method.Name}\", matchers{typeArgs});");
+            writer.AppendLine($"return new {wrapperName}({engineExpr}, {memberIdExpr}, \"{method.Name}\", {GetSetupIdentifier(model, "matchers")}{typeArgs});");
         }
         else if (method.IsVoid || method.IsRefStructReturn)
         {
-            writer.AppendLine($"return new global::TUnit.Mocks.VoidMockMethodCall({engineExpr}, {memberIdExpr}, \"{method.Name}\", matchers{typeArgs});");
+            writer.AppendLine($"return new global::TUnit.Mocks.VoidMockMethodCall({engineExpr}, {memberIdExpr}, \"{method.Name}\", {GetSetupIdentifier(model, "matchers")}{typeArgs});");
         }
         else if (method.IsReturnTypeStaticAbstractInterface)
         {
-            writer.AppendLine($"return new global::TUnit.Mocks.MockMethodCall<object?>({engineExpr}, {memberIdExpr}, \"{method.Name}\", matchers{typeArgs});");
+            writer.AppendLine($"return new global::TUnit.Mocks.MockMethodCall<object?>({engineExpr}, {memberIdExpr}, \"{method.Name}\", {GetSetupIdentifier(model, "matchers")}{typeArgs});");
         }
         else
         {
-            writer.AppendLine($"return new global::TUnit.Mocks.MockMethodCall<{setupReturnType}>({engineExpr}, {memberIdExpr}, \"{method.Name}\", matchers{typeArgs});");
+            writer.AppendLine($"return new global::TUnit.Mocks.MockMethodCall<{setupReturnType}>({engineExpr}, {memberIdExpr}, \"{method.Name}\", {GetSetupIdentifier(model, "matchers")}{typeArgs});");
         }
     }
 
@@ -1150,14 +1408,14 @@ internal static class MockMembersBuilder
         {
             if (receiverIsThis)
             {
-                writer.AppendLine("var mock = this;");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "mock")} = this;");
             }
 
             // AnyMatcher<T>.Instance is stateless and shared — unlike Arg.Any<T>(), it skips the
             // CapturingMatcher wrap, so the AnyArgs path doesn't accumulate captured values per call.
             var matcherArgs = string.Join(", ", method.Parameters.Select(p =>
                 $"global::TUnit.Mocks.Matchers.AnyMatcher<{p.FullyQualifiedType}>.Instance"));
-            writer.AppendLine($"var matchers = new global::TUnit.Mocks.Arguments.IArgumentMatcher[] {{ {matcherArgs} }};");
+            writer.AppendLine($"var {GetSetupIdentifier(model, "matchers")} = new global::TUnit.Mocks.Arguments.IArgumentMatcher[] {{ {matcherArgs} }};");
 
             EmitReturnConstruction(writer, method, model, safeName, useTypedWrapper, setupReturnType);
         }
@@ -1225,7 +1483,7 @@ internal static class MockMembersBuilder
 
             if (funcIndices.Contains(i))
             {
-                paramParts.Add($"global::System.Func<{p.FullyQualifiedType}, bool> {p.Name}");
+                paramParts.Add($"global::System.Func<{p.FullyQualifiedType}, bool>? {p.Name}");
             }
             else if (p.IsRefStruct)
             {
@@ -1269,17 +1527,31 @@ internal static class MockMembersBuilder
         {
             if (receiverIsThis)
             {
-                writer.AppendLine("var mock = this;");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "mock")} = this;");
             }
 
             EmitOutParamDefaults(writer, method);
 
-            // Convert Func params to Arg<T> via implicit conversion
+            // A null predicate (including null/default literals) matches the parameter type’s default.
+            // This also handles value-type instantiations of unconstrained generic parameters.
+            // Keep non-null predicates on the existing implicit-conversion path.
+            // Reserve parameter and type parameter identifiers, including escaped names, before allocating locals.
+            var usedNames = new HashSet<string>(method.Parameters.Select(p => p.Name.TrimStart('@')), StringComparer.Ordinal);
+            usedNames.UnionWith(model.TypeParameters.Select(tp => tp.Name.TrimStart('@')));
+            usedNames.UnionWith(method.TypeParameters.Select(tp => tp.Name.TrimStart('@')));
+            var predicateLocals = new Dictionary<int, string>();
             foreach (var idx in funcIndices.OrderBy(i => i))
             {
                 var p = method.Parameters[idx];
                 var rawName = p.Name.StartsWith("@", StringComparison.Ordinal) ? p.Name[1..] : p.Name;
-                writer.AppendLine($"global::TUnit.Mocks.Arguments.Arg<{p.FullyQualifiedType}> __fa_{rawName} = {p.Name};");
+                var baseName = $"__fa_{rawName}";
+                var localName = baseName;
+                for (var suffix = 1; !usedNames.Add(localName); suffix++)
+                {
+                    localName = $"{baseName}_{suffix.ToString(CultureInfo.InvariantCulture)}";
+                }
+                predicateLocals.Add(idx, localName);
+                writer.AppendLine($"global::TUnit.Mocks.Arguments.Arg<{p.FullyQualifiedType}> {localName} = {p.Name} is null ? global::TUnit.Mocks.Arguments.Arg.Is<{p.FullyQualifiedType}>(default({p.FullyQualifiedType})!) : (global::TUnit.Mocks.Arguments.Arg<{p.FullyQualifiedType}>){p.Name};");
             }
 
             // Build matchers array
@@ -1290,17 +1562,16 @@ internal static class MockMembersBuilder
                 if (p.Direction == ParameterDirection.Out) continue;
                 if (!includeRefStructArgs && p.IsRefStruct) continue;
 
-                var rawName = p.Name.StartsWith("@", StringComparison.Ordinal) ? p.Name[1..] : p.Name;
-                matcherExprs.Add(funcIndices.Contains(i) ? $"__fa_{rawName}.Matcher" : $"{p.Name}.Matcher");
+                matcherExprs.Add(funcIndices.Contains(i) ? $"{predicateLocals[i]}.Matcher" : $"{p.Name}.Matcher");
             }
 
             if (matcherExprs.Count == 0)
             {
-                writer.AppendLine("var matchers = global::System.Array.Empty<global::TUnit.Mocks.Arguments.IArgumentMatcher>();");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "matchers")} = global::System.Array.Empty<global::TUnit.Mocks.Arguments.IArgumentMatcher>();");
             }
             else
             {
-                writer.AppendLine($"var matchers = new global::TUnit.Mocks.Arguments.IArgumentMatcher[] {{ {string.Join(", ", matcherExprs)} }};");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "matchers")} = new global::TUnit.Mocks.Arguments.IArgumentMatcher[] {{ {string.Join(", ", matcherExprs)} }};");
             }
 
             EmitReturnConstruction(writer, method, model, safeName, useTypedWrapper, setupReturnType);
@@ -1312,7 +1583,7 @@ internal static class MockMembersBuilder
         var mockableType = MockImplBuilder.GetMockableTypeName(model);
         var typeParams = MockImplBuilder.GetTypeParameterList(model);
         var constraints = MockImplBuilder.GetConstraintClauses(model);
-        using (writer.Block($"extension{typeParams}(global::TUnit.Mocks.Mock<{mockableType}> mock){constraints}"))
+        using (writer.Block($"extension{typeParams}(global::TUnit.Mocks.Mock<{mockableType}> {GetSetupIdentifier(model, "mock")}){constraints}"))
         {
             bool first = true;
             foreach (var prop in props)
@@ -1340,7 +1611,7 @@ internal static class MockMembersBuilder
                 else
                 {
                     writer.AppendLine($"public global::TUnit.Mocks.PropertyMockCall<{prop.ReturnType}> {safePropName}");
-                    writer.AppendLine($"    => new({EngineExpression}, {getterMemberId}, {setterMemberId}, \"{prop.Name}\", {hasGetter}, {hasSetter});");
+                    writer.AppendLine($"    => new({GetEngineExpression(model)}, {getterMemberId}, {setterMemberId}, \"{prop.Name}\", {hasGetter}, {hasSetter});");
                 }
             }
         }
@@ -1356,7 +1627,7 @@ internal static class MockMembersBuilder
         var mockableType = MockImplBuilder.GetMockableTypeName(model);
         var typeParams = MockImplBuilder.GetTypeParameterList(model);
         var constraints = MockImplBuilder.GetConstraintClauses(model);
-        var extensionParam = $"this global::TUnit.Mocks.Mock<{mockableType}> mock";
+        var extensionParam = $"this global::TUnit.Mocks.Mock<{mockableType}> {GetSetupIdentifier(model, "mock")}";
 
         // Indexer parameters as Arg<T> so callers can pass a literal, Arg.Any<T>(), etc.
         var argParams = string.Join(", ", indexer.Parameters.Select(p =>
@@ -1371,9 +1642,9 @@ internal static class MockMembersBuilder
             var getterParams = string.IsNullOrEmpty(argParams) ? extensionParam : $"{extensionParam}, {argParams}";
             using (writer.Block($"public static global::TUnit.Mocks.MockMethodCall<{indexer.ReturnType}> Item{typeParams}({getterParams}){constraints}"))
             {
-                writer.AppendLine($"var matchers = {matcherList};");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "matchers")} = {matcherList};");
                 var engineExpr = EmitEngineLookup(writer, model);
-                writer.AppendLine($"return new global::TUnit.Mocks.MockMethodCall<{indexer.ReturnType}>({engineExpr}, {FormatMemberId(model, indexer.MemberId)}, \"get_Item\", matchers);");
+                writer.AppendLine($"return new global::TUnit.Mocks.MockMethodCall<{indexer.ReturnType}>({engineExpr}, {FormatMemberId(model, indexer.MemberId)}, \"get_Item\", {GetSetupIdentifier(model, "matchers")});");
             }
         }
 
@@ -1389,9 +1660,9 @@ internal static class MockMembersBuilder
                 : $"new global::TUnit.Mocks.Arguments.IArgumentMatcher[] {{ {string.Join(", ", indexer.Parameters.Select(p => $"{p.Name}.Matcher"))}, value.Matcher }}";
             using (writer.Block($"public static global::TUnit.Mocks.VoidMockMethodCall SetItem{typeParams}({setterParams}){constraints}"))
             {
-                writer.AppendLine($"var matchers = {setterMatcherList};");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "matchers")} = {setterMatcherList};");
                 var engineExpr = EmitEngineLookup(writer, model);
-                writer.AppendLine($"return new global::TUnit.Mocks.VoidMockMethodCall({engineExpr}, {FormatMemberId(model, indexer.SetterMemberId)}, \"set_Item\", matchers);");
+                writer.AppendLine($"return new global::TUnit.Mocks.VoidMockMethodCall({engineExpr}, {FormatMemberId(model, indexer.SetterMemberId)}, \"set_Item\", {GetSetupIdentifier(model, "matchers")});");
             }
         }
     }
@@ -1647,19 +1918,19 @@ internal static class MockMembersBuilder
         {
             if (receiverIsThis)
             {
-                writer.AppendLine("var mock = this;");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "mock")} = this;");
             }
 
             EmitOutParamDefaults(writer, method);
 
-            writer.AppendLine($"var __paramsElementMatchers = new global::TUnit.Mocks.Arguments.IArgumentMatcher[{last.Name}.Length];");
-            using (writer.Block($"for (int __i = 0; __i < {last.Name}.Length; __i++)"))
+            writer.AppendLine($"var {GetSetupIdentifier(model, "__paramsElementMatchers")} = new global::TUnit.Mocks.Arguments.IArgumentMatcher[{last.Name}.Length];");
+            using (writer.Block($"for (int {GetSetupIdentifier(model, "__i")} = 0; {GetSetupIdentifier(model, "__i")} < {last.Name}.Length; {GetSetupIdentifier(model, "__i")}++)"))
             {
-                writer.AppendLine($"__paramsElementMatchers[__i] = {last.Name}[__i].Matcher;");
+                writer.AppendLine($"{GetSetupIdentifier(model, "__paramsElementMatchers")}[{GetSetupIdentifier(model, "__i")}] = {last.Name}[{GetSetupIdentifier(model, "__i")}].Matcher;");
             }
 
-            EmitMatchersArrayWithParamsSlot(writer, method, includeRefStructArgs,
-                "new global::TUnit.Mocks.Matchers.ParamsArrayMatcher(__paramsElementMatchers)");
+            EmitMatchersArrayWithParamsSlot(writer, method, model, includeRefStructArgs,
+                $"new global::TUnit.Mocks.Matchers.ParamsArrayMatcher({GetSetupIdentifier(model, "__paramsElementMatchers")})");
 
             EmitReturnConstruction(writer, method, model, safeName, useTypedWrapper, setupReturnType);
         }
@@ -1714,13 +1985,13 @@ internal static class MockMembersBuilder
         {
             if (receiverIsThis)
             {
-                writer.AppendLine("var mock = this;");
+                writer.AppendLine($"var {GetSetupIdentifier(model, "mock")} = this;");
             }
 
             EmitOutParamDefaults(writer, method);
 
             // AnyMatcher<T[]>.Instance: whole-array Any, identical to the Arg<T[]> overload with Any().
-            EmitMatchersArrayWithParamsSlot(writer, method, includeRefStructArgs,
+            EmitMatchersArrayWithParamsSlot(writer, method, model, includeRefStructArgs,
                 $"global::TUnit.Mocks.Matchers.AnyMatcher<{last.FullyQualifiedType}>.Instance");
 
             EmitReturnConstruction(writer, method, model, safeName, useTypedWrapper, setupReturnType);
@@ -1733,7 +2004,7 @@ internal static class MockMembersBuilder
     /// <paramref name="paramsSlotExpression"/>. The params parameter is always <c>In</c> and never
     /// a ref struct, so it is always the last matchable parameter.
     /// </summary>
-    private static void EmitMatchersArrayWithParamsSlot(CodeWriter writer, MockMemberModel method,
+    private static void EmitMatchersArrayWithParamsSlot(CodeWriter writer, MockMemberModel method, MockTypeModel model,
         bool includeRefStructArgs, string paramsSlotExpression)
     {
         var matchableParams = includeRefStructArgs
@@ -1742,13 +2013,13 @@ internal static class MockMembersBuilder
 
         var matcherArgs = matchableParams
             .Select((p, i) => i == matchableParams.Count - 1 ? paramsSlotExpression : $"{p.Name}.Matcher");
-        writer.AppendLine($"var matchers = new global::TUnit.Mocks.Arguments.IArgumentMatcher[] {{ {string.Join(", ", matcherArgs)} }};");
+        writer.AppendLine($"var {GetSetupIdentifier(model, "matchers")} = new global::TUnit.Mocks.Arguments.IArgumentMatcher[] {{ {string.Join(", ", matcherArgs)} }};");
     }
 
     private static string BuildExtensionMethodParameterList(MockTypeModel model, string paramList)
     {
         var mockableType = MockImplBuilder.GetMockableTypeName(model);
-        var extensionParam = $"this global::TUnit.Mocks.Mock<{mockableType}> mock";
+        var extensionParam = $"this global::TUnit.Mocks.Mock<{mockableType}> {GetSetupIdentifier(model, "mock")}";
         return string.IsNullOrEmpty(paramList) ? extensionParam : $"{extensionParam}, {paramList}";
     }
 

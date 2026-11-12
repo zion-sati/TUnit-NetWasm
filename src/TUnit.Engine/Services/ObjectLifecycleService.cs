@@ -78,7 +78,20 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
             // The state bag/events are only materialized when there are properties to resolve.
             if (PropertyInjectionCache.GetOrCreatePlan(testClassType).HasProperties)
             {
-                await PropertyInjector.ResolveAndCachePropertiesAsync(testClassType, testContext.StateBag.Items, methodMetadata, testContext.InternalEvents, testContext, cancellationToken);
+                try
+                {
+                    await PropertyInjector.ResolveAndCachePropertiesAsync(testClassType, testContext.StateBag.Items, methodMetadata, testContext.InternalEvents, testContext, cancellationToken);
+                }
+                catch
+                {
+                    // Sibling properties may have resolved before one threw, and the failed test's
+                    // ITestEndEventReceiver invocation still sees them. Track them, so this test holds them
+                    // until it ends: a registration hold released now (#7263) would otherwise dispose a
+                    // shared value no other test holds before that invocation, and nothing else would
+                    // dispose it before the session-end sweep.
+                    TrackObjectsAfterFailedResolution(testContext);
+                    throw;
+                }
             }
 
             // Track the cached objects so they get the correct reference count
@@ -97,6 +110,19 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
             {
                 testContext.InvalidateEventReceiverCaches();
             }
+        }
+    }
+
+    internal void TrackObjectsAfterFailedResolution(TestContext testContext)
+    {
+        try
+        {
+            _objectTracker.TrackObjects(testContext);
+        }
+        catch
+        {
+            // A getter in a resolved value's object graph threw. TrackObjects still tracked the root
+            // objects; the resolution failure is the one the test reports.
         }
     }
 
@@ -357,7 +383,7 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
         ActivitySource activitySource,
         CancellationToken cancellationToken)
     {
-        var parentContext = GetParentActivityContext(testContext, sharedType);
+        var parentContext = TUnitActivitySource.GetSharedObjectParentContext(testContext, sharedType);
 
         var scopeTag = TUnitActivitySource.GetScopeTag(sharedType);
         var isShared = sharedType is not null and not SharedType.None;
@@ -383,23 +409,6 @@ internal sealed class ObjectLifecycleService : IObjectRegistry, IInitializationC
             () => ObjectInitializer.InitializeAsync(obj, cancellationToken).AsTask());
     }
 
-    /// <summary>
-    /// Returns the parent activity context for an initialization span.
-    /// Session/keyed/assembly-scoped objects are parented under the assembly activity so they
-    /// appear as siblings of suite spans in both OTel backends and the HTML timeline.
-    /// The <c>tunit.trace.scope</c> tag carries the precise lifetime semantics.
-    /// </summary>
-    private static ActivityContext GetParentActivityContext(TestContext testContext, SharedType? sharedType)
-    {
-        return sharedType switch
-        {
-            SharedType.PerTestSession or SharedType.PerAssembly or SharedType.Keyed
-                => testContext.ClassContext.AssemblyContext.Activity?.Context ?? default,
-            SharedType.PerClass => testContext.ClassContext.Activity?.Context ?? default,
-            // Per-test objects and the test class instance go under the test case activity
-            _ => testContext.Activity?.Context ?? testContext.ClassContext.Activity?.Context ?? default
-        };
-    }
 #endif
 
     /// <summary>

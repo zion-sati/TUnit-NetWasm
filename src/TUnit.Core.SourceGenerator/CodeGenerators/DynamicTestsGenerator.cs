@@ -1,3 +1,4 @@
+using TUnit.SourceGeneration;
 using TUnit.Core.SourceGenerator.Extensions;
 using System.Globalization;
 using Microsoft.CodeAnalysis;
@@ -147,7 +148,7 @@ public class DynamicTestsGenerator : IIncrementalGenerator
         }
         catch (Exception ex)
         {
-            var descriptor = new DiagnosticDescriptor(id: "TUnit0000",
+            var descriptor = new DiagnosticDescriptor(id: GeneratorDiagnosticIds.DynamicTestGenerationFailed,
                 title: "Error Generating Source",
                 messageFormat: "{0}",
                 category: "SourceGenerator",

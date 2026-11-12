@@ -13,6 +13,7 @@ using TUnit.Engine.Framework;
 using TUnit.Engine.Logging;
 using TUnit.Engine.Scheduling;
 using TUnit.Engine.Services;
+using TUnit.Engine.Services.TestExecution;
 using ITestExecutor = TUnit.Engine.Interfaces.ITestExecutor;
 
 namespace TUnit.Engine;
@@ -29,6 +30,7 @@ internal sealed class TestSessionCoordinator : ITestExecutor, IDisposable, IAsyn
     private readonly IStaticPropertyInitializer _staticPropertyInitializer;
     private readonly ObjectTracker _objectTracker;
     private readonly DeferredTestExpander _deferredTestExpander;
+    private readonly TestDependencyResolver _dependencyResolver;
 
     public TestSessionCoordinator(EventReceiverOrchestrator eventReceiverOrchestrator,
         TUnitFrameworkLogger logger,
@@ -39,7 +41,8 @@ internal sealed class TestSessionCoordinator : ITestExecutor, IDisposable, IAsyn
         ITUnitMessageBus messageBus,
         IStaticPropertyInitializer staticPropertyInitializer,
         ObjectTracker objectTracker,
-        DeferredTestExpander deferredTestExpander)
+        DeferredTestExpander deferredTestExpander,
+        TestDependencyResolver dependencyResolver)
     {
         _eventReceiverOrchestrator = eventReceiverOrchestrator;
         _logger = logger;
@@ -51,6 +54,7 @@ internal sealed class TestSessionCoordinator : ITestExecutor, IDisposable, IAsyn
         _staticPropertyInitializer = staticPropertyInitializer;
         _objectTracker = objectTracker;
         _deferredTestExpander = deferredTestExpander;
+        _dependencyResolver = dependencyResolver;
     }
 
     public async Task ExecuteTests(
@@ -83,6 +87,8 @@ internal sealed class TestSessionCoordinator : ITestExecutor, IDisposable, IAsyn
             // process (IDE server mode) creates fresh fixtures instead of reusing disposed ones.
             // Runs after After(TestSession) hooks and static property disposal (both inside
             // ExecuteTestsCore via the scheduler), preserving existing disposal ordering.
+            await TestOnDisposeRaiser.RaiseDeferredForSessionAsync(_contextProvider.TestSessionContext, _logger).ConfigureAwait(false);
+
             var sweepExceptions = await _objectTracker.DisposeAndClearStaticTrackingAsync();
 
             if (sweepExceptions is { Count: > 0 })
@@ -230,6 +236,10 @@ internal sealed class TestSessionCoordinator : ITestExecutor, IDisposable, IAsyn
             {
                 var children = await _deferredTestExpander.ExpandAsync(placeholder, cancellationToken);
                 testList.AddRange(children);
+                if (children.Count == 0)
+                {
+                    placeholder.CompleteExpansionWithoutChildren();
+                }
                 expanded.Add((placeholder, children));
             }
             catch (Exception ex)
@@ -237,12 +247,15 @@ internal sealed class TestSessionCoordinator : ITestExecutor, IDisposable, IAsyn
                 // Expansion itself failed (as opposed to a per-row data error, which becomes a failed
                 // child). Surface it on the placeholder node so the failure is visible.
                 await _logger.LogErrorAsync($"Failed to expand deferred test '{placeholder.TestId}': {ex}");
-                placeholder.EndTime = DateTimeOffset.UtcNow;
-                placeholder.SetResult(TestState.Failed, ex);
+                placeholder.CompleteExpansionWithoutChildren(ex);
                 await _messageBus.Failed(placeholder.Context, ex, placeholder.StartTime.GetValueOrDefault());
             }
         }
 
+        _serviceProvider.DiscoveryService.ReplaceDeferredTests(expanded);
+        _dependencyResolver.ReplaceDeferredTests(expanded);
+        _dependencyResolver.ResolveAllDependencies();
+        _serviceProvider.TestBuilderPipeline.PopulateAllDependencies(_dependencyResolver.RegisteredTests, refresh: true);
         return expanded;
     }
 

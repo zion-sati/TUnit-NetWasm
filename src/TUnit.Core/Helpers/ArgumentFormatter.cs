@@ -107,7 +107,7 @@ public static class ArgumentFormatter
             }
         }
 
-        if (TupleHelper.IsTupleType(type))
+        if (o is TupleArgument || TupleHelper.IsTupleType(type))
         {
             return FormatTuple(o);
         }
@@ -170,15 +170,20 @@ public static class ArgumentFormatter
 #if NET
             || o is Half or Int128 or UInt128 or System.Runtime.InteropServices.NFloat
 #endif
+#if NET11_0_OR_GREATER
+            || o is Decimal32 or Decimal64 or Decimal128 or BFloat16
+#else
             // .NET 11's numeric types, which these target frameworks can't name: matched by name so a
             // build for an earlier framework still formats them invariantly when it runs on .NET 11.
             || (o is IFormattable && type.FullName is "System.Numerics.BFloat16" or "System.Numerics.Decimal32"
-                or "System.Numerics.Decimal64" or "System.Numerics.Decimal128");
+                or "System.Numerics.Decimal64" or "System.Numerics.Decimal128")
+#endif
+            ;
     }
 
     private static string FormatTuple(object tuple)
     {
-        var elements = TupleHelper.UnwrapTuple(tuple);
+        var elements = DataSourceHelpers.UnwrapTupleAot(tuple);
 
         if (elements.Length == 0)
             return "()";

@@ -1,8 +1,10 @@
+using TUnit.SourceGeneration;
 using System.Globalization;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TUnit.Core.SourceGenerator.CodeGenerators.Helpers;
 using TUnit.Core.SourceGenerator.Extensions;
@@ -67,7 +69,7 @@ public class AotConverterGenerator : IIncrementalGenerator
             {
                 spc.ReportDiagnostic(Diagnostic.Create(
                     new DiagnosticDescriptor(
-                        id: "TUNITGEN001",
+                        id: GeneratorDiagnosticIds.AotConverterFailed,
                         title: "TUnit.AotConverterGenerator Failed",
                         messageFormat: "AotConverterGenerator failed: {0}: {1}",
                         category: "TUnit.Generator",
@@ -99,10 +101,10 @@ public class AotConverterGenerator : IIncrementalGenerator
             foreach (var parameter in methodSymbol.Parameters)
             {
                 AddType(parameter.Type, methodTypes, orderedMethodTypes);
-                ScanAttributesForTypes(parameter.GetAttributes(), methodTypes, orderedMethodTypes);
+                ScanAttributesForTypes(parameter.GetAttributes(), methodTypes, orderedMethodTypes, methodSymbol.ContainingType, compilation, caches);
             }
 
-            ScanAttributesForTypes(methodSymbol.GetAttributes(), methodTypes, orderedMethodTypes);
+            ScanAttributesForTypes(methodSymbol.GetAttributes(), methodTypes, orderedMethodTypes, methodSymbol.ContainingType, compilation, caches);
 
             var classConversions = methodSymbol.ContainingType is { } containingType
                 ? caches.GetClassConversions(containingType, cancellationToken)
@@ -177,7 +179,7 @@ public class AotConverterGenerator : IIncrementalGenerator
         }
     }
 
-    private static void ScanAttributesForTypes(ImmutableArray<AttributeData> attributes, HashSet<ITypeSymbol> typesToScan, List<ITypeSymbol> orderedTypes)
+    private static void ScanAttributesForTypes(ImmutableArray<AttributeData> attributes, HashSet<ITypeSymbol> typesToScan, List<ITypeSymbol> orderedTypes, INamedTypeSymbol containingType, Compilation compilation, CompilationCaches caches)
     {
         foreach (var attribute in attributes)
         {
@@ -190,6 +192,8 @@ public class AotConverterGenerator : IIncrementalGenerator
             {
                 continue;
             }
+
+            ScanMethodDataSourceReturnType(attribute, containingType, compilation, caches, typesToScan, orderedTypes);
 
             if (attribute.AttributeClass.IsGenericType)
             {
@@ -208,6 +212,57 @@ public class AotConverterGenerator : IIncrementalGenerator
             {
                 ScanTypedConstantForTypes(namedArg.Value, typesToScan, orderedTypes);
             }
+        }
+    }
+
+    private static void ScanMethodDataSourceReturnType(AttributeData attribute, INamedTypeSymbol containingType,
+        Compilation compilation, CompilationCaches caches, HashSet<ITypeSymbol> typesToScan, List<ITypeSymbol> orderedTypes)
+    {
+        // Include derived attributes such as InstanceMethodDataSourceAttribute.
+        var sourceAttribute = attribute.AttributeClass;
+        while (sourceAttribute is not null && !caches.IsMethodDataSourceAttribute(sourceAttribute))
+        {
+            sourceAttribute = sourceAttribute.BaseType;
+        }
+
+        if (sourceAttribute is null || attribute.ConstructorArguments.Length == 0)
+        {
+            return;
+        }
+
+        ITypeSymbol providerType = containingType;
+        string? memberName = null;
+        if (attribute.ConstructorArguments is [{ Value: ITypeSymbol explicitType }, { Value: string explicitName }, ..])
+        {
+            providerType = explicitType;
+            memberName = explicitName;
+        }
+        else if (attribute.ConstructorArguments[0].Value is string name)
+        {
+            memberName = name;
+            if (sourceAttribute is { IsGenericType: true, TypeArguments: [var genericProvider] })
+            {
+                providerType = genericProvider;
+            }
+        }
+
+        if (memberName is null)
+        {
+            return;
+        }
+
+        // Reuse the factory resolver, including overload selection, inherited members, properties and fields.
+        var member = TestMetadataGenerator.ResolveMethodDataSourceMember(providerType, memberName, attribute, compilation);
+        var returnType = member switch
+        {
+            IMethodSymbol method => method.ReturnType,
+            IPropertySymbol property => property.Type,
+            IFieldSymbol field => field.Type,
+            _ => null
+        };
+        if (returnType is not null)
+        {
+            AddType(returnType, typesToScan, orderedTypes);
         }
     }
 
@@ -236,29 +291,39 @@ public class AotConverterGenerator : IIncrementalGenerator
         }
     }
 
-    private static void CollectConversionsForType(ITypeSymbol type, List<ConversionEntry> conversions, Compilation compilation)
+    private static void CollectConversionsForType(ITypeSymbol type, List<ConversionEntry> conversions, Compilation compilation, HashSet<ITypeSymbol> visited, HashSet<ITypeSymbol> expandingSequences)
     {
+        if (!visited.Add(type))
+        {
+            return;
+        }
+
+        if (type is IArrayTypeSymbol arrayType)
+        {
+            CollectConversionsForType(arrayType.ElementType, conversions, compilation, visited, expandingSequences);
+            return;
+        }
+
         if (type is not INamedTypeSymbol namedType)
         {
             return;
         }
 
-        if (!ShouldIncludeType(namedType, compilation))
+        // Inaccessible wrappers can still expose accessible sequence elements.
+        if (ShouldIncludeType(namedType, compilation))
         {
-            return;
-        }
+            var conversionOperators = namedType.GetMembers()
+                .OfType<IMethodSymbol>()
+                .Where(m => (m.Name == "op_Implicit" || m.Name == "op_Explicit") &&
+                            m is { IsStatic: true, Parameters.Length: 1 });
 
-        var conversionOperators = namedType.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Where(m => (m.Name == "op_Implicit" || m.Name == "op_Explicit") &&
-                        m is { IsStatic: true, Parameters.Length: 1 });
-
-        foreach (var method in conversionOperators)
-        {
-            var conversionInfo = GetConversionInfoFromSymbol(method, compilation);
-            if (conversionInfo != null)
+            foreach (var method in conversionOperators)
             {
-                conversions.Add(ToConversionEntry(conversionInfo));
+                var conversionInfo = GetConversionInfoFromSymbol(method, compilation);
+                if (conversionInfo != null)
+                {
+                    conversions.Add(ToConversionEntry(conversionInfo));
+                }
             }
         }
 
@@ -266,8 +331,36 @@ public class AotConverterGenerator : IIncrementalGenerator
         {
             foreach (var typeArg in namedType.TypeArguments)
             {
-                CollectConversionsForType(typeArg, conversions, compilation);
+                CollectConversionsForType(typeArg, conversions, compilation, visited, expandingSequences);
             }
+        }
+
+        // A sequence can expand indefinitely, e.g. Rows<T> : IEnumerable<Rows<T[]>>.
+        // Track definitions on the current sequence path, while still scanning concrete
+        // type arguments and operators above, and allowing sibling instantiations.
+        if (!expandingSequences.Add(namedType.OriginalDefinition))
+        {
+            return;
+        }
+
+        try
+        {
+            // Concrete collections can hide their element type in a base class or interface.
+            // Only sequence interfaces describe data rows; arbitrary interfaces are not data wrappers.
+            foreach (var sequence in namedType.AllInterfaces)
+            {
+                if (sequence is { Arity: 1, Name: "IEnumerable" or "IAsyncEnumerable" } &&
+                    sequence.ContainingNamespace is
+                        { Name: "Generic", ContainingNamespace: { Name: "Collections", ContainingNamespace:
+                            { Name: "System", ContainingNamespace.IsGlobalNamespace: true } } })
+                {
+                    CollectConversionsForType(sequence.TypeArguments[0], conversions, compilation, visited, expandingSequences);
+                }
+            }
+        }
+        finally
+        {
+            expandingSequences.Remove(namedType.OriginalDefinition);
         }
     }
 
@@ -285,6 +378,10 @@ public class AotConverterGenerator : IIncrementalGenerator
             TargetType = ToTypeMetadata(conversion.TargetType),
             TypesAreDifferent = !SymbolEqualityComparer.Default.Equals(conversion.SourceType, conversion.TargetType),
             IsImplicit = conversion.IsImplicit,
+            RoundsDecimalToIntegral = conversion.SourceType.SpecialType == SpecialType.System_Decimal &&
+                conversion.TargetType.SpecialType is SpecialType.System_SByte or SpecialType.System_Byte or
+                    SpecialType.System_Int16 or SpecialType.System_UInt16 or SpecialType.System_Int32 or
+                    SpecialType.System_UInt32 or SpecialType.System_Int64 or SpecialType.System_UInt64,
         });
     }
 
@@ -321,70 +418,6 @@ public class AotConverterGenerator : IIncrementalGenerator
 
     private static bool IsAccessibleType(ITypeSymbol type, Compilation compilation)
     {
-        if (type == null || compilation == null)
-        {
-            return false;
-        }
-
-        if (type.SpecialType != SpecialType.None)
-        {
-            return true;
-        }
-
-        if (type.TypeKind == TypeKind.TypeParameter)
-        {
-            return true;
-        }
-
-        if (type is INamedTypeSymbol namedType)
-        {
-            var typeAssembly = namedType.ContainingAssembly;
-            var currentAssembly = compilation.Assembly;
-
-            if (currentAssembly != null && SymbolEqualityComparer.Default.Equals(typeAssembly, currentAssembly))
-            {
-                return true;
-            }
-
-            if (namedType.DeclaredAccessibility == Accessibility.Public)
-            {
-                return true;
-            }
-
-            if (namedType.DeclaredAccessibility == Accessibility.Internal)
-            {
-                if (currentAssembly == null)
-                {
-                    return false;
-                }
-
-                if (typeAssembly != null && typeAssembly.GivesAccessTo(currentAssembly))
-                {
-                    return true;
-                }
-
-                return false;
-            }
-
-            if (namedType.IsGenericType)
-            {
-                foreach (var typeArg in namedType.TypeArguments)
-                {
-                    if (!IsAccessibleType(typeArg, compilation))
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            if (namedType.ContainingType != null)
-            {
-                return IsAccessibleType(namedType.ContainingType, compilation);
-            }
-
-            return false;
-        }
-
         if (type is IArrayTypeSymbol arrayType)
         {
             return IsAccessibleType(arrayType.ElementType, compilation);
@@ -395,7 +428,15 @@ public class AotConverterGenerator : IIncrementalGenerator
             return IsAccessibleType(pointerType.PointedAtType, compilation);
         }
 
-        return false;
+        // Converters live in a separate top-level class, so same-assembly membership alone
+        // does not grant access to private/protected types or their containing types.
+        if (!compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
+        {
+            return false;
+        }
+
+        return type is not INamedTypeSymbol namedType ||
+               namedType.TypeArguments.All(argument => IsAccessibleType(argument, compilation));
     }
 
     private static ConversionInfo? GetConversionInfoFromSymbol(IMethodSymbol methodSymbol, Compilation compilation)
@@ -444,6 +485,20 @@ public class AotConverterGenerator : IIncrementalGenerator
         }
 
         if (!IsAccessibleType(sourceType, compilation) || !IsAccessibleType(targetType, compilation))
+        {
+            return null;
+        }
+
+        // Match the assignment/cast that will be emitted. An operator on each endpoint
+        // can make the conversion ambiguous even when the test never needs that pair.
+        var conversion = ((CSharpCompilation)compilation).ClassifyConversion(sourceType, targetType);
+        // Decimal exposes operators that Roslyn classifies as built-in numeric
+        // conversions, with no selected method. They still need AOT registrations.
+        if (!conversion.Exists ||
+            (isImplicit && !conversion.IsImplicit) ||
+            (conversion.IsUserDefined
+                ? !SymbolEqualityComparer.Default.Equals(conversion.MethodSymbol, methodSymbol)
+                : !conversion.IsNumeric))
         {
             return null;
         }
@@ -537,7 +592,7 @@ public class AotConverterGenerator : IIncrementalGenerator
                     var targetDisplay = conversion.TargetType?.DisplayString ?? "null";
                     context.ReportDiagnostic(Diagnostic.Create(
                         new DiagnosticDescriptor(
-                            id: "TUNITGEN002",
+                            id: GeneratorDiagnosticIds.NullConversionType,
                             title: "Null type in conversion",
                             messageFormat: "Skipping converter generation: SourceType={0}, TargetType={1}. Check test data sources that use implicit conversions between these types.",
                             category: "TUnit.Generator",
@@ -555,7 +610,7 @@ public class AotConverterGenerator : IIncrementalGenerator
                 var targetDisplay = conversion.TargetType?.DisplayString ?? "unknown";
                 context.ReportDiagnostic(Diagnostic.Create(
                     new DiagnosticDescriptor(
-                        id: "TUNITGEN003",
+                        id: GeneratorDiagnosticIds.ConversionTypeCheckFailed,
                         title: "Error checking conversion types",
                         messageFormat: "Error checking conversion types (SourceType={0}, TargetType={1}): {2}",
                         category: "TUnit.Generator",
@@ -607,7 +662,12 @@ public class AotConverterGenerator : IIncrementalGenerator
                 writer.Indent();
                 // For explicit conversions, we need to use an explicit cast
                 // For implicit conversions, variable assignment works fine
-                if (conversion.IsImplicit)
+                if (conversion.RoundsDecimalToIntegral)
+                {
+                    // Match CastHelper's primitive fallback while preserving registered-converter priority.
+                    writer.AppendLine($"{targetTypeName} converted = ({targetTypeName})global::System.Convert.ChangeType(sourceTypedValue, typeof({targetTypeName}));");
+                }
+                else if (conversion.IsImplicit)
                 {
                     writer.AppendLine($"{targetTypeName} converted = sourceTypedValue;");
                 }
@@ -675,6 +735,7 @@ public class AotConverterGenerator : IIncrementalGenerator
         public required TypeMetadata TargetType { get; init; }
         public required bool TypesAreDifferent { get; init; }
         public required bool IsImplicit { get; init; }
+        public bool RoundsDecimalToIntegral { get; init; }
     }
 
     /// <summary>
@@ -700,6 +761,22 @@ public class AotConverterGenerator : IIncrementalGenerator
     {
         private readonly ConcurrentDictionary<ITypeSymbol, ConversionEntry[]> _typeConversions = new(SymbolEqualityComparer.IncludeNullability);
         private readonly ConcurrentDictionary<INamedTypeSymbol, ClassConversions?> _classConversions = new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<IAssemblySymbol, MethodSourceDefinitions> _methodSourceDefinitions = new(SymbolEqualityComparer.Default);
+
+        private sealed record MethodSourceDefinitions(INamedTypeSymbol? NonGeneric, INamedTypeSymbol? Generic);
+
+        public bool IsMethodDataSourceAttribute(INamedTypeSymbol attributeType)
+        {
+            // Resolve in the bound symbol's assembly: compilation-wide lookup can be ambiguous
+            // when another reference defines the same metadata name (including extern aliases).
+            var definitions = _methodSourceDefinitions.GetOrAdd(attributeType.ContainingAssembly, static assembly =>
+                new MethodSourceDefinitions(
+                    assembly.GetTypeByMetadataName("TUnit.Core.MethodDataSourceAttribute"),
+                    assembly.GetTypeByMetadataName("TUnit.Core.MethodDataSourceAttribute`1")));
+            return SymbolEqualityComparer.Default.Equals(attributeType.OriginalDefinition, definitions.NonGeneric) ||
+                   SymbolEqualityComparer.Default.Equals(attributeType.OriginalDefinition, definitions.Generic);
+        }
+
         private readonly object _treeIndicesLock = new();
         private Dictionary<SyntaxTree, int>? _treeIndices;
 
@@ -739,7 +816,7 @@ public class AotConverterGenerator : IIncrementalGenerator
                 if (!_typeConversions.TryGetValue(type, out var typeConversions))
                 {
                     var collected = new List<ConversionEntry>();
-                    CollectConversionsForType(type, collected, compilation);
+                    CollectConversionsForType(type, collected, compilation, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default), new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
                     typeConversions = _typeConversions.GetOrAdd(type, collected.ToArray());
                 }
 
@@ -784,7 +861,15 @@ public class AotConverterGenerator : IIncrementalGenerator
             var typesToScan = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
             var orderedTypes = new List<ITypeSymbol>();
 
-            ScanAttributesForTypes(classSymbol.GetAttributes(), typesToScan, orderedTypes);
+            ScanAttributesForTypes(classSymbol.GetAttributesIncludingBaseTypes().ToImmutableArray(), typesToScan, orderedTypes, classSymbol, compilation, this);
+
+            foreach (var type in classSymbol.GetSelfAndBaseTypes())
+            {
+                foreach (var property in type.GetMembers().OfType<IPropertySymbol>())
+                {
+                    ScanAttributesForTypes(property.GetAttributes(), typesToScan, orderedTypes, classSymbol, compilation, this);
+                }
+            }
 
             foreach (var constructor in classSymbol.Constructors)
             {
@@ -796,7 +881,7 @@ public class AotConverterGenerator : IIncrementalGenerator
                 foreach (var parameter in constructor.Parameters)
                 {
                     AddType(parameter.Type, typesToScan, orderedTypes);
-                    ScanAttributesForTypes(parameter.GetAttributes(), typesToScan, orderedTypes);
+                    ScanAttributesForTypes(parameter.GetAttributes(), typesToScan, orderedTypes, classSymbol, compilation, this);
                 }
             }
 

@@ -34,18 +34,46 @@ public sealed class GenericConstraintViolationEntry
     /// </summary>
     public required string[] Messages { get; init; }
 
+    /// <summary>Optional row-backed violations; empty sources contribute no failing rows.</summary>
+    public IDataSourceAttribute[]? DataSources { get; init; }
+
+    /// <summary>Original method, class, and assembly attributes used for filtering.</summary>
+    public Func<Attribute[]>? AttributeFactory { get; init; }
+
     internal TestMetadata ToTestMetadata([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicMethods)] Type genericTypeDefinition, string testSessionId)
     {
+        if (DataSources is not null)
+        {
+            // These entries report only actual invalid class rows. An empty source must not
+            // create a skipped placeholder against the open, unconstructable generic type.
+            foreach (var source in DataSources)
+            {
+                source.SkipIfEmpty = false;
+            }
+        }
+
         var metadata = GenericConstraintViolationTestMetadata.Create(
             genericTypeDefinition,
             MethodName,
             MethodMetadata,
             FilePath,
             LineNumber,
-            Messages);
+            DataSources ?? CreateUnconditionalDataSources(),
+            AttributeFactory);
         metadata.TestSessionId = testSessionId;
         return metadata;
     }
+
+    private IDataSourceAttribute[] CreateUnconditionalDataSources()
+    {
+        var sources = new IDataSourceAttribute[Messages.Length];
+        for (var i = 0; i < sources.Length; i++)
+        {
+            sources[i] = GenericConstraintViolationDataSource.Create(Messages[i]);
+        }
+        return sources;
+    }
+
 }
 
 /// <summary>
@@ -62,7 +90,8 @@ internal sealed class GenericConstraintViolationTestMetadata : TestMetadata
         MethodMetadata methodMetadata,
         string filePath,
         int lineNumber,
-        IReadOnlyList<string> messages)
+        IReadOnlyList<string> messages,
+        Func<Attribute[]>? attributeFactory = null)
     {
         var dataSources = new IDataSourceAttribute[messages.Count];
         for (var i = 0; i < dataSources.Length; i++)
@@ -70,7 +99,7 @@ internal sealed class GenericConstraintViolationTestMetadata : TestMetadata
             dataSources[i] = GenericConstraintViolationDataSource.Create(messages[i]);
         }
 
-        return Create(testClassType, methodName, methodMetadata, filePath, lineNumber, dataSources);
+        return Create(testClassType, methodName, methodMetadata, filePath, lineNumber, dataSources, attributeFactory);
     }
 
     /// <summary>
@@ -84,7 +113,8 @@ internal sealed class GenericConstraintViolationTestMetadata : TestMetadata
         MethodMetadata methodMetadata,
         string filePath,
         int lineNumber,
-        IDataSourceAttribute[] dataSources)
+        IDataSourceAttribute[] dataSources,
+        Func<Attribute[]>? attributeFactory = null)
     {
         return new GenericConstraintViolationTestMetadata
         {
@@ -94,7 +124,7 @@ internal sealed class GenericConstraintViolationTestMetadata : TestMetadata
             FilePath = filePath,
             LineNumber = lineNumber,
             MethodMetadata = methodMetadata,
-            AttributeFactory = static () => [],
+            AttributeFactory = attributeFactory ?? (static () => []),
             DataSources = dataSources,
             ClassDataSources = [],
             PropertyDataSources = [],
@@ -132,6 +162,7 @@ internal sealed class GenericConstraintViolationEntrySource : ITestEntrySource
         {
             if (_entries is not null)
             {
+                // Late registration must publish a complete replacement while other factories are excluded.
                 _entries = [.. _entries, .. factory()];
                 return;
             }
@@ -179,6 +210,7 @@ internal sealed class GenericConstraintViolationEntrySource : ITestEntrySource
         {
             MethodName = entry.MethodName,
             ClassName = ClassName,
+            // The early filter uses names only; category/property filters run after Materialize.
             Categories = [],
             Properties = [],
             DependsOn = [],

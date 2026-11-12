@@ -9,6 +9,7 @@ using TUnit.Core.Extensions;
 using TUnit.Core.Interfaces;
 using TUnit.Core.Interfaces.SourceGenerator;
 using TUnit.Core.PropertyInjection;
+using TUnit.Core.Tracking;
 
 namespace TUnit.Core.Discovery;
 
@@ -176,6 +177,32 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>The tracked objects dictionary (same as testContext.TrackedObjects).</returns>
     public SortedList<int, HashSet<object>> DiscoverAndTrackObjects(TestContext testContext, CancellationToken cancellationToken = default)
+        => TrackObjectsCore(testContext, discoverNested: true, cancellationToken);
+
+    /// <inheritdoc />
+    public SortedList<int, HashSet<object>> TrackRootObjects(TestContext testContext)
+        // No nested traversal: reading the roots' properties is what failed.
+        => TrackObjectsCore(testContext, discoverNested: false, CancellationToken.None);
+
+    internal SortedList<int, HashSet<object>> DiscoverStaticPropertyTrackableObjects(object root, CancellationToken cancellationToken)
+        => DiscoverTrackableObjectGraph(root, cancellationToken);
+
+    internal SortedList<int, HashSet<object>> DiscoverTrackableObjectGraph(object root, CancellationToken cancellationToken, bool retainPartialGraphOnError = false)
+    {
+        var objects = new SortedList<int, HashSet<object>> { [0] = new(ReferenceComparer) { root } };
+        try
+        {
+            DiscoverNestedObjectsForTracking(root, objects, 1, cancellationToken, retainPartialGraphOnError);
+        }
+        catch when (retainPartialGraphOnError && !cancellationToken.IsCancellationRequested)
+        {
+            // A failed factory already has an error to report. Retain the root and anything
+            // discovered before traversal failed without replacing that original error.
+        }
+        return objects;
+    }
+
+    private SortedList<int, HashSet<object>> TrackObjectsCore(TestContext testContext, bool discoverNested, CancellationToken cancellationToken)
     {
         var visitedObjects = testContext.TrackedObjects;
 
@@ -190,7 +217,9 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
         }
 
         TryAddObjectFunc tryAdd = (obj, depth) => TryAddToHashSet(visitedObjects, depth, obj);
-        RootObjectCallback onRootObjectAdded = obj => DiscoverNestedObjectsForTracking(obj, visitedObjects, 1, cancellationToken);
+        RootObjectCallback onRootObjectAdded = discoverNested
+            ? obj => DiscoverNestedObjectsForTracking(obj, visitedObjects, 1, cancellationToken)
+            : static _ => { };
 
         // Collect root-level objects and discover nested objects for tracking
         CollectRootObjects(testDetails, tryAdd, onRootObjectAdded, cancellationToken);
@@ -312,48 +341,57 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
         object obj,
         IDictionary<int, HashSet<object>> visitedObjects,
         int currentDepth,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retainPartialGraphOnError = false)
     {
-        if (!CheckRecursionDepth(obj, currentDepth))
-        {
-            return;
-        }
-
+        if (!CheckRecursionDepth(obj, currentDepth)) return;
         cancellationToken.ThrowIfCancellationRequested();
+        if (!MayHaveNestedObjects(obj.GetType())) return;
 
-        // Nothing can be found beneath this object (e.g. a primitive argument) — skip the
-        // traversal and its per-call closures.
-        if (!MayHaveNestedObjects(obj.GetType()))
-        {
-            return;
-        }
+        bool TryAdd(object value, int depth) => TryAddToHashSet(visitedObjects, depth, value);
+        void Recurse(object value, int depth) =>
+            DiscoverNestedObjectsForTracking(value, visitedObjects, depth, cancellationToken, retainPartialGraphOnError);
 
-        DiscoverNestedObjectsForTrackingCore(obj, visitedObjects, currentDepth, cancellationToken);
+        TraverseInjectableProperties(obj, TryAdd, Recurse, currentDepth, cancellationToken, useSourceRegistrarCheck: true, retainPartialGraphOnError);
+        TraverseInitializerProperties(obj, TryAdd, Recurse, currentDepth, cancellationToken, retainPartialGraphOnError);
     }
 
-    private void DiscoverNestedObjectsForTrackingCore(
-        object obj,
-        IDictionary<int, HashSet<object>> visitedObjects,
-        int currentDepth,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Returns an owner's initializer graph without changing the objects or registering ownership.
+    /// Injected values anywhere in the graph remain TUnit-owned, including aliases reached first
+    /// through an ordinary initializer property.
+    /// </summary>
+    internal static HashSet<object> DiscoverOwnedObjects(object[] roots, IEnumerable<object?> injectedRoots, HashSet<object>? knownInjected = null, bool retainPartialGraphOnError = false)
     {
-        // Tracking mode add callback: TryAddToHashSet only
-        bool TryAddTracking(object value, int depth)
+        var injected = knownInjected ?? new HashSet<object>(ReferenceComparer);
+        foreach (var value in injectedRoots)
+            if (value is not null) injected.Add(value);
+
+        var visited = new HashSet<object>(ReferenceComparer);
+        bool Visit(object value, int _) => visited.Add(value);
+        bool AddInjected(object value, int _)
         {
-            return TryAddToHashSet(visitedObjects, depth, value);
+            injected.Add(value);
+            return visited.Add(value);
         }
-
-        // Recursive callback
-        void Recurse(object value, int depth)
+        void FindInjected(object value, int depth)
         {
-            DiscoverNestedObjectsForTracking(value, visitedObjects, depth, cancellationToken);
+            if (!CheckRecursionDepth(value, depth) || !MayHaveNestedObjects(value.GetType())) return;
+            TraverseInjectableProperties(value, AddInjected, FindInjected, depth, default, useSourceRegistrarCheck: true, retainPartialGraphOnError);
+            TraverseInitializerProperties(value, Visit, FindInjected, depth, default, retainPartialGraphOnError);
         }
+        foreach (var root in roots)
+            if (visited.Add(root)) FindInjected(root, 1);
 
-        // Traverse injectable properties (useSourceRegistrarCheck = true for tracking mode)
-        TraverseInjectableProperties(obj, TryAddTracking, Recurse, currentDepth, cancellationToken, useSourceRegistrarCheck: true);
-
-        // Also discover nested IAsyncInitializer objects from ALL properties
-        TraverseInitializerProperties(obj, TryAddTracking, Recurse, currentDepth, cancellationToken);
+        var owned = new HashSet<object>(roots, ReferenceComparer);
+        bool AddOwned(object value, int _) => !injected.Contains(value) && owned.Add(value);
+        void FindOwned(object value, int depth)
+        {
+            if (!CheckRecursionDepth(value, depth) || !MayHaveNestedObjects(value.GetType())) return;
+            TraverseInitializerProperties(value, AddOwned, FindOwned, depth, default, retainPartialGraphOnError);
+        }
+        foreach (var root in roots) FindOwned(root, 1);
+        return owned;
     }
 
     /// <summary>
@@ -458,7 +496,8 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
         RecurseFunc recurse,
         int currentDepth,
         CancellationToken cancellationToken,
-        bool useSourceRegistrarCheck)
+        bool useSourceRegistrarCheck,
+        bool retainPartialGraphOnError = false)
     {
         var plan = PropertyInjectionCache.GetOrCreatePlan(obj.GetType());
 
@@ -474,11 +513,11 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
 
         if (useSourceGen)
         {
-            TraverseSourceGeneratedProperties(obj, plan.SourceGeneratedProperties, tryAdd, recurse, currentDepth, cancellationToken);
+            TraverseSourceGeneratedProperties(obj, plan.SourceGeneratedProperties, tryAdd, recurse, currentDepth, cancellationToken, retainPartialGraphOnError);
         }
         else if (plan.ReflectionProperties.Length > 0)
         {
-            TraverseReflectionProperties(obj, plan.ReflectionProperties, tryAdd, recurse, currentDepth, cancellationToken);
+            TraverseReflectionProperties(obj, plan.ReflectionProperties, tryAdd, recurse, currentDepth, cancellationToken, retainPartialGraphOnError);
         }
     }
 
@@ -493,25 +532,33 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
         TryAddObjectFunc tryAdd,
         RecurseFunc recurse,
         int currentDepth,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retainPartialGraphOnError)
     {
         foreach (var metadata in sourceGeneratedProperties)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // Use the compile-time-generated getter when the source generator emitted one,
-            // otherwise fall back to a cached reflection-based getter. Eliminates the
-            // per-test Type.GetProperty reflection lookup on the hot path.
-            // null getter => property is not readable; skip.
-            var getter = metadata.GetOrCreateGetter();
-            if (getter is null)
+            try
             {
-                continue;
-            }
+                // Use the compile-time-generated getter when the source generator emitted one,
+                // otherwise fall back to a cached reflection-based getter. Eliminates the
+                // per-test Type.GetProperty reflection lookup on the hot path.
+                // null getter => property is not readable; skip.
+                var getter = metadata.GetOrCreateGetter();
+                if (getter is null)
+                {
+                    continue;
+                }
 
-            var value = getter(obj);
-            if (value != null && tryAdd(value, currentDepth))
+                var value = getter(obj);
+                if (value != null && tryAdd(value, currentDepth))
+                {
+                    recurse(value, currentDepth + 1);
+                }
+            }
+            catch when (retainPartialGraphOnError && !cancellationToken.IsCancellationRequested)
             {
-                recurse(value, currentDepth + 1);
+                // Failed-row cleanup must still discover independent sibling properties.
             }
         }
     }
@@ -526,15 +573,23 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
         TryAddObjectFunc tryAdd,
         RecurseFunc recurse,
         int currentDepth,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retainPartialGraphOnError)
     {
         foreach (var prop in reflectionProperties)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var value = prop.Property.GetValue(obj);
-            if (value != null && tryAdd(value, currentDepth))
+            try
             {
-                recurse(value, currentDepth + 1);
+                var value = prop.Property.GetValue(obj);
+                if (value != null && tryAdd(value, currentDepth))
+                {
+                    recurse(value, currentDepth + 1);
+                }
+            }
+            catch when (retainPartialGraphOnError && !cancellationToken.IsCancellationRequested)
+            {
+                // Failed-row cleanup must still discover independent sibling properties.
             }
         }
     }
@@ -547,7 +602,8 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
     /// Uses source-generated metadata when available (AOT-compatible), falling back to reflection otherwise.
     /// Exceptions during property access are propagated to the caller with context about
     /// which type/property failed. This ensures data source initialization failures are
-    /// properly reported as test failures rather than silently swallowed.
+    /// properly reported as test failures rather than silently swallowed. Failed-row cleanup
+    /// can opt into retaining partial graphs, continuing past failed getters to discover siblings.
     /// </remarks>
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reflection fallback for nested initializers. In AOT, source-gen handles primary discovery.")]
     [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Reflection fallback for nested initializers. In AOT, source-gen handles primary discovery.")]
@@ -557,7 +613,8 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
         TryAddObjectFunc tryAdd,
         RecurseFunc recurse,
         int currentDepth,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retainPartialGraphOnError = false)
     {
         var type = obj.GetType();
 
@@ -573,12 +630,12 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
 
         if (flattened != null)
         {
-            TraverseFlattenedInitializerProperties(obj, type, flattened, tryAdd, recurse, currentDepth, cancellationToken);
+            TraverseFlattenedInitializerProperties(obj, type, flattened, tryAdd, recurse, currentDepth, cancellationToken, retainPartialGraphOnError);
             return;
         }
 
         // No source-gen registration anywhere in the hierarchy → fall back to reflection.
-        TraverseInitializerPropertiesViaReflection(obj, type, tryAdd, recurse, currentDepth, cancellationToken);
+        TraverseInitializerPropertiesViaReflection(obj, type, tryAdd, recurse, currentDepth, cancellationToken, retainPartialGraphOnError);
     }
 
     /// <summary>
@@ -627,7 +684,8 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
         TryAddObjectFunc tryAdd,
         RecurseFunc recurse,
         int currentDepth,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retainPartialGraphOnError = false)
     {
         foreach (var propInfo in properties)
         {
@@ -645,6 +703,11 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
                 {
                     recurse(value, currentDepth + 1);
                 }
+            }
+            catch when (retainPartialGraphOnError && !cancellationToken.IsCancellationRequested)
+            {
+                // Failed-row cleanup must still visit independent sibling properties.
+                // Normal discovery continues to report getter failures below.
             }
             catch (OperationCanceledException)
             {
@@ -673,7 +736,8 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
         TryAddObjectFunc tryAdd,
         RecurseFunc recurse,
         int currentDepth,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retainPartialGraphOnError = false)
     {
         var properties = PropertyCacheManager.GetCachedProperties(type);
 
@@ -704,6 +768,11 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
                 {
                     recurse(value, currentDepth + 1);
                 }
+            }
+            catch when (retainPartialGraphOnError && !cancellationToken.IsCancellationRequested)
+            {
+                // Failed-row cleanup must still visit independent sibling properties.
+                // Normal discovery continues to report getter failures below.
             }
             catch (OperationCanceledException)
             {
@@ -844,11 +913,59 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
         foreach (var item in collection)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (item != null && tryAdd(item, 0))
+            ProcessRootObject(item, tryAdd, onRootObjectAdded, cancellationToken, 0);
+        }
+    }
+
+    private static void ProcessRootObject(
+        object? item,
+        TryAddObjectFunc tryAdd,
+        RootObjectCallback onRootObjectAdded,
+        CancellationToken cancellationToken,
+        int tupleDepth)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (item is null || !tryAdd(item, 0))
+        {
+            return;
+        }
+
+        onRootObjectAdded(item);
+
+        // A tuple is an argument container. Its elements retain the same lifecycle ownership
+        // as separate row arguments, including disposable objects without an initializer.
+        // Keep elements at root depth so wrapping a row does not alter initialization order.
+        if (tupleDepth >= MaxRecursionDepth)
+        {
+            return;
+        }
+
+        if (item is Helpers.TupleArgument retained)
+        {
+            foreach (var element in retained.Elements)
             {
-                onRootObjectAdded(item);
+                ProcessRootObject(element, tryAdd, onRootObjectAdded, cancellationToken, tupleDepth + 1);
+            }
+            return;
+        }
+
+#if NET
+        if (item is System.Runtime.CompilerServices.ITuple tuple)
+        {
+            for (var i = 0; i < tuple.Length; i++)
+            {
+                ProcessRootObject(tuple[i], tryAdd, onRootObjectAdded, cancellationToken, tupleDepth + 1);
             }
         }
+#else
+        if (Helpers.TupleHelper.IsTupleType(item))
+        {
+            foreach (var element in Helpers.DataSourceHelpers.UnwrapTupleAot(item))
+            {
+                ProcessRootObject(element, tryAdd, onRootObjectAdded, cancellationToken, tupleDepth + 1);
+            }
+        }
+#endif
     }
 
     #endregion

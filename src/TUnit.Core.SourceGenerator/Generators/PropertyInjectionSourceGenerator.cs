@@ -26,8 +26,7 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
     public const string ConcreteGenericTypesStep = "PropertyInjection_ConcreteGenericTypes";
 
     // Generated code lives in namespace TUnit.Core, so type names need global:: and keyword escaping (@event)
-    private static readonly SymbolDisplayFormat GlobalTypeNameFormat = DisplayFormats.FullyQualifiedGenericWithGlobalPrefix
-        .AddMiscellaneousOptions(SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
+    private static readonly SymbolDisplayFormat GlobalTypeNameFormat = DisplayFormats.CSharpType;
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -245,6 +244,7 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
             GenericTypeConstraints = typeConstraints,
             IsInitOnly = property.SetMethod?.IsInitOnly == true,
             IsContainingTypeGeneric = containingType.IsGenericType,
+            IsContainingTypeValueType = containingType.IsValueType,
             IsStatic = property.IsStatic,
             PropertyTypeAsTypeParameter = propertyTypeAsTypeParameter,
             IsValueType = propertyType.IsValueType,
@@ -760,7 +760,7 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
                 // For non-generic types: use regular UnsafeAccessor on .NET 8+
                 sb.AppendLine("#if NET8_0_OR_GREATER");
                 sb.AppendLine($"    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = \"{backingFieldName}\")]");
-                sb.AppendLine($"    private static extern ref {prop.PropertyTypeFullyQualified} Get{prop.PropertyName}BackingField({prop.ContainingTypeFullyQualified} instance);");
+                sb.AppendLine($"    private static extern ref {prop.PropertyTypeFullyQualified} Get{prop.PropertyName}BackingField({(prop.IsContainingTypeValueType ? "ref " : "")}{prop.ContainingTypeFullyQualified} instance);");
                 sb.AppendLine("#endif");
                 sb.AppendLine();
             }
@@ -795,7 +795,7 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
                 sb.AppendLine($"internal static class {accessorClassName}<{prop.GenericTypeParameters}>{constraintsClause}");
                 sb.AppendLine("{");
                 sb.AppendLine($"    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = \"{backingFieldName}\")]");
-                sb.AppendLine($"    public static extern ref {returnType} GetBackingField({prop.ContainingTypeOpenGeneric} instance);");
+                sb.AppendLine($"    public static extern ref {returnType} GetBackingField({(prop.IsContainingTypeValueType ? "ref " : "")}{prop.ContainingTypeOpenGeneric} instance);");
                 sb.AppendLine("}");
                 sb.AppendLine("#endif");
             }
@@ -819,6 +819,14 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
     private static void GeneratePropertyMetadata(StringBuilder sb, PropertyDataSourceModel prop, string classTypeName, string safeClassName)
     {
         var ctorArgsStr = string.Join(", ", prop.ConstructorArgs);
+
+        if (prop.IsContainingTypeValueType && !prop.IsStatic)
+        {
+            // Resolve legacy setters once when metadata is collected, not per injection.
+            sb.AppendLine("#if !NET8_0_OR_GREATER");
+            sb.AppendLine($"        var property_{prop.PropertyName} = typeof({prop.ContainingTypeFullyQualified}).GetProperty(\"{prop.PropertyName}\", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.NonPublic | global::System.Reflection.BindingFlags.Instance);");
+            sb.AppendLine("#endif");
+        }
 
         sb.AppendLine("        yield return new PropertyInjectionMetadata");
         sb.AppendLine("        {");
@@ -854,7 +862,16 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
         // SetProperty delegate
         sb.AppendLine("            SetProperty = (instance, value) =>");
         sb.AppendLine("            {");
-        sb.AppendLine($"                var typedInstance = ({classTypeName})instance;");
+        if (prop.IsContainingTypeValueType && !prop.IsStatic)
+        {
+            // Mutate the payload of the original box, rather than a struct copy.
+            sb.AppendLine("#if NET8_0_OR_GREATER");
+            sb.AppendLine($"                ref var typedInstance = ref global::System.Runtime.CompilerServices.Unsafe.Unbox<{classTypeName}>(instance);");
+        }
+        else
+        {
+            sb.AppendLine($"                var typedInstance = ({classTypeName})instance;");
+        }
 
         var castExpression = GetPropertyCastExpression(prop);
 
@@ -866,11 +883,11 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
                 var accessorClassName = $"{safeClassName}_{prop.PropertyName}_GenericAccessor";
 
                 sb.AppendLine("#if NET9_0_OR_GREATER");
-                sb.AppendLine($"                {accessorClassName}<{prop.GenericTypeArguments}>.GetBackingField(typedInstance) = {castExpression};");
+                sb.AppendLine($"                {accessorClassName}<{prop.GenericTypeArguments}>.GetBackingField({(prop.IsContainingTypeValueType ? "ref " : "")}typedInstance) = {castExpression};");
                 sb.AppendLine("#else");
                 sb.AppendLine($"                var backingField = typeof({prop.ContainingTypeFullyQualified}).GetField(\"<{prop.PropertyName}>k__BackingField\",");
                 sb.AppendLine("                    global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.NonPublic);");
-                sb.AppendLine("                backingField.SetValue(typedInstance, value);");
+                sb.AppendLine($"                backingField.SetValue({(prop.IsContainingTypeValueType ? "instance" : "typedInstance")}, value);");
                 sb.AppendLine("#endif");
             }
             else
@@ -883,12 +900,12 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
                 }
                 else
                 {
-                    sb.AppendLine($"                Get{prop.PropertyName}BackingField(typedInstance) = {castExpression};");
+                    sb.AppendLine($"                Get{prop.PropertyName}BackingField({(prop.IsContainingTypeValueType ? "ref " : "")}typedInstance) = {castExpression};");
                 }
                 sb.AppendLine("#else");
                 sb.AppendLine($"                var backingField = typeof({prop.ContainingTypeFullyQualified}).GetField(\"<{prop.PropertyName}>k__BackingField\",");
                 sb.AppendLine("                    global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.NonPublic);");
-                sb.AppendLine("                backingField.SetValue(typedInstance, value);");
+                sb.AppendLine($"                backingField.SetValue({(prop.IsContainingTypeValueType ? "instance" : "typedInstance")}, value);");
                 sb.AppendLine("#endif");
             }
         }
@@ -899,6 +916,13 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
         else
         {
             sb.AppendLine($"                typedInstance.{prop.PropertyName} = {castExpression};");
+        }
+
+        if (prop.IsContainingTypeValueType && !prop.IsStatic)
+        {
+            sb.AppendLine("#else");
+            sb.AppendLine($"                property_{prop.PropertyName}.SetValue(instance, value);");
+            sb.AppendLine("#endif");
         }
 
         sb.AppendLine("            }");
@@ -976,7 +1000,7 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
                 // For non-generic types: use regular UnsafeAccessor on .NET 8+
                 sb.AppendLine("#if NET8_0_OR_GREATER");
                 sb.AppendLine($"    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = \"{backingFieldName}\")]");
-                sb.AppendLine($"    private static extern ref {prop.PropertyTypeFullyQualified} Get{prop.PropertyName}BackingField({prop.ContainingTypeFullyQualified} instance);");
+                sb.AppendLine($"    private static extern ref {prop.PropertyTypeFullyQualified} Get{prop.PropertyName}BackingField({(prop.IsContainingTypeValueType ? "ref " : "")}{prop.ContainingTypeFullyQualified} instance);");
                 sb.AppendLine("#endif");
                 sb.AppendLine();
             }
@@ -1010,7 +1034,7 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
                 sb.AppendLine($"internal static class {accessorClassName}<{prop.GenericTypeParameters}>{constraintsClause}");
                 sb.AppendLine("{");
                 sb.AppendLine($"    [global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = \"{backingFieldName}\")]");
-                sb.AppendLine($"    public static extern ref {returnType} GetBackingField({prop.ContainingTypeOpenGeneric} instance);");
+                sb.AppendLine($"    public static extern ref {returnType} GetBackingField({(prop.IsContainingTypeValueType ? "ref " : "")}{prop.ContainingTypeOpenGeneric} instance);");
                 sb.AppendLine("}");
                 sb.AppendLine("#endif");
             }
@@ -1124,7 +1148,8 @@ public sealed class PropertyInjectionSourceGenerator : IIncrementalGenerator
 
     private static string GetSafeClassName(INamedTypeSymbol classSymbol)
     {
-        var fullyQualified = classSymbol.GloballyQualified();
+        // Identifier fragments need raw names; keyword escapes belong only in type expressions.
+        var fullyQualified = classSymbol.ToDisplayString(DisplayFormats.FullyQualifiedGenericWithGlobalPrefix);
         return fullyQualified
             .Replace("global::", "")
             .Replace(".", "_")

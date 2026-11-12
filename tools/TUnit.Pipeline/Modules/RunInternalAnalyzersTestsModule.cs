@@ -1,4 +1,5 @@
-﻿using ModularPipelines.Context;
+﻿using ModularPipelines.Attributes;
+using ModularPipelines.Context;
 using ModularPipelines.DotNet.Options;
 using ModularPipelines.Extensions;
 using ModularPipelines.Git.Extensions;
@@ -7,6 +8,7 @@ using TUnit.Pipeline.Modules.Abstract;
 
 namespace TUnit.Pipeline.Modules;
 
+[ModuleCategory(PipelineCategories.PlatformNeutral)]
 public class RunInternalAnalyzersTestsModule : TestBaseModule
 {
     protected override Task<(DotNetRunOptions Options, CommandExecutionOptions? ExecutionOptions)> GetTestOptions(IModuleContext context, string framework, CancellationToken cancellationToken)
@@ -19,7 +21,7 @@ public class RunInternalAnalyzersTestsModule : TestBaseModule
                 NoBuild = true,
                 Configuration = "Release",
                 Framework = framework,
-                Arguments = ["--hangdump", "--hangdump-filename", $"hangdump.internal-analyzers-tests-{framework}.dmp", "--hangdump-timeout", "5m"],
+                Arguments = [..HangDumpArguments.Create($"hangdump.internal-analyzers-tests-{framework}.dmp", "5m")],
             },
             new CommandExecutionOptions
             {

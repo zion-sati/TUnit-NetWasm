@@ -5,10 +5,13 @@ namespace TUnit.Pipeline;
 /// </summary>
 public static class PipelineCategories
 {
-    /// <summary>Versions, packs and stages the NuGet packages.</summary>
+    /// <summary>Versions, packs and stages the NuGet packages. Only Ubuntu runs these in the matrix (see dotnet.yml).</summary>
     public const string Packaging = "Packaging";
 
-    /// <summary>Consumes the packed packages. Windows runs these in their own job (see dotnet.yml).</summary>
+    /// <summary>
+    /// Consumes the packed packages. Ubuntu runs these in the matrix, Windows in its own job, and
+    /// macOS not at all (see dotnet.yml).
+    /// </summary>
     public const string NuGetPackageTests = "NuGetPackageTests";
 
     /// <summary>
@@ -16,4 +19,18 @@ public static class PipelineCategories
     /// against the packed packages. aot.yml runs them with Packaging.
     /// </summary>
     public const string Aot = "Aot";
+
+    /// <summary>
+    /// The Reflection-mode engine tests. aot.yml runs them on runners of their own, where they no
+    /// longer wait for, or compete with, the other test modules (see dotnet.yml).
+    /// </summary>
+    public const string EngineTests = "EngineTests";
+
+    /// <summary>
+    /// Test suites whose result does not depend on the operating system: analyzers, code fixers,
+    /// source-generator and public-API snapshots, templates, and the pure-logic assertion and mock
+    /// libraries. Ubuntu runs them; Windows and macOS pull request runs pass --os-specific-only,
+    /// so Windows runs only their .NET Framework TFMs and macOS skips them (see <see cref="PipelineScope"/>).
+    /// </summary>
+    public const string PlatformNeutral = "PlatformNeutral";
 }

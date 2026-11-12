@@ -21,6 +21,9 @@ internal sealed class StaticDataSourceAttribute : Attribute, IDataSourceAttribut
     /// </summary>
     public IDataSourceAttribute? PartitionOf { get; init; }
 
+    // Shared by the raw source and every generic partition of the same row.
+    public EvaluatedDataRow?[]? EvaluatedRows { get; init; }
+
     public StaticDataSourceAttribute(params object?[][] data)
     {
         _data = data ?? throw new ArgumentNullException(nameof(data));
@@ -28,12 +31,19 @@ internal sealed class StaticDataSourceAttribute : Attribute, IDataSourceAttribut
 
     public async IAsyncEnumerable<Func<Task<object?[]?>>> GetDataRowsAsync(DataGeneratorMetadata dataGeneratorMetadata)
     {
-        foreach (var row in _data)
+        for (var i = 0; i < _data.Length; i++)
         {
-            var clonedRow = CloneArguments(row);
-            yield return () => Task.FromResult<object?[]?>(clonedRow);
+            if (EvaluatedRows?[i] is { } evaluated)
+            {
+                yield return evaluated.FetchAsync;
+            }
+            else
+            {
+                var clonedRow = CloneArguments(_data[i]);
+                yield return () => Task.FromResult<object?[]?>(clonedRow);
+            }
         }
-        
+
         await Task.CompletedTask; // Suppress CS1998
     }
     

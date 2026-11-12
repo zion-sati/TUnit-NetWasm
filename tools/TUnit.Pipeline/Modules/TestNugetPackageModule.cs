@@ -44,7 +44,12 @@ public abstract class AbstractTestNugetPackageModule : TestBaseModule
         get
         {
             yield return "net10.0";
-            yield return "net8.0";
+
+            // See ModernFrameworks: only Linux covers net11.0.
+            if (IsLinux)
+            {
+                yield return "net11.0";
+            }
 
             if (IsWindows)
             {

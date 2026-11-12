@@ -20,6 +20,9 @@
     <EmbeddedResource Include="Reporters\Html\TestReport.template.html">
       <LogicalName>TUnit.Engine.Reporters.Html.TestReport.template.html</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Helpers\JitWarmupMethods.txt" Condition="'$(TargetFramework)' != 'netstandard2.0'">
+      <LogicalName>TUnit.Engine.JitWarmupMethods.txt</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.Threading.Channels" />
@@ -40,6 +43,11 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Testing.Platform.MSBuild" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\TUnit.Core.SourceGenerator\Helpers\GenericMethodInferencePolicy.cs" Link="Discovery\GenericMethodInferencePolicy.cs" />
+    <Compile Include="..\TUnit.Core.SourceGenerator\Helpers\GenericClassInferencePolicy.cs" Link="Discovery\GenericClassInferencePolicy.cs" />
   </ItemGroup>
 
   <Import Project="..\..\eng\Library.targets" />

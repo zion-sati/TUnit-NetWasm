@@ -48,7 +48,12 @@ internal class DataUnwrapper
         ParameterMetadata[]? expectedParameters)
     {
         // First check for TestDataRow wrapper
-        var (unwrapped, metadata) = TestDataRowUnwrapper.UnwrapArray(values);
+        var reconstructTuple = false;
+        var tupleType = values is [ITestDataRow]
+            ? GetTupleDataParameterType(expectedParameters, out reconstructTuple)
+            : null;
+        var (unwrapped, metadata) = TestDataRowUnwrapper.UnwrapArray(values,
+            tupleType, reconstructTuple);
 
         // Then apply type-aware unwrapping
         var data = UnwrapWithTypesInternal(unwrapped, expectedParameters);
@@ -58,8 +63,50 @@ internal class DataUnwrapper
     public static object?[] UnwrapWithTypes(object?[] values, ParameterMetadata[]? expectedParameters)
     {
         // First handle TestDataRow unwrapping
-        var (unwrapped, _) = TestDataRowUnwrapper.UnwrapArray(values);
+        var reconstructTuple = false;
+        var tupleType = values is [ITestDataRow]
+            ? GetTupleDataParameterType(expectedParameters, out reconstructTuple)
+            : null;
+        var (unwrapped, _) = TestDataRowUnwrapper.UnwrapArray(values,
+            tupleType, reconstructTuple);
         return UnwrapWithTypesInternal(unwrapped, expectedParameters);
+    }
+
+    private static Type? GetTupleDataParameterType(ParameterMetadata[]? parameters, out bool reconstructTuple)
+    {
+        reconstructTuple = false;
+        if (parameters is null)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            var dataType = parameters[i].Type;
+            if (dataType == typeof(CancellationToken))
+            {
+                continue;
+            }
+
+            // A sole tuple parameter reconstructs elements across tuple families. Preserve its
+            // payload boundary even when strict whole-row matching would reject it.
+            reconstructTuple = true;
+            for (var j = i + 1; j < parameters.Length; j++)
+            {
+                if (parameters[j].Type != typeof(CancellationToken))
+                {
+                    reconstructTuple = false;
+                    break;
+                }
+            }
+
+            // Wrapped and unwrapped rows must use the same whole-tuple binding rule.
+            return TupleHelper.IsTupleType(dataType) && RemainingDataParametersAreOmittable(parameters, i)
+                ? dataType
+                : null;
+        }
+
+        return null;
     }
 
     private static object?[] UnwrapWithTypesInternal(object?[] values, ParameterMetadata[]? expectedParameters)
@@ -84,11 +131,17 @@ internal class DataUnwrapper
         // The engine supplies CancellationToken parameters wherever they are declared, so the row
         // binds to the data parameters only.
         var dataParameterCount = 0;
+        var firstDataParameterIndex = -1;
         var lastDataParameterIndex = -1;
         for (var i = 0; i < expectedParameters.Length; i++)
         {
             if (expectedParameters[i].Type != typeof(CancellationToken))
             {
+                if (dataParameterCount == 0)
+                {
+                    firstDataParameterIndex = i;
+                }
+
                 dataParameterCount++;
                 lastDataParameterIndex = i;
             }
@@ -96,18 +149,75 @@ internal class DataUnwrapper
 
         if (dataParameterCount == 0)
         {
-            return DataSourceHelpers.UnwrapTupleAot(values[0]);
+            return DataSourceHelpers.RetainTupleElements(values[0]);
         }
 
-        var lastDataParameterType = expectedParameters[lastDataParameterIndex].Type;
+        var lastDataParameter = expectedParameters[lastDataParameterIndex];
+        var lastDataParameterType = lastDataParameter.Type;
 
-        // A single data parameter that expects a tuple receives the tuple itself
+        // Generated metadata erases a parameter containing type parameters to object,
+        // but TypeInfo retains its tuple shape. Preserve all elements until the invoker
+        // closes the type; reference tuples and mutable elements need flattened binding.
+        if (dataParameterCount == 1
+            && DataSourceHelpers.IsErasedGenericTupleParameter(lastDataParameter))
+        {
+            return DataSourceHelpers.ShouldFlattenErasedTuple(values[0]!, lastDataParameter)
+                ? DataSourceHelpers.RetainTupleElements(values[0])
+                : values;
+        }
+
+        // Keep compatible tuples whole (including one-element tuples holding null).
+        // Otherwise the invoker needs every element to reconstruct the target tuple
+        // with per-element conversions, rather than casting incompatible tuple types.
         if (dataParameterCount == 1 && TupleHelper.IsTupleType(lastDataParameterType))
         {
-            return values;
+            // Keep the runtime tuple intact until generic inference closes the parameter type.
+            // Singleton value-tuple conversion also needs the outer container: its element
+            // can itself be a tuple, indistinguishable from a preserved row after flattening.
+            if (!DataSourceHelpers.RequiresFlattenedTupleBinding(values[0]!)
+                && (lastDataParameterType.ContainsGenericParameters || lastDataParameterType.IsInstanceOfType(values[0])
+                    || lastDataParameterType.IsGenericType && lastDataParameterType.GetGenericTypeDefinition() == typeof(ValueTuple<>)))
+            {
+                return values;
+            }
+
+            // A reference tuple with a lone null must retain its container: [null] also
+            // represents an actual null argument. Value tuples always reconstruct from null.
+            var tupleElements = DataSourceHelpers.RetainTupleElements(values[0]);
+            if (!lastDataParameterType.IsValueType && tupleElements is [null])
+            {
+                return values;
+            }
+
+            // A singleton tuple element is a flattened column, not a preserved whole row.
+            // Retain its boundary explicitly so invocation can reconstruct the outer tuple
+            // without guessing from the inner tuple's arity.
+            if (tupleElements is [var element] && element is not TupleArgument && DataSourceHelpers.IsTuple(element))
+            {
+                tupleElements[0] = new TupleArgument(element!.GetType(), DataSourceHelpers.RetainTupleElements(element));
+            }
+
+            return tupleElements;
         }
 
-        var elements = DataSourceHelpers.UnwrapTupleAot(values[0]);
+        // A tuple that is already an instance of the first data parameter's tuple type binds to it
+        // whole when every later data parameter can be omitted (optional, params, or a trailing collecting array).
+        var firstDataParameterType = expectedParameters[firstDataParameterIndex].Type;
+        if (dataParameterCount > 1
+            && TupleHelper.IsTupleType(firstDataParameterType)
+            && (firstDataParameterType.ContainsGenericParameters
+                && values[0] is { } firstValue
+                && TupleHelper.MatchesOpenTuple(firstDataParameterType, firstValue is TupleArgument tupleArgument ? tupleArgument.TupleType : firstValue.GetType())
+                || firstDataParameterType.IsInstanceOfType(values[0])
+                || values[0] is TupleArgument argument && argument.TupleType == firstDataParameterType)
+            && RemainingDataParametersAreOmittable(expectedParameters, firstDataParameterIndex))
+        {
+            return values[0] is not TupleArgument && DataSourceHelpers.RequiresFlattenedTupleBinding(values[0]!)
+                ? [new TupleArgument(values[0]!.GetType(), DataSourceHelpers.RetainTupleElements(values[0]))]
+                : values;
+        }
+
+        var elements = DataSourceHelpers.RetainTupleElements(values[0]);
 
         // A trailing array data parameter collects every remaining element. Otherwise extra
         // elements beyond the data parameters are dropped.
@@ -119,5 +229,37 @@ internal class DataUnwrapper
         var capped = new object?[dataParameterCount];
         Array.Copy(elements, capped, dataParameterCount);
         return capped;
+    }
+
+    private static bool RemainingDataParametersAreOmittable(ParameterMetadata[] parameters, int firstDataParameterIndex)
+    {
+        var lastDataParameterIndex = parameters.Length - 1;
+        while (lastDataParameterIndex > firstDataParameterIndex
+               && parameters[lastDataParameterIndex].Type == typeof(CancellationToken))
+        {
+            lastDataParameterIndex--;
+        }
+
+        for (var i = firstDataParameterIndex + 1; i < parameters.Length; i++)
+        {
+            var parameter = parameters[i];
+            if (parameter.Type != typeof(CancellationToken) && !parameter.IsOptional && !parameter.IsParams
+                && !(i == lastDataParameterIndex
+                    && IsSingleDimensionalZeroBasedArray(parameter.Type)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsSingleDimensionalZeroBasedArray(Type type)
+    {
+#if NET
+        return type.IsSZArray;
+#else
+        return type.IsArray && type.Name.EndsWith("[]", StringComparison.Ordinal);
+#endif
     }
 }

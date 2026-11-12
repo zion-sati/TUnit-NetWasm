@@ -18,6 +18,60 @@ public readonly record struct InvocationArgument(string Expression, string? Name
 
 public static class TupleArgumentHelper
 {
+    // ValueTuple is invariant: a boxed (int, string) cannot be cast to (int, object).
+    // Reconstruct mismatched tuples from their elements, recursively, without reflection.
+    internal static string GenerateCastExpression(ITypeSymbol type, string expression)
+        => GenerateCastExpression(type, expression, 0);
+
+    private static string GenerateCastExpression(ITypeSymbol type, string expression, int depth)
+    {
+        var tupleType = type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable
+            ? nullable.TypeArguments[0]
+            : type;
+        if (tupleType is not INamedTypeSymbol tuple || !IsTuple(tuple))
+        {
+            return $"global::TUnit.Core.Helpers.CastHelper.Cast<{type.GloballyQualified()}>({expression})";
+        }
+
+        // Bind each input once and reconstruct retained boxes as well as incompatible tuples.
+        // IsTuple excludes ordinary lists so they keep conversion-operator behavior.
+        var value = $"__tupleValue{depth.ToString(CultureInfo.InvariantCulture)}";
+        var input = $"__tupleInput{depth.ToString(CultureInfo.InvariantCulture)}";
+        var fallback = $"__tupleFallback{depth.ToString(CultureInfo.InvariantCulture)}";
+        var index = 0;
+        var construction = ConstructTuple(tuple, input, ref index, depth);
+        // Nullable tuples box as their underlying tuple, or null. The fallback preserves null.
+        return $"({expression} switch {{ var {value} when {value} is not {tuple.GloballyQualified()} && global::TUnit.Core.Helpers.DataSourceHelpers.IsTuple({value}) && global::TUnit.Core.Helpers.DataSourceHelpers.UnwrapTupleAot({value}) is {{ Length: {index.ToString(CultureInfo.InvariantCulture)} }} {input} => ({type.GloballyQualified()}){construction}, var {fallback} => global::TUnit.Core.Helpers.CastHelper.Cast<{type.GloballyQualified()}>({fallback}) }})";
+    }
+
+    private static bool IsTuple(INamedTypeSymbol type)
+        => type.IsTupleType || type is { Name: "Tuple", IsGenericType: true, TypeArguments.Length: >= 1 and <= 8,
+            ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true } };
+
+    private static string ConstructTuple(INamedTypeSymbol tuple, string input, ref int index, int depth)
+    {
+        var elements = new List<string>();
+        if (tuple.IsTupleType)
+        {
+            foreach (var element in tuple.TupleElements)
+            {
+                elements.Add(GenerateCastExpression(element.Type, $"{input}[{(index++).ToString(CultureInfo.InvariantCulture)}]", depth + 1));
+            }
+            return tuple.TupleElements.Length == 1
+                ? $"new {tuple.GloballyQualified()}({string.Join(", ", elements)})"
+                : $"({string.Join(", ", elements)})";
+        }
+
+        for (var i = 0; i < tuple.TypeArguments.Length; i++)
+        {
+            var element = tuple.TypeArguments[i];
+            elements.Add(i == 7 && element is INamedTypeSymbol rest && IsTuple(rest)
+                ? ConstructTuple(rest, input, ref index, depth)
+                : GenerateCastExpression(element, $"{input}[{(index++).ToString(CultureInfo.InvariantCulture)}]", depth + 1));
+        }
+        return $"new {tuple.GloballyQualified()}({string.Join(", ", elements)})";
+    }
+
     /// <summary>
     /// Generates method invocation arguments.
     /// </summary>
@@ -31,7 +85,7 @@ public static class TupleArgumentHelper
         for (var i = 0; i < parameters.Count; i++)
         {
             var parameter = parameters[i];
-            var castExpression = $"global::TUnit.Core.Helpers.CastHelper.Cast<{parameter.Type.GloballyQualified()}>({argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}])";
+            var castExpression = GenerateCastExpression(parameter.Type, $"{argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}]");
             allArguments.Add(castExpression);
         }
 
@@ -80,7 +134,7 @@ public static class TupleArgumentHelper
                 for (var i = 0; i < parameters.Count; i++)
                 {
                     var param = parameters[i];
-                    var castExpression = $"global::TUnit.Core.Helpers.CastHelper.Cast<{param.Type.GloballyQualified()}>({argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}])";
+                    var castExpression = GenerateCastExpression(param.Type, $"{argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}]");
                     argumentExpressions.Add(new InvocationArgument(castExpression));
                 }
             }
@@ -89,7 +143,7 @@ public static class TupleArgumentHelper
                 for (var i = 0; i < parameters.Count && i < argCount; i++)
                 {
                     var param = parameters[i];
-                    var castExpression = $"global::TUnit.Core.Helpers.CastHelper.Cast<{param.Type.GloballyQualified()}>({argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}])";
+                    var castExpression = GenerateCastExpression(param.Type, $"{argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}]");
                     argumentExpressions.Add(new InvocationArgument(castExpression));
                 }
 
@@ -110,7 +164,7 @@ public static class TupleArgumentHelper
                 for (var i = 0; i < regularParamCount; i++)
                 {
                     var param = parameters[i];
-                    var castExpression = $"global::TUnit.Core.Helpers.CastHelper.Cast<{param.Type.GloballyQualified()}>({argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}])";
+                    var castExpression = GenerateCastExpression(param.Type, $"{argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}]");
                     argumentExpressions.Add(new InvocationArgument(castExpression));
                 }
             }
@@ -119,7 +173,7 @@ public static class TupleArgumentHelper
                 for (var i = 0; i < regularParamCount && i < argCount; i++)
                 {
                     var param = parameters[i];
-                    var castExpression = $"global::TUnit.Core.Helpers.CastHelper.Cast<{param.Type.GloballyQualified()}>({argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}])";
+                    var castExpression = GenerateCastExpression(param.Type, $"{argumentsArrayName}[{i.ToString(CultureInfo.InvariantCulture)}]");
                     argumentExpressions.Add(new InvocationArgument(castExpression));
                 }
 

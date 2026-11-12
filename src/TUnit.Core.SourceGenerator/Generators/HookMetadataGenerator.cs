@@ -1,3 +1,4 @@
+using TUnit.SourceGeneration;
 using System.Globalization;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
@@ -222,7 +223,7 @@ public class HookMetadataGenerator : IIncrementalGenerator
         catch (Exception ex)
         {
             var descriptor = new DiagnosticDescriptor(
-                "THG001",
+                GeneratorDiagnosticIds.HookMetadataGenerationFailed,
                 "Hook metadata generation failed",
                 "Failed to generate hook metadata for {0} (at {1}:{2}): {3}",
                 "TUnit",
@@ -579,6 +580,7 @@ public class HookMetadataGenerator : IIncrementalGenerator
     {
         return input
             .Replace("global::", "")
+            .Replace("@", "_")
             .Replace(".", "_")
             .Replace("<", "_")
             .Replace(">", "_")

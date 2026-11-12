@@ -125,12 +125,10 @@ public class GenericConstraintValidationTests
         await Assert.That(typeof(T)).IsEqualTo(typeof(int));
     }
 
-    // A constraint violation is a test-building error, so it is reported as a failure even when the
-    // test is skipped. Both modes must agree (#7097).
+    // Generic-resolution failures preserve method attributes, including Skip, in both modes (#7222).
     [Test]
     [Arguments("invalid")]
-    [Skip("Skip does not hide a generic constraint violation")]
-    [EngineTest(ExpectedResult.Failure)]
+    [Skip("A skipped row stays skipped even when its inferred type violates a constraint")]
     public async Task GenericMethodWithStructConstraint_SkippedInvalidType<T>(T value) where T : struct
     {
         await Task.CompletedTask;
@@ -148,7 +146,7 @@ public class GenericClassWithComparableConstraint<T> where T : IComparable<T>
     {
         // Create test value inside the method - T is int
         T value = (T)(object)42;
-        await Assert.That(value).IsNotEqualTo(default(T));
+        await Assert.That<T?>(value).IsNotEqualTo(default(T));
         // This should compile because T has IComparable<T> constraint
         var comparison = value.CompareTo(value);
         await Assert.That(comparison).IsEqualTo(0);
@@ -165,7 +163,7 @@ public class GenericClassWithComparableConstraintString<T> where T : IComparable
     {
         // Create test value inside the method - T is string
         T value = (T)(object)"hello";
-        await Assert.That(value).IsNotEqualTo(default(T));
+        await Assert.That<T?>(value).IsNotEqualTo(default(T));
         var comparison = value.CompareTo(value);
         await Assert.That(comparison).IsEqualTo(0);
     }
@@ -227,7 +225,7 @@ public class GenericClassWithInterfaceConstraint<T> where T : ITestInterface, ne
     {
         // Create test value inside the method using new() constraint
         T value = new T();
-        await Assert.That(value).IsNotEqualTo(default(T));
+        await Assert.That<T?>(value).IsNotEqualTo(default(T));
         value.TestMethod(); // This should compile because T has ITestInterface constraint
     }
 }

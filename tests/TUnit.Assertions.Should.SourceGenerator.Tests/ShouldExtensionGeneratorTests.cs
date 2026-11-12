@@ -429,22 +429,7 @@ public class ShouldExtensionGeneratorTests
     /// </summary>
     private static async Task<string> RunGenerator(string userSource, [CallerMemberName] string testName = "")
     {
-        // On net8.0 hosts, OverloadResolutionPriorityAttribute is missing from the BCL and the
-        // Polyfill copy compiled into this test assembly is internal — invisible to the synthetic
-        // GeneratorTest compilation. Inject a public copy so the attribute resolves consistently
-        // across all TFMs the test multi-targets.
-        var inputTrees = new List<SyntaxTree> { CSharpSyntaxTree.ParseText(userSource) };
-#if NET8_0
-        inputTrees.Add(CSharpSyntaxTree.ParseText("""
-            namespace System.Runtime.CompilerServices;
-            [System.AttributeUsage(System.AttributeTargets.Method | System.AttributeTargets.Constructor | System.AttributeTargets.Property, Inherited = false)]
-            public sealed class OverloadResolutionPriorityAttribute : System.Attribute
-            {
-                public OverloadResolutionPriorityAttribute(int priority) => Priority = priority;
-                public int Priority { get; }
-            }
-            """));
-#endif
+        var inputTrees = new List<SyntaxTree> { GeneratorTestInput.Parse(userSource) };
 
         var compilation = CSharpCompilation.Create(
             assemblyName: "GeneratorTest",
@@ -452,7 +437,11 @@ public class ShouldExtensionGeneratorTests
             references: References,
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        var driver = CSharpGeneratorDriver.Create(new ShouldExtensionGenerator());
+        GeneratorTestInput.ThrowIfInputCannotBeParsed(compilation);
+
+        var driver = CSharpGeneratorDriver.Create(
+            [new ShouldExtensionGenerator().AsSourceGenerator()],
+            parseOptions: GeneratorTestInput.ParseOptions);
         driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
             compilation, out var updatedCompilation, out var diagnostics);
 

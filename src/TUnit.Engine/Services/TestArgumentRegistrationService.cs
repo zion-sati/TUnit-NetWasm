@@ -1,5 +1,6 @@
 using TUnit.Core;
 using TUnit.Core.PropertyInjection;
+using TUnit.Engine.Helpers;
 
 namespace TUnit.Engine.Services;
 
@@ -82,29 +83,39 @@ internal sealed class TestArgumentRegistrationService
         TestDetails testDetails,
         CancellationToken cancellationToken)
     {
-        var classArguments = testDetails.TestClassArguments;
-        var methodArguments = testDetails.TestMethodArguments;
+        var classArguments = TupleArguments.Expand(testDetails.TestClassArguments);
+        var methodArguments = TupleArguments.Expand(testDetails.TestMethodArguments);
 
         // Argument registration only injects properties, so it is a no-op unless some argument has
         // injectable properties. Checking first avoids materializing the per-test state bag
         // (a ConcurrentDictionary) and events container for plain arguments such as [Arguments] values.
         if (HasInjectableArgument(classArguments) || HasInjectableArgument(methodArguments))
         {
-            // Register class arguments (property injection during registration)
-            await _objectLifecycleService.RegisterArgumentsAsync(
-                classArguments,
-                testContext.StateBag.Items,
-                testDetails.MethodMetadata,
-                testContext.InternalEvents,
-                cancellationToken).ConfigureAwait(false);
+            try
+            {
+                // Register class arguments (property injection during registration)
+                await _objectLifecycleService.RegisterArgumentsAsync(
+                    classArguments,
+                    testContext.StateBag.Items,
+                    testDetails.MethodMetadata,
+                    testContext.InternalEvents,
+                    cancellationToken).ConfigureAwait(false);
 
-            // Register method arguments
-            await _objectLifecycleService.RegisterArgumentsAsync(
-                methodArguments,
-                testContext.StateBag.Items,
-                testDetails.MethodMetadata,
-                testContext.InternalEvents,
-                cancellationToken).ConfigureAwait(false);
+                // Register method arguments
+                await _objectLifecycleService.RegisterArgumentsAsync(
+                    methodArguments,
+                    testContext.StateBag.Items,
+                    testDetails.MethodMetadata,
+                    testContext.InternalEvents,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Failed argument injection still leaves receivers visible to test-end callbacks.
+                // Keep their shared roots alive until the failed test has completed.
+                _objectLifecycleService.TrackObjectsAfterFailedResolution(testContext);
+                throw;
+            }
         }
 
         // Register the test for tracking (inject properties and track objects for disposal)
