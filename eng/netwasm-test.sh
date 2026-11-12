@@ -263,4 +263,37 @@ fi
   }
 )
 
-echo "NetWasm TUnit package, runner, VSTest and template tests passed."
+# A test suite that also targets desktop .NET, as a portable library's does, with warnings as errors: on
+# netwasm0.1 the packages must bring no .NET Standard asset (NU1701), so both frameworks restore, build and run.
+dual_consumer="${test_root}/DualTarget.Tests"
+mkdir -p "${dual_consumer}"
+cp "${template_consumer}/Tests.cs" "${dual_consumer}/Tests.cs"
+{
+  head -n 1 "${template_consumer}/Generated.Tests.csproj"
+  cat <<EOF
+  <PropertyGroup>
+    <TargetFrameworks>netwasm0.1;net10.0</TargetFrameworks>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NetWasm.TUnit" Version="[${TEST_VERSION}]" />
+  </ItemGroup>
+</Project>
+EOF
+} > "${dual_consumer}/DualTarget.Tests.csproj"
+(
+  cd "${dual_consumer}"
+  dotnet restore DualTarget.Tests.csproj --configfile "${nuget_config}" --disable-build-servers --nologo \
+    | tee "${test_root}/dual-restore.log"
+  if grep -q "NU1701" "${test_root}/dual-restore.log"; then
+    echo "A netwasm0.1 dependency of NetWasm.TUnit restored from a .NET Standard asset (NU1701)." >&2
+    exit 1
+  fi
+  dotnet test DualTarget.Tests.csproj -c Release --no-restore --disable-build-servers --nologo \
+    | tee "${test_root}/dual-run.log"
+)
+
+echo "NetWasm TUnit package, runner, VSTest, template and dual-target tests passed."

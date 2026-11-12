@@ -1,9 +1,5 @@
 <Project Sdk="NetWasm.Sdk">
   <PropertyGroup>
-    <!-- On netwasm0.1 the engine and runner bring System.Threading.Channels and the TRX abstractions from their
-         .NET Standard assets. This project restores both frameworks at once, outside the SDK's netwasm0.1-only NU1701
-         exemption, and NuGet applies warning settings to the whole project. -->
-    <NoWarn>$(NoWarn);NU1701</NoWarn>
     <!-- The runner's sources call the request context and completion notifier a test host uses, which
          Microsoft.Testing.Platform marks experimental. -->
     <NoWarn>$(NoWarn);TPEXP</NoWarn>

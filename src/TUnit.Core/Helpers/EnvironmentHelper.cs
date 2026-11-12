@@ -9,18 +9,5 @@ internal static class EnvironmentHelper
     /// Cached machine name - avoids system call overhead on every test completion.
     /// Environment.MachineName requires a P/Invoke call which is expensive when called millions of times.
     /// </summary>
-    public static readonly string MachineName = GetMachineName();
-
-    // WASI and browser hosts may not expose a machine name.
-    private static string GetMachineName()
-    {
-        try
-        {
-            return Environment.MachineName;
-        }
-        catch (PlatformNotSupportedException)
-        {
-            return "localhost";
-        }
-    }
+    public static readonly string MachineName = Environment.MachineName;
 }

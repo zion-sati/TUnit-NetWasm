@@ -90,7 +90,6 @@ for index, bucket in enumerate(buckets):
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <RootNamespace>TUnit.Assertions.Tests</RootNamespace>
-    <NoWarn>$(NoWarn);NU1701</NoWarn>
   </PropertyGroup>
   <Import Project={quoteattr(str(props))} />
   <ItemGroup>

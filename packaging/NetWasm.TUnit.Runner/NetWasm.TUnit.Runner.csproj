@@ -10,9 +10,9 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <GenerateRepositoryUrlAttribute>false</GenerateRepositoryUrlAttribute>
     <EnableTUnitSourceGeneration>false</EnableTUnitSourceGeneration>
-    <!-- Microsoft.Testing.Platform restores its .NET Standard asset on netwasm0.1. The host calls the request
-         context and completion notifier a test host uses, which the platform marks experimental (TPEXP). -->
-    <NoWarn>$(NoWarn);NU1701;TPEXP</NoWarn>
+    <!-- The host calls the request context and completion notifier a test host uses, which
+         Microsoft.Testing.Platform marks experimental (TPEXP). -->
+    <NoWarn>$(NoWarn);TPEXP</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

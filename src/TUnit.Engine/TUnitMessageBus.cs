@@ -1,4 +1,6 @@
-﻿using Microsoft.Testing.Extensions.TrxReport.Abstractions;
+﻿#if !NETWASM // NetWasm builds no TRX report, so the engine names no TRX types there.
+using Microsoft.Testing.Extensions.TrxReport.Abstractions;
+#endif
 using Microsoft.Testing.Platform.CommandLine;
 using Microsoft.Testing.Platform.Extensions;
 using Microsoft.Testing.Platform.Extensions.Messages;
@@ -155,10 +157,13 @@ internal class TUnitMessageBus(IExtension extension, ICommandLineOptions command
             DisplayName = $"Unobserved task exception - {exception.GetType().Name}: {exception.Message}",
             Uid = new TestNodeUid(Guid.NewGuid().ToString()),
             Properties = new PropertyBag(
-                GetFailureStateProperty(exception, timeout: null, TimeSpan.Zero, IsConsole),
-                new TrxFullyQualifiedTypeNameProperty(typeof(TUnitMessageBus).FullName!),
+                GetFailureStateProperty(exception, timeout: null, TimeSpan.Zero, IsConsole)
+#if !NETWASM
+                , new TrxFullyQualifiedTypeNameProperty(typeof(TUnitMessageBus).FullName!),
                 new TrxExceptionProperty(folded.Message,
-                    string.IsNullOrEmpty(folded.StackTrace) ? null : folded.StackTrace))
+                    string.IsNullOrEmpty(folded.StackTrace) ? null : folded.StackTrace)
+#endif
+                )
         };
 
         return new ValueTask(context.MessageBus.PublishAsync(this, new TestNodeUpdateMessage(_sessionSessionUid, testNode)));

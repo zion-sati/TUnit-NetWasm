@@ -1,7 +1,9 @@
 ﻿using TUnit.Core.Helpers;
 using System.Collections.Concurrent;
 using System.Reflection;
+#if !NETWASM // NetWasm builds no TRX report, so the engine names no TRX types there.
 using Microsoft.Testing.Extensions.TrxReport.Abstractions;
+#endif
 using Microsoft.Testing.Platform.Capabilities.TestFramework;
 using Microsoft.Testing.Platform.Extensions.Messages;
 using TUnit.Core;
@@ -31,7 +33,9 @@ internal static class TestExtensions
         public TestMetadataProperty[]? CategoryProperties { get; init; }
         public TestMetadataProperty[]? CustomProperties { get; init; }
         public string? TrxFullyQualifiedTypeName { get; init; }
+#if !NETWASM
         public TrxCategoriesProperty? TrxCategories { get; init; }
+#endif
     }
 
     internal static void ClearCaches()
@@ -121,11 +125,13 @@ internal static class TestExtensions
 
             var trxTypeName = GetReportedClassFullName(testDetails.MethodMetadata.Class.Type) ?? GetReportedClassFullName(testDetails.ClassType) ?? "UnknownType";
 
+#if !NETWASM
             TrxCategoriesProperty? trxCategories = null;
             if (categories is { Count: > 0 })
             {
                 trxCategories = new TrxCategoriesProperty([..categories]);
             }
+#endif
 
             return new CachedTestNodeProperties
             {
@@ -135,7 +141,9 @@ internal static class TestExtensions
                 CategoryProperties = categoryProps,
                 CustomProperties = customProps,
                 TrxFullyQualifiedTypeName = trxTypeName,
+#if !NETWASM
                 TrxCategories = trxCategories
+#endif
             };
         }
     }
@@ -199,6 +207,7 @@ internal static class TestExtensions
             }
         }
 
+#if !NETWASM
         if (isFinalState && isTrxEnabled)
         {
             propertyBag.Add(new TrxFullyQualifiedTypeNameProperty(cachedProps.TrxFullyQualifiedTypeName!));
@@ -235,6 +244,7 @@ internal static class TestExtensions
                 }
             }
         }
+#endif
 
         if (isFinalState)
         {
@@ -324,6 +334,9 @@ internal static class TestExtensions
 
     private static bool IsTrxEnabled(TestContext testContext)
     {
+#if NETWASM
+        return false;
+#else
         if (_cachedIsTrxEnabled.HasValue)
         {
             return _cachedIsTrxEnabled.Value;
@@ -343,6 +356,7 @@ internal static class TestExtensions
 
         _cachedIsTrxEnabled = trxCapability.IsTrxEnabled;
         return _cachedIsTrxEnabled.Value;
+#endif
     }
 
     private static TimingProperty GetTimingProperty(TestContext testContext, DateTimeOffset overallStart)
@@ -364,6 +378,7 @@ internal static class TestExtensions
         return new TimingProperty(new TimingInfo(overallStart, end, end - overallStart), stepTimings);
     }
 
+#if !NETWASM
     private static TrxMessage[] GetTrxMessages(TestContext testContext, string? standardOutput, string? standardError)
     {
         var hasOutput = !string.IsNullOrEmpty(standardOutput);
@@ -383,6 +398,7 @@ internal static class TestExtensions
         if (hasSkip) result[i++] = new DebugOrTraceTrxMessage($"Skipped: {testContext.SkipReason}");
         return result;
     }
+#endif
 
     /// <summary>
     /// The class name reported to TRX and JSON output. A constructed generic class is reported by its

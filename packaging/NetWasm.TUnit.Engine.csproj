@@ -38,8 +38,6 @@
              Exclude="..\src\TUnit.Engine\obj\**\*;..\src\TUnit.Engine\bin\**\*" />
     <Compile Include="..\src\TUnit.Core.SourceGenerator\Helpers\GenericMethodInferencePolicy.cs" Link="Discovery\GenericMethodInferencePolicy.cs" />
     <Compile Include="..\src\TUnit.Core.SourceGenerator\Helpers\GenericClassInferencePolicy.cs" Link="Discovery\GenericClassInferencePolicy.cs" />
-    <!-- Restored from its .NET Standard asset, as is the TRX abstractions package below. -->
-    <PackageReference Include="System.Threading.Channels" Version="[9.0.0]" NoWarn="NU1701" />
   </ItemGroup>
   <Import Project="NetWasmUpstreamSources.props" />
 
@@ -54,7 +52,8 @@
     <PackageReference Include="NetWasm.TUnit.Core" Version="[$(NetWasmTUnitPackageVersion)]">
       <ExcludeAssets>Build;BuildTransitive</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.5.2]" NoWarn="NU1701">
+    <!-- NetWasm.App supplies System.Threading.Channels on netwasm0.1, and the engine builds no TRX report there. -->
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.5.2]" Condition="'$(TargetFramework)' == 'net10.0'">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Testing.Platform" Version="[2.5.2]">

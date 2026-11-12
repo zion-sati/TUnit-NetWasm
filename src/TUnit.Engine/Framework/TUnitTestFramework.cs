@@ -1,6 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+#if !NETWASM // NetWasm builds no TRX report, so the engine names no TRX types there.
 using Microsoft.Testing.Extensions.TrxReport.Abstractions;
+#endif
 using Microsoft.Testing.Platform.Capabilities.TestFramework;
 using Microsoft.Testing.Platform.Extensions;
 using Microsoft.Testing.Platform.Extensions.Messages;
@@ -203,10 +205,13 @@ internal sealed class TUnitTestFramework : ITestFramework, IDataProducer
                     // This synthetic node has no test method metadata. TRX still needs a type name
                     // to write the report, and an explicit exception property to retain the cause.
                     Properties = new PropertyBag(
-                        new ErrorTestNodeStateProperty(reported),
-                        new TrxFullyQualifiedTypeNameProperty(typeof(TUnitTestFramework).FullName!),
+                        new ErrorTestNodeStateProperty(reported)
+#if !NETWASM
+                        , new TrxFullyQualifiedTypeNameProperty(typeof(TUnitTestFramework).FullName!),
                         new TrxExceptionProperty(folded.Message,
-                            string.IsNullOrEmpty(folded.StackTrace) ? null : folded.StackTrace))
+                            string.IsNullOrEmpty(folded.StackTrace) ? null : folded.StackTrace)
+#endif
+                        )
                 }));
     }
 

@@ -131,7 +131,9 @@ public static class TestApplicationBuilderExtensions
     {
         return
         [
+#if !NETWASM
             new TrxReportCapability(),
+#endif
             new BannerCapability(serviceProvider.GetRequiredService<IPlatformInformation>(), serviceProvider.GetCommandLineOptions(), serviceProvider.GetLoggerFactory()),
             new StopExecutionCapability(),
         ];
