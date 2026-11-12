@@ -223,6 +223,6 @@ public static class SharedDataSources
             throw new ArgumentNullException(nameof(testClassType), "testClassType is required when SharedType is PerAssembly.");
         }
 
-        return TestDataContainer.GetInstanceForAssembly(testClassType.Assembly, type, _ => factory()!);
+        return TestDataContainer.GetInstanceForAssembly(TypeOwner.Assembly(testClassType), type, _ => factory()!);
     }
 }

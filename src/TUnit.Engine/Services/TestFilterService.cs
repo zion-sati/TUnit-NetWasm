@@ -1,5 +1,6 @@
 ﻿#pragma warning disable TPEXP
 
+using TUnit.Core.Helpers;
 using System.Collections.Concurrent;
 using Microsoft.Testing.Platform.Extensions.Messages;
 using Microsoft.Testing.Platform.Requests;
@@ -332,7 +333,7 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
         var metadata = test.Metadata;
 
         var classMetadata = test.Context.Metadata.TestDetails.MethodMetadata.Class;
-        var assemblyName = classMetadata.Assembly.Name ?? metadata.TestClassType.Assembly.GetName().Name ?? "*";
+        var assemblyName = classMetadata.Assembly.Name ?? TypeOwner.Assembly(metadata.TestClassType).GetName().Name ?? "*";
         var namespaceName = classMetadata.Namespace ?? "*";
         var classTypeName = GetNestedClassName(classMetadata);
 
@@ -414,9 +415,14 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
             return true;
         }
 
+#if NETWASM
+        // The generated test attributes already include the class's.
+        return false;
+#else
         var testClassType = test.Context.Metadata.TestDetails.ClassType;
         return _explicitClassCache.GetOrAdd(testClassType,
             static t => t.GetCustomAttributes(typeof(ExplicitAttribute), true).Length > 0);
+#endif
     }
 
     private IReadOnlyCollection<AbstractExecutableTest> FilterOutExplicitTests(IReadOnlyCollection<AbstractExecutableTest> testNodes)

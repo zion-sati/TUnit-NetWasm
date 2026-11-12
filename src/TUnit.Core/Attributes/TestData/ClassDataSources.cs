@@ -45,8 +45,8 @@ internal class ClassDataSources
         return sharedType switch
         {
             SharedType.None => Create<T>(),
-            SharedType.PerTestSession => (T) TestDataContainer.GetGlobalInstance(typeof(T), _ => Create(typeof(T)))!,
-            SharedType.PerClass => (T) TestDataContainer.GetInstanceForClass(testClassType, typeof(T), _ => Create(typeof(T)))!,
+            SharedType.PerTestSession => (T) TestDataContainer.GetGlobalInstance(typeof(T), _ => Create<T>())!,
+            SharedType.PerClass => (T) TestDataContainer.GetInstanceForClass(testClassType, typeof(T), _ => Create<T>())!,
             SharedType.Keyed => (T) TestDataContainer.GetInstanceForKey(key, typeof(T), _ => CreateWithKey(typeof(T), key))!,
             SharedType.PerAssembly => (T) TestDataContainer.GetInstanceForAssembly(testClassType.Assembly, typeof(T), _ => Create(typeof(T)))!,
             _ => throw new ArgumentOutOfRangeException()
@@ -81,7 +81,12 @@ internal class ClassDataSources
     [return: NotNull]
     private static T Create<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>()
     {
+#if NETWASM
+        // The compiler resolves T's constructor; a run-time Type carries no constructor metadata on NetWasm.
+        return Activator.CreateInstance<T>()!;
+#else
         return ((T) Create(typeof(T)))!;
+#endif
     }
 
     private static object Create([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] Type type)

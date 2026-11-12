@@ -52,7 +52,7 @@ internal readonly struct FilterHints
         // Check assembly name hint
         if (AssemblyName != null)
         {
-            var typeAssemblyName = type.Assembly.GetName().Name;
+            var typeAssemblyName = TypeOwner.Assembly(type).GetName().Name;
             if (typeAssemblyName != AssemblyName)
             {
                 return false;
@@ -337,7 +337,7 @@ internal sealed partial class MetadataFilterMatcher : IMetadataFilterMatcher
     private static string BuildClassNameForMatching(Type type)
     {
         // Fast path: non-nested, non-generic types
-        if (type.DeclaringType == null && !type.IsGenericType)
+        if (TypeOwner.DeclaringType(type) == null && !type.IsGenericType)
         {
             return type.Name;
         }
@@ -352,7 +352,7 @@ internal sealed partial class MetadataFilterMatcher : IMetadataFilterMatcher
             while (currentType != null)
             {
                 typeHierarchy.Append(currentType);
-                currentType = currentType.DeclaringType;
+                currentType = TypeOwner.DeclaringType(currentType);
             }
 
             // Reverse to get outer-to-inner order and join with '+'.
@@ -444,7 +444,7 @@ internal sealed partial class MetadataFilterMatcher : IMetadataFilterMatcher
         }
 
         var classMetadata = metadata.MethodMetadata.Class;
-        var assemblyName = classMetadata.Assembly.Name ?? metadata.TestClassType.Assembly.GetName().Name ?? "*";
+        var assemblyName = classMetadata.Assembly.Name ?? TypeOwner.Assembly(metadata.TestClassType).GetName().Name ?? "*";
         var namespaceName = classMetadata.Namespace ?? "*";
         var className = TestFilterService.GetNestedClassName(classMetadata);
         var methodName = metadata.TestMethodName;

@@ -197,7 +197,7 @@ internal static class TestIdentifierService
             while (currentType != null)
             {
                 typeHierarchy.Append(currentType);
-                currentType = currentType.DeclaringType;
+                currentType = TypeOwner.DeclaringType(currentType);
             }
 
             // Reverse to get outer-to-inner order (matches .NET Type.FullName convention for nested types).

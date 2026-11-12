@@ -72,10 +72,18 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
         Filter = filter;
         TestSessionId = context.Request.Session.SessionUid.Value;
 
+#if NETWASM
+        // The NetWasm host supplies these services itself; the platform's helpers expect its own service container.
+        var loggerFactory = (Microsoft.Testing.Platform.Logging.ILoggerFactory) frameworkServiceProvider.GetService(typeof(Microsoft.Testing.Platform.Logging.ILoggerFactory))!;
+        var outputDevice = (Microsoft.Testing.Platform.OutputDevice.IOutputDevice) frameworkServiceProvider.GetService(typeof(Microsoft.Testing.Platform.OutputDevice.IOutputDevice))!;
+        CommandLineOptions = (Microsoft.Testing.Platform.CommandLine.ICommandLineOptions) frameworkServiceProvider.GetService(typeof(Microsoft.Testing.Platform.CommandLine.ICommandLineOptions))!;
+        var configuration = (Microsoft.Testing.Platform.Configurations.IConfiguration) frameworkServiceProvider.GetService(typeof(Microsoft.Testing.Platform.Configurations.IConfiguration))!;
+#else
         var loggerFactory = frameworkServiceProvider.GetLoggerFactory();
         var outputDevice = frameworkServiceProvider.GetOutputDevice();
         CommandLineOptions = frameworkServiceProvider.GetCommandLineOptions();
         var configuration = frameworkServiceProvider.GetConfiguration();
+#endif
 
         TestContext.Configuration = new ConfigurationAdapter(configuration);
         TestContext.ResultsDirectory = configuration.GetTestResultDirectory();

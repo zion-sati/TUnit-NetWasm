@@ -331,9 +331,9 @@ internal static class DataGeneratorMetadataCreator
                 TypeInfo = new ConcreteType(type),
                 Name = TypeNameFormatter.GetNameWithoutGenericArity(type),
                 Namespace = type.Namespace ?? string.Empty,
-                Assembly = AssemblyMetadata.GetOrAdd(type.Assembly.GetName().Name ?? type.Assembly.GetName().FullName ?? "Unknown", () => new AssemblyMetadata
+                Assembly = AssemblyMetadata.GetOrAdd(TypeOwner.Assembly(type).GetName().Name ?? TypeOwner.Assembly(type).GetName().FullName ?? "Unknown", () => new AssemblyMetadata
                 {
-                    Name = type.Assembly.GetName().Name ?? type.Assembly.GetName().FullName ?? "Unknown"
+                    Name = TypeOwner.Assembly(type).GetName().Name ?? TypeOwner.Assembly(type).GetName().FullName ?? "Unknown"
                 }),
                 Properties = [],
                 Parameters = constructorParameters,

@@ -305,7 +305,7 @@ internal sealed class AotTestDataCollector : ITestDataCollector
         var attributes = new List<Attribute>(result.Attributes);
 
         attributes.AddRange(result.TestClassType.GetCustomAttributes());
-        attributes.AddRange(result.TestClassType.Assembly.GetCustomAttributes());
+        attributes.AddRange(TypeOwner.Assembly(result.TestClassType).GetCustomAttributes());
 
         return attributes.ToArray();
     }
@@ -414,7 +414,7 @@ internal sealed class AotTestDataCollector : ITestDataCollector
                 Namespace = type.Namespace ?? string.Empty,
                 Assembly = new AssemblyMetadata
                 {
-                    Name = type.Assembly.GetName().Name ?? "Unknown"
+                    Name = TypeOwner.Assembly(type).GetName().Name ?? "Unknown"
                 },
                 Parameters = [],
                 Properties = [],

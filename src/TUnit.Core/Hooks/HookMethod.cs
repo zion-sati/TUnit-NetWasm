@@ -1,3 +1,4 @@
+using TUnit.Core.Helpers;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using TUnit.Core.Extensions;
@@ -18,7 +19,7 @@ public abstract record HookMethod
 
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
     public abstract Type ClassType { get; }
-    public virtual Assembly? Assembly => ClassType?.Assembly;
+    public virtual Assembly? Assembly => ClassType is null ? null : TypeOwner.Assembly(ClassType);
 
     [field: AllowNull, MaybeNull]
     public IEnumerable<Attribute> Attributes => field ??= MethodInfo.GetCustomAttributes();

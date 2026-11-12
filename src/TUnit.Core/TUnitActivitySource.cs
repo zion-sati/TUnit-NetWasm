@@ -7,7 +7,11 @@ namespace TUnit.Core;
 public static partial class TUnitActivitySource
 {
     private static readonly string Version =
+#if NETWASM
+        NetWasmBuildInfo.Version;
+#else
         typeof(TUnitActivitySource).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+#endif
 
     internal const string SourceName = "TUnit";
     internal const string LifecycleSourceName = "TUnit.Lifecycle";

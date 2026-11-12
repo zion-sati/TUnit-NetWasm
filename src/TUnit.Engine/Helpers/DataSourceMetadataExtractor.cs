@@ -52,6 +52,10 @@ internal static class DataSourceMetadataExtractor
                 : new TestDataRowMetadata(arguments.DisplayName, null, arguments.Skip, arguments.Categories);
         }
 
+#if NETWASM
+        // No run-time member lookup: only TUnit's own sources, handled above, carry row metadata.
+        return null;
+#else
         // Property lookups are cached per type: this runs for every generated test row.
         var (displayNameProp, skipProp, categoriesProp) = MetadataProperties.GetOrAdd(dataSource.GetType(), LookupMetadataProperties);
 
@@ -70,6 +74,7 @@ internal static class DataSourceMetadataExtractor
         }
 
         return new TestDataRowMetadata(displayName, null, skip, categories);
+#endif
     }
 
     /// <summary>

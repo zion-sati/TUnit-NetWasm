@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using TUnit.Core.Helpers;
+using System.Collections.Concurrent;
 using System.Reflection;
 using Microsoft.Testing.Extensions.TrxReport.Abstractions;
 using Microsoft.Testing.Platform.Capabilities.TestFramework;
@@ -78,7 +79,7 @@ internal static class TestExtensions
 
             var methodIdentifier = new TestMethodIdentifierProperty(
                 @namespace: testDetails.MethodMetadata.Class.Type.Namespace ?? "",
-                assemblyFullName: GetCachedAssemblyFullName(testDetails.MethodMetadata.Class.Type.Assembly),
+                assemblyFullName: GetCachedAssemblyFullName(TypeOwner.Assembly(testDetails.MethodMetadata.Class.Type)),
                 typeName: testContext.GetClassTypeName(),
                 methodName: testDetails.MethodName,
                 parameterTypeFullNames: CreateParameterTypeArray(testDetails.MethodMetadata.Parameters),

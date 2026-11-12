@@ -216,7 +216,7 @@ internal static class TypeNameFormatter
     // whole chain on the innermost type, and each level's own arity is its backtick suffix.
     private static void AppendNamedType(StringBuilder builder, Type type, Type[] genericArguments, ref int argumentIndex)
     {
-        if (type.DeclaringType is { } declaringType)
+        if (TypeOwner.DeclaringType(type) is { } declaringType)
         {
             AppendNamedType(builder, declaringType, genericArguments, ref argumentIndex);
             builder.Append('.');

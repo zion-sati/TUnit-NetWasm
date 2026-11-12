@@ -437,6 +437,11 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
                 return flattened.Length > 0;
             }
 
+#if NETWASM
+            // No run-time member lookup: a type the generator did not register has no initializer properties to walk.
+            return false;
+#else
+
             foreach (var property in PropertyCacheManager.GetCachedProperties(t))
             {
                 if (typeof(IAsyncInitializer).IsAssignableFrom(property.PropertyType))
@@ -446,6 +451,7 @@ internal sealed class ObjectGraphDiscoverer : IObjectGraphTracker
             }
 
             return false;
+#endif
         });
 
     /// <summary>

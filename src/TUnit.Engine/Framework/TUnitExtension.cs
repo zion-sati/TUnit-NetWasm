@@ -8,7 +8,11 @@ internal class TUnitExtension : IExtension
 
     public string DisplayName => "TUnit";
 
+#if NETWASM
+    public string Version => NetWasmBuildInfo.Version;
+#else
     public string Version => typeof(TUnitExtension).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+#endif
 
     public string Description => "TUnit Framework for Microsoft Testing Platform";
 

@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using TUnit.Core.Helpers;
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
@@ -43,10 +44,10 @@ internal static class ClassMetadataHelper
                 Name = type.Name,
                 Namespace = type.Namespace ?? string.Empty,
                 Assembly = AssemblyMetadata.GetOrAdd(
-                    type.Assembly.GetName().Name ?? type.Assembly.GetName().FullName ?? "Unknown", 
+                    TypeOwner.Assembly(type).GetName().Name ?? TypeOwner.Assembly(type).GetName().FullName ?? "Unknown", 
                     () => new AssemblyMetadata
                     {
-                        Name = type.Assembly.GetName().Name ?? type.Assembly.GetName().FullName ?? "Unknown"
+                        Name = TypeOwner.Assembly(type).GetName().Name ?? TypeOwner.Assembly(type).GetName().FullName ?? "Unknown"
                     }),
                 Properties = [],
                 Parameters = constructorParameters,

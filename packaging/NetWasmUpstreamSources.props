@@ -7,4 +7,17 @@
     <DefineConstants>$(DefineConstants);NET;NETCOREAPP;NET5_0_OR_GREATER;NET6_0_OR_GREATER;NET7_0_OR_GREATER;NET8_0_OR_GREATER;NET9_0_OR_GREATER;NET10_0_OR_GREATER;NETCOREAPP1_0_OR_GREATER;NETCOREAPP1_1_OR_GREATER;NETCOREAPP2_0_OR_GREATER;NETCOREAPP2_1_OR_GREATER;NETCOREAPP2_2_OR_GREATER;NETCOREAPP3_0_OR_GREATER;NETCOREAPP3_1_OR_GREATER</DefineConstants>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+  <!-- TUnit reads its own version from its assembly's metadata, which NetWasm does not keep at run time. The build
+       records it as a constant instead. -->
+  <Target Name="NetWasmTUnitWriteBuildInfo" BeforeTargets="CoreCompile" Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <PropertyGroup>
+      <_NetWasmTUnitBuildInfoFile>$(IntermediateOutputPath)NetWasmBuildInfo.g.cs</_NetWasmTUnitBuildInfoFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_NetWasmTUnitBuildInfoFile)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="namespace $(RootNamespace)%3B;internal static class NetWasmBuildInfo { public const string Version = &quot;$(Version)&quot;%3B }" />
+    <ItemGroup>
+      <Compile Include="$(_NetWasmTUnitBuildInfoFile)" />
+      <FileWrites Include="$(_NetWasmTUnitBuildInfoFile)" />
+    </ItemGroup>
+  </Target>
 </Project>
