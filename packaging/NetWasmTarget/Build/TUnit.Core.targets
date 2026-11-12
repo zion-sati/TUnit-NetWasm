@@ -5,9 +5,4 @@
     <Using Include="TUnit.Core" />
   </ItemGroup>
 
-  <Target Name="ValidateNetWasmTUnitGenerationMode" BeforeTargets="CoreCompile">
-    <Error Condition="'$(TUnitSourceGenerationMode)' != 'ClosedWorldCatalog'"
-           Code="NWTUNIT001"
-           Text="NetWasm TUnit projects require TUnitSourceGenerationMode=ClosedWorldCatalog." />
-  </Target>
 </Project>

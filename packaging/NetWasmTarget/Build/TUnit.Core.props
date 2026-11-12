@@ -3,7 +3,8 @@
   <PropertyGroup>
     <TUnitImplicitUsings Condition="'$(TUnitImplicitUsings)' == ''">true</TUnitImplicitUsings>
     <EnableTUnitSourceGeneration Condition="'$(EnableTUnitSourceGeneration)' == ''">true</EnableTUnitSourceGeneration>
-    <TUnitSourceGenerationMode Condition="'$(TUnitSourceGenerationMode)' == ''">ClosedWorldCatalog</TUnitSourceGenerationMode>
+    <!-- Upstream's source-generated metadata, which TUnit's engine runs on NetWasm as on desktop. -->
+    <TUnitSourceGenerationMode Condition="'$(TUnitSourceGenerationMode)' == ''">Desktop</TUnitSourceGenerationMode>
   </PropertyGroup>
 
   <ItemGroup>
