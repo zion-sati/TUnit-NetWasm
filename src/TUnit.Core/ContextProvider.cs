@@ -1,5 +1,4 @@
-﻿using TUnit.Core.Helpers;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using TUnit.Core.Services;
@@ -96,7 +95,7 @@ internal class ContextProvider(IServiceProvider serviceProvider, string testSess
         // See GetOrCreateAssemblyContext: a lost GetOrAdd race would leave an orphaned class
         // context in AssemblyHookContext.TestClasses. The assembly context is resolved before
         // taking _creationLock on purpose, so the assembly and class paths never nest the lock.
-        var assemblyContext = GetOrCreateAssemblyContext(TypeOwner.Assembly(classType));
+        var assemblyContext = GetOrCreateAssemblyContext(classType.Assembly);
 
         lock (_creationLock)
         {

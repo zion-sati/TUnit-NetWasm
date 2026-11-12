@@ -124,10 +124,6 @@ public static class DataSourceHelpers
             return null;
         }
 
-#if NETWASM
-        // No generic definitions or dynamic invocation at run time: a factory of a reference type is a Func<object?>.
-        return value is Func<object?> factory ? factory() : value;
-#else
         var type = value.GetType();
         if(type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Func<>))
         {
@@ -135,7 +131,6 @@ public static class DataSourceHelpers
         }
 
         return value;
-#endif
     }
 
     /// <summary>

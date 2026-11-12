@@ -1,4 +1,3 @@
-using TUnit.Core.Helpers;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -125,18 +124,18 @@ internal class TestExecutor
         // it re-applies the same captured contexts).
         test.Context.ClassContext.AssemblyContext.TestSessionContext.RestoreExecutionContext();
 
-        var hasAssemblyHooks = HasAssemblyHooks(TypeOwner.Assembly(testClass));
+        var hasAssemblyHooks = HasAssemblyHooks(testClass.Assembly);
         if (hasAssemblyHooks)
         {
             await _beforeHookTaskCache.GetOrCreateBeforeAssemblyTask(
-                TypeOwner.Assembly(testClass),
+                testClass.Assembly,
                 _beforeAssemblyHookFactory,
                 cancellationToken).ConfigureAwait(false);
         }
 #if NET
         else
         {
-            _hookExecutor.TryStartAssemblyActivity(TypeOwner.Assembly(testClass));
+            _hookExecutor.TryStartAssemblyActivity(testClass.Assembly);
         }
 #endif
 
@@ -169,7 +168,7 @@ internal class TestExecutor
         executableTest.Context.InitializeTestCancellation(cancellationToken);
 
         var testClass = executableTest.Metadata.TestClassType;
-        var testAssembly = TypeOwner.Assembly(testClass);
+        var testAssembly = testClass.Assembly;
         var hasSessionHooks = HasTestSessionHooks();
         var hasAssemblyHooks = HasAssemblyHooks(testAssembly);
         var hasClassHooks = HasClassHooks(testClass);

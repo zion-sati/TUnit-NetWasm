@@ -34,7 +34,7 @@ internal sealed class TestLifecycleCoordinator
 
         foreach (var test in testList)
         {
-            var assembly = TypeOwner.Assembly(test.Metadata.TestClassType);
+            var assembly = test.Metadata.TestClassType.Assembly;
             var assemblyCounter = _assemblyTestCounts.GetOrAdd(assembly, static _ => new Counter());
             assemblyCounter.Add(1);
 

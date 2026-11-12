@@ -52,7 +52,7 @@ internal readonly struct FilterHints
         // Check assembly name hint
         if (AssemblyName != null)
         {
-            var typeAssemblyName = TypeOwner.Assembly(type).GetName().Name;
+            var typeAssemblyName = type.Assembly.GetName().Name;
             if (typeAssemblyName != AssemblyName)
             {
                 return false;
@@ -444,7 +444,7 @@ internal sealed partial class MetadataFilterMatcher : IMetadataFilterMatcher
         }
 
         var classMetadata = metadata.MethodMetadata.Class;
-        var assemblyName = classMetadata.Assembly.Name ?? TypeOwner.Assembly(metadata.TestClassType).GetName().Name ?? "*";
+        var assemblyName = classMetadata.Assembly.Name ?? metadata.TestClassType.Assembly.GetName().Name ?? "*";
         var namespaceName = classMetadata.Namespace ?? "*";
         var className = TestFilterService.GetNestedClassName(classMetadata);
         var methodName = metadata.TestMethodName;

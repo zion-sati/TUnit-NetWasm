@@ -1,4 +1,3 @@
-using TUnit.Core.Helpers;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
@@ -25,7 +24,7 @@ public static class MetadataExtensions
         [
             ..method.GetReflectionInfo().GetCustomAttributesSafe(),
             ..method.Type.GetCustomAttributesSafe(),
-            ..TypeOwner.Assembly(method.Type).GetCustomAttributesSafe()
+            ..method.Type.Assembly.GetCustomAttributesSafe()
         ];
     }
 

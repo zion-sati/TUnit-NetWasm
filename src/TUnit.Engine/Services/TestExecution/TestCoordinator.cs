@@ -1,4 +1,3 @@
-using TUnit.Core.Helpers;
 using System.Linq;
 using TUnit.Core;
 using TUnit.Core.Exceptions;
@@ -253,7 +252,7 @@ internal sealed class TestCoordinator : ITestCoordinator
 #endif
 
             var testClass = test.Metadata.TestClassType;
-            var testAssembly = TypeOwner.Assembly(testClass);
+            var testAssembly = testClass.Assembly;
             var hookExceptions = await _testExecutor.ExecuteAfterClassAssemblyHooks(test, testClass, testAssembly, CancellationToken.None).ConfigureAwait(false);
 
             if (hookExceptions is { Count: > 0 })

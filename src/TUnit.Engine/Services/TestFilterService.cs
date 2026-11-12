@@ -1,6 +1,5 @@
 ﻿#pragma warning disable TPEXP
 
-using TUnit.Core.Helpers;
 using System.Collections.Concurrent;
 using Microsoft.Testing.Platform.Extensions.Messages;
 using Microsoft.Testing.Platform.Requests;
@@ -333,7 +332,7 @@ internal class TestFilterService(TUnitFrameworkLogger logger, TestArgumentRegist
         var metadata = test.Metadata;
 
         var classMetadata = test.Context.Metadata.TestDetails.MethodMetadata.Class;
-        var assemblyName = classMetadata.Assembly.Name ?? TypeOwner.Assembly(metadata.TestClassType).GetName().Name ?? "*";
+        var assemblyName = classMetadata.Assembly.Name ?? metadata.TestClassType.Assembly.GetName().Name ?? "*";
         var namespaceName = classMetadata.Namespace ?? "*";
         var classTypeName = GetNestedClassName(classMetadata);
 

@@ -1,5 +1,4 @@
-﻿using TUnit.Core.Helpers;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Reflection;
 #if !NETWASM // NetWasm builds no TRX report, so the engine names no TRX types there.
 using Microsoft.Testing.Extensions.TrxReport.Abstractions;
@@ -87,7 +86,7 @@ internal static class TestExtensions
 
             var methodIdentifier = new TestMethodIdentifierProperty(
                 @namespace: testDetails.MethodMetadata.Class.Type.Namespace ?? "",
-                assemblyFullName: GetCachedAssemblyFullName(TypeOwner.Assembly(testDetails.MethodMetadata.Class.Type)),
+                assemblyFullName: GetCachedAssemblyFullName(testDetails.MethodMetadata.Class.Type.Assembly),
                 typeName: testContext.GetClassTypeName(),
                 methodName: testDetails.MethodName,
                 parameterTypeFullNames: CreateParameterTypeArray(testDetails.MethodMetadata.Parameters),
