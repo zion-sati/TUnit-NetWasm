@@ -6,7 +6,3 @@
 # Reads JSON with ReadFromJsonAsync<T>() without a JsonTypeInfo, the reflection-based serializer NetWasm does not
 # provide.
 AsyncMapTests.cs
-
-# Awaits a signal the asserted delegate sends. When the assertion fails before it runs the delegate, as the compiler's
-# generic-cycle cutoff can make it fail for some programs, the test waits forever.
-test ConcurrentAssertMultipleTests.SuccessfulPreWorkDoesNotSkipItemAssertionAfterConcurrentFailure
