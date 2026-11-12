@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TUnitImplicitUsings Condition="'$(TUnitImplicitUsings)' == ''">true</TUnitImplicitUsings>
     <EnableTUnitSourceGeneration Condition="'$(EnableTUnitSourceGeneration)' == ''">true</EnableTUnitSourceGeneration>
+    <!-- TUnit names tests, their classes and their data by their types' names, which a NetWasm program reads from its
+         type-symbols sidecar; NetWasm writes one by default only in Debug. -->
+    <NetWasmTypeNames Condition="'$(NetWasmTypeNames)' == ''">true</NetWasmTypeNames>
   </PropertyGroup>
 
   <ItemGroup>
