@@ -1,84 +1,136 @@
+using Microsoft.Testing.Extensions.TrxReport.Abstractions;
+using Microsoft.Testing.Platform.Extensions.Messages;
+using Microsoft.Testing.Platform.Requests;
 using NetWasm.TUnit.Runner.Hosting;
 using NetWasm.TUnit.Runner.Model;
-using TUnit.Core;
+using TUnit.Assertions.Exceptions;
+using static NetWasm.TUnit.Runner.Tests.ScriptedTestFramework;
 
 namespace NetWasm.TUnit.Runner.Tests;
 
+// The host turns the engine's test nodes into the guest protocol and statuses the VSTest adapter reads.
 public sealed class TestApplicationTests
 {
+    private static CancellationToken Cancellation => Xunit.TestContext.Current.CancellationToken;
+
     [Fact]
-    public async Task ListWritesTheGeneratedCatalogInStableOrder()
+    public async Task ListWritesEachDiscoveredTestWithItsTraits()
     {
+        var framework = new ScriptedTestFramework(_ =>
+        [
+            Node(
+                "a",
+                DiscoveredTestNodeStateProperty.CachedInstance,
+                new TestMethodIdentifierProperty("Tests", "Space", "Fixture", "Adds", 0, [], "System.Void"),
+                new TestFileLocationProperty("/src/Fixture.cs", new LinePositionSpan(new LinePosition(12, -1), new LinePosition(12, -1))),
+                new TrxCategoriesProperty(["fast"]),
+                new TestMetadataProperty("fast"),
+                new TestMetadataProperty("owner", "core")),
+        ]);
         var sink = new RecordingEventSink();
 
-        var status = await TestApplication.RunAsync(Catalog("b", "a"), ["--list"], sink, Xunit.TestContext.Current.CancellationToken);
+        var status = await TestApplication.RunAsync(["--list"], _ => framework, sink, TextWriter.Null, Cancellation);
 
         XunitAssert.Equal(0, status);
+        XunitAssert.IsType<DiscoverTestExecutionRequest>(XunitAssert.Single(framework.Requests));
+        XunitAssert.True(framework.SessionClosed);
         XunitAssert.Collection(
             sink.Events,
             protocol => XunitAssert.Equal(2, XunitAssert.IsType<ProtocolVersionEvent>(protocol).Version),
-            first => XunitAssert.Equal("a", XunitAssert.IsType<CatalogEntryEvent>(first).StableId),
-            second => XunitAssert.Equal("b", XunitAssert.IsType<CatalogEntryEvent>(second).StableId),
-            result => XunitAssert.Equal(0, XunitAssert.IsType<HostResultEvent>(result).Status));
+            entry => XunitAssert.Equal(
+                new CatalogEntryEvent("a", "a", "Space.Fixture.Adds", "/src/Fixture.cs", 12),
+                XunitAssert.IsType<CatalogEntryEvent>(entry)),
+            category => XunitAssert.Equal(new CatalogTraitEvent("a", "TestCategory", "fast"), category),
+            property => XunitAssert.Equal(new CatalogTraitEvent("a", "Property", "owner=core"), property),
+            result => XunitAssert.Equal(new HostResultEvent(0, "listed=1"), result));
     }
 
     [Fact]
-    public async Task RunExecutesOnlyTheRequestedStableIds()
+    public async Task RunFiltersTheEngineByTheSelectedIds()
     {
-        var invoked = new List<string>();
-        var catalog = new SourceGeneratedTestCatalog(
+        var framework = new ScriptedTestFramework(_ =>
         [
-            TestCaseFactory.Create("a", invoke: (_, _) => Record("a")),
-            TestCaseFactory.Create("b", invoke: (_, _) => Record("b")),
+            Node("b", InProgressTestNodeStateProperty.CachedInstance),
+            Node("b", PassedTestNodeStateProperty.CachedInstance),
         ]);
         var sink = new RecordingEventSink();
 
-        var status = await TestApplication.RunAsync(catalog, ["--id", "b"], sink, Xunit.TestContext.Current.CancellationToken);
+        var status = await TestApplication.RunAsync(["--id", "b"], _ => framework, sink, TextWriter.Null, Cancellation);
 
         XunitAssert.Equal(0, status);
-        XunitAssert.Equal(["b"], invoked);
-        XunitAssert.IsType<RunCompletedEvent>(sink.Events[^1]);
-        return;
-
-        ValueTask Record(string stableId)
-        {
-            invoked.Add(stableId);
-            return ValueTask.CompletedTask;
-        }
+        var request = XunitAssert.IsType<RunTestExecutionRequest>(XunitAssert.Single(framework.Requests));
+        var filter = XunitAssert.IsType<TestNodeUidListFilter>(request.Filter);
+        XunitAssert.Equal(["b"], filter.TestNodeUids.Select(static uid => uid.Value));
+        XunitAssert.Collection(
+            sink.Events,
+            protocol => XunitAssert.IsType<ProtocolVersionEvent>(protocol),
+            started => XunitAssert.Equal(1, XunitAssert.IsType<RunStartedEvent>(started).SelectedCount),
+            testStarted => XunitAssert.Equal("b", XunitAssert.IsType<TestStartedEvent>(testStarted).StableId),
+            completed => XunitAssert.Equal(TestOutcome.Passed, XunitAssert.IsType<TestCompletedEvent>(completed).Result.Outcome),
+            runCompleted => XunitAssert.Equal(1, XunitAssert.IsType<RunCompletedEvent>(runCompleted).Result.PassedCount));
     }
 
     [Fact]
-    public async Task ListIncludesExplicitButHidesNotDiscoverableCases()
+    public async Task RunAllSelectsNoTests()
     {
-        var sink = new RecordingEventSink();
-        var catalog = new SourceGeneratedTestCatalog([
-            TestCaseFactory.Create("ordinary"),
-            TestCaseFactory.Create("explicit", isExplicit: true),
-            TestCaseFactory.Create("hidden", isNotDiscoverable: true),
-        ]);
+        var framework = new ScriptedTestFramework(_ => [Node("a", PassedTestNodeStateProperty.CachedInstance)]);
 
-        var status = await TestApplication.RunAsync(catalog, ["--list"], sink, Xunit.TestContext.Current.CancellationToken);
+        var status = await TestApplication.RunAsync([], _ => framework, new RecordingEventSink(), TextWriter.Null, Cancellation);
 
         XunitAssert.Equal(0, status);
-        var listedIds = sink.Events
-            .OfType<CatalogEntryEvent>()
-            .Select(static entry => entry.StableId)
-            .ToArray();
-        XunitAssert.Equal(["explicit", "ordinary"], listedIds);
-        XunitAssert.Equal("listed=2", XunitAssert.IsType<HostResultEvent>(sink.Events[^1]).Message);
+        // Without a filter the platform's request carries its no-op filter.
+        XunitAssert.IsNotType<TestNodeUidListFilter>(
+            XunitAssert.IsType<RunTestExecutionRequest>(XunitAssert.Single(framework.Requests)).Filter);
     }
 
     [Fact]
-    public async Task RunReturnsFailureWhenASelectedCaseThrows()
+    public async Task FinalStatesMapToTheProtocolOutcomes()
     {
-        var catalog = new SourceGeneratedTestCatalog(
+        var framework = new ScriptedTestFramework(_ =>
         [
-            TestCaseFactory.Create(
-                "failure",
-                invoke: static (_, _) => ValueTask.FromException(new InvalidOperationException("expected"))),
+            Node("assertion", new FailedTestNodeStateProperty(new AssertionException("expected 1"), "failed")),
+            Node("unsupported", new ErrorTestNodeStateProperty(new PlatformNotSupportedException("no threads"), "error")),
+            Node("unexpected", new ErrorTestNodeStateProperty(new InvalidOperationException("boom"), "error")),
+            Node("skipped", new SkippedTestNodeStateProperty("not on WASI")),
+            Node("timeout", new TimeoutTestNodeStateProperty("took too long")),
+            Node("wrapped", new FailedTestNodeStateProperty(
+                new global::TUnit.Engine.Exceptions.TestFailedException(new PlatformNotSupportedException("inner")), "failed")),
         ]);
+        var sink = new RecordingEventSink();
 
-        var status = await TestApplication.RunAsync(catalog, ["--run"], new RecordingEventSink(), Xunit.TestContext.Current.CancellationToken);
+        var status = await TestApplication.RunAsync(["--run"], _ => framework, sink, TextWriter.Null, Cancellation);
+
+        XunitAssert.Equal(1, status);
+        var outcomes = sink.Events.OfType<TestCompletedEvent>().ToDictionary(static e => e.Result.StableId, static e => e.Result);
+        XunitAssert.Equal(TestOutcome.AssertionFailed, outcomes["assertion"].Outcome);
+        XunitAssert.Equal("expected 1", outcomes["assertion"].Message);
+        XunitAssert.Equal(TestOutcome.Unsupported, outcomes["unsupported"].Outcome);
+        XunitAssert.Equal(TestOutcome.UnexpectedFailure, outcomes["unexpected"].Outcome);
+        XunitAssert.Equal(TestOutcome.Skipped, outcomes["skipped"].Outcome);
+        XunitAssert.Equal("not on WASI", outcomes["skipped"].Message);
+        XunitAssert.Equal(TestOutcome.TimedOut, outcomes["timeout"].Outcome);
+        XunitAssert.Equal(TestOutcome.Unsupported, outcomes["wrapped"].Outcome);
+        XunitAssert.Equal("inner", outcomes["wrapped"].Message);
+    }
+
+    [Fact]
+    public async Task ASelectedIdTheEngineDoesNotRunIsASetupFailure()
+    {
+        var framework = new ScriptedTestFramework(_ => []);
+        var sink = new RecordingEventSink();
+
+        var status = await TestApplication.RunAsync(["--id", "missing"], _ => framework, sink, TextWriter.Null, Cancellation);
+
+        XunitAssert.Equal(2, status);
+        XunitAssert.Equal(2, XunitAssert.IsType<HostResultEvent>(sink.Events[^1]).Status);
+    }
+
+    [Fact]
+    public async Task AFailedSessionFailsTheRun()
+    {
+        var framework = new ScriptedTestFramework(_ => [Node("a", PassedTestNodeStateProperty.CachedInstance)], sessionSucceeds: false);
+
+        var status = await TestApplication.RunAsync([], _ => framework, new RecordingEventSink(), TextWriter.Null, Cancellation);
 
         XunitAssert.Equal(1, status);
     }
@@ -88,68 +140,48 @@ public sealed class TestApplicationTests
     {
         var sink = new RecordingEventSink();
 
-        var status = await TestApplication.RunAsync(Catalog("a"), ["--unknown"], sink, Xunit.TestContext.Current.CancellationToken);
+        var status = await TestApplication.RunAsync(
+            ["--unknown"],
+            _ => new ScriptedTestFramework(_ => []),
+            sink,
+            TextWriter.Null,
+            Cancellation);
 
         XunitAssert.Equal(2, status);
-        AssertSetupFailure(sink);
+        XunitAssert.Equal(2, XunitAssert.IsType<HostResultEvent>(sink.Events[^1]).Status);
     }
 
     [Fact]
-    public async Task EmptyCatalogReturnsSetupFailure()
+    public async Task AFrameworkThatCannotStartIsASetupFailure()
     {
-        var sink = new RecordingEventSink();
-
-        var status = await TestApplication.RunAsync(new SourceGeneratedTestCatalog([]), ["--run"], sink, Xunit.TestContext.Current.CancellationToken);
-
-        XunitAssert.Equal(2, status);
-        AssertSetupFailure(sink);
-    }
-
-    [Fact]
-    public async Task UnexpectedCatalogFailureReturnsSetupFailure()
-    {
-        var sink = new RecordingEventSink();
-
-        var status = await TestApplication.RunAsync(new ThrowingCatalog(), ["--run"], sink, Xunit.TestContext.Current.CancellationToken);
-
-        XunitAssert.Equal(2, status);
-        var result = AssertSetupFailure(sink);
-        XunitAssert.Equal(2, result.Status);
-        XunitAssert.Equal("host-setup-failure", result.Message);
-    }
-
-    [Fact]
-    public async Task CancellationReturnsHostInterruptionStatus()
-    {
-        using var source = new CancellationTokenSource();
-        source.Cancel();
         var sink = new RecordingEventSink();
 
         var status = await TestApplication.RunAsync(
-            Catalog("a"),
-            ["--run"],
+            [],
+            _ => throw new InvalidOperationException("no engine"),
             sink,
-            source.Token);
+            TextWriter.Null,
+            Cancellation);
+
+        XunitAssert.Equal(2, status);
+        XunitAssert.Equal(new HostResultEvent(2, "host-setup-failure"), sink.Events[^1]);
+    }
+
+    [Fact]
+    public async Task CancellationReturnsTheInterruptedStatus()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+        var sink = new RecordingEventSink();
+
+        var status = await TestApplication.RunAsync(
+            [],
+            _ => new ScriptedTestFramework(_ => [Node("a", PassedTestNodeStateProperty.CachedInstance)]),
+            sink,
+            TextWriter.Null,
+            cancellation.Token);
 
         XunitAssert.Equal(3, status);
-        XunitAssert.Equal(3, XunitAssert.IsType<HostResultEvent>(sink.Events[^1]).Status);
-    }
-
-    private static SourceGeneratedTestCatalog Catalog(params string[] stableIds) =>
-        new(stableIds.Select(stableId => TestCaseFactory.Create(stableId)));
-
-    private static HostResultEvent AssertSetupFailure(RecordingEventSink sink)
-    {
-        XunitAssert.Collection(
-            sink.Events,
-            protocol => XunitAssert.Equal(2, XunitAssert.IsType<ProtocolVersionEvent>(protocol).Version),
-            result => XunitAssert.Equal(2, XunitAssert.IsType<HostResultEvent>(result).Status));
-        return XunitAssert.IsType<HostResultEvent>(sink.Events[^1]);
-    }
-
-    private sealed class ThrowingCatalog : ITestEntryCatalog
-    {
-        public IReadOnlyList<GeneratedTestCase> GetGeneratedCases() =>
-            throw new InvalidOperationException("catalog is unavailable");
+        XunitAssert.Equal(new HostResultEvent(3, "interrupted"), sink.Events[^1]);
     }
 }
