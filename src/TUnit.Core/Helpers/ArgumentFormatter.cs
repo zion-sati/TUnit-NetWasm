@@ -148,12 +148,7 @@ public static class ArgumentFormatter
             return str.Replace(".", "·");
         }
 
-#if NETWASM
-        // NetWasm keeps no assembly metadata at run time, so only the default ToString (the full name) is recognized.
-        if (toString == type.FullName)
-#else
         if (toString == type.FullName || toString == type.AssemblyQualifiedName)
-#endif
         {
             return type.Name;
         }
