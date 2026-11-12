@@ -49,11 +49,12 @@ behave as upstream's do. The VSTest adapter starts the program to list and run t
   TUnit's engine exceeds WebAssembly's function size limit (NW1013). Pass
   `-p:NetWasmOptimization=O0` to a Release build.
 - A large test project can stop at O0 with NW1014, "Cannot allocate a buffer of size
-  2147483592": its compiled units exceed the compiler's 2 GB store. Build it with
+  2147483592": its compiled units exceed the compiler's 2 GB store
+  ([NetWasm#229](https://github.com/zion-sati/NetWasm/issues/229)). Build it with
   `-p:NetWasmCompiledUnits=false`, or split it.
 - `Satisfies` on a collection item that is itself a collection, such as
   `LastItem().Satisfies(item => item.Count().IsEqualTo(3))` for a list of lists, does
-  not compile yet (NW1003).
+  not compile yet ([NetWasm#228](https://github.com/zion-sati/NetWasm/issues/228)).
 - Assertions that need reflection throw `PlatformNotSupportedException`: structural
   equivalence (`IsEquivalentTo` on objects), equality between different types
   through conversion operators, `IsParsableInto` and `WhenParsedInto`, `Type`

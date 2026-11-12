@@ -104,8 +104,9 @@ for index, bucket in enumerate(buckets):
     print(f'Shard{index}: {len(bucket)} test files')
 PY
 
-# A whole shard is large for an O0 build: its compiled units would exceed the unit store's 2 GB segment, so the
-# run builds without them. Edits are not served from a cache here anyway.
+# A whole shard is large for an O0 build: its compiled units would exceed the unit store's 2 GB segment
+# (https://github.com/zion-sati/NetWasm/issues/229), so the run builds without them. Edits are not served from a
+# cache here anyway.
 properties=(-c Release "-p:NetWasmOptimization=${OPTIMIZATION}" -p:NetWasmCompiledUnits=false)
 summary="${run_root}/summary.txt"
 : > "${summary}"
