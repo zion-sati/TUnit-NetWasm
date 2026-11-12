@@ -57,18 +57,18 @@ public static class TestContextExtensions
     /// </summary>
     internal static string? GetNestedTypePrefix(Type type)
     {
-        if (TypeOwner.DeclaringType(type) == null)
+        if (type.DeclaringType == null)
         {
             return null;
         }
 
         // Walk the declaring type chain and build the hierarchy
         var hierarchy = new List<string>();
-        var current = TypeOwner.DeclaringType(type);
+        var current = type.DeclaringType;
         while (current != null)
         {
             hierarchy.Add(current.Name);
-            current = TypeOwner.DeclaringType(current);
+            current = current.DeclaringType;
         }
 
         hierarchy.Reverse();

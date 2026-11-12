@@ -337,7 +337,7 @@ internal sealed partial class MetadataFilterMatcher : IMetadataFilterMatcher
     private static string BuildClassNameForMatching(Type type)
     {
         // Fast path: non-nested, non-generic types
-        if (TypeOwner.DeclaringType(type) == null && !type.IsGenericType)
+        if (type.DeclaringType == null && !type.IsGenericType)
         {
             return type.Name;
         }
@@ -352,7 +352,7 @@ internal sealed partial class MetadataFilterMatcher : IMetadataFilterMatcher
             while (currentType != null)
             {
                 typeHierarchy.Append(currentType);
-                currentType = TypeOwner.DeclaringType(currentType);
+                currentType = currentType.DeclaringType;
             }
 
             // Reverse to get outer-to-inner order and join with '+'.
