@@ -1,4 +1,3 @@
-using Microsoft.Testing.Extensions.TrxReport.Abstractions;
 using Microsoft.Testing.Platform.Extensions.Messages;
 using Microsoft.Testing.Platform.Messages;
 using NetWasm.TUnit.Runner.Model;
@@ -8,7 +7,8 @@ namespace NetWasm.TUnit.Runner.Hosting;
 
 /// <summary>
 /// Writes each test the engine discovers as a catalog record with its traits: categories as TestCategory and
-/// custom properties as Property name=value, as the VSTest adapter maps them.
+/// custom properties as Property name=value, as the VSTest adapter maps them. A [Property] with an empty value reads
+/// as a category, as TUnit's discovery publishes both the same way.
 /// </summary>
 public sealed class CatalogMessageBus(ITestEventSink sink) : IMessageBus
 {
@@ -34,21 +34,12 @@ public sealed class CatalogMessageBus(ITestEventSink sink) : IMessageBus
             string.IsNullOrEmpty(location?.FilePath) ? fullyQualifiedName : location.FilePath,
             location?.LineSpan.Start.Line ?? 0));
 
-        var categories = node.Properties.SingleOrDefault<TrxCategoriesProperty>()?.Categories ?? [];
-        foreach (var category in categories)
-        {
-            sink.Write(new CatalogTraitEvent(node.Uid.Value, "TestCategory", category));
-        }
-
+        // TUnit publishes a category as metadata with no value, and a [Property] as its name and value.
         foreach (var metadata in node.Properties.OfType<TestMetadataProperty>())
         {
-            // A category is also published as metadata with no value.
-            if (metadata.Value.Length == 0 && Array.IndexOf(categories, metadata.Key) >= 0)
-            {
-                continue;
-            }
-
-            sink.Write(new CatalogTraitEvent(node.Uid.Value, "Property", $"{metadata.Key}={metadata.Value}"));
+            sink.Write(metadata.Value.Length == 0
+                ? new CatalogTraitEvent(node.Uid.Value, "TestCategory", metadata.Key)
+                : new CatalogTraitEvent(node.Uid.Value, "Property", $"{metadata.Key}={metadata.Value}"));
         }
 
         return Task.CompletedTask;

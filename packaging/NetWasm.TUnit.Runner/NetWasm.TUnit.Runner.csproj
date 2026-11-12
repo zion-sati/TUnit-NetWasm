@@ -23,8 +23,5 @@
     <PackageReference Include="Microsoft.Testing.Platform" Version="[2.5.2]">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.5.2]">
-      <ExcludeAssets>Build;Analyzers</ExcludeAssets>
-    </PackageReference>
   </ItemGroup>
 </Project>

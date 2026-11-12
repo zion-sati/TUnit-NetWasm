@@ -1,4 +1,3 @@
-using Microsoft.Testing.Extensions.TrxReport.Abstractions;
 using Microsoft.Testing.Platform.Extensions.Messages;
 using Microsoft.Testing.Platform.Requests;
 using NetWasm.TUnit.Runner.Hosting;
@@ -23,7 +22,6 @@ public sealed class TestApplicationTests
                 DiscoveredTestNodeStateProperty.CachedInstance,
                 new TestMethodIdentifierProperty("Tests", "Space", "Fixture", "Adds", 0, [], "System.Void"),
                 new TestFileLocationProperty("/src/Fixture.cs", new LinePositionSpan(new LinePosition(12, -1), new LinePosition(12, -1))),
-                new TrxCategoriesProperty(["fast"]),
                 new TestMetadataProperty("fast"),
                 new TestMetadataProperty("owner", "core")),
         ]);
@@ -34,15 +32,14 @@ public sealed class TestApplicationTests
         XunitAssert.Equal(0, status);
         XunitAssert.IsType<DiscoverTestExecutionRequest>(XunitAssert.Single(framework.Requests));
         XunitAssert.True(framework.SessionClosed);
-        XunitAssert.Collection(
-            sink.Events,
-            protocol => XunitAssert.Equal(2, XunitAssert.IsType<ProtocolVersionEvent>(protocol).Version),
-            entry => XunitAssert.Equal(
-                new CatalogEntryEvent("a", "a", "Space.Fixture.Adds", "/src/Fixture.cs", 12),
-                XunitAssert.IsType<CatalogEntryEvent>(entry)),
-            category => XunitAssert.Equal(new CatalogTraitEvent("a", "TestCategory", "fast"), category),
-            property => XunitAssert.Equal(new CatalogTraitEvent("a", "Property", "owner=core"), property),
-            result => XunitAssert.Equal(new HostResultEvent(0, "listed=1"), result));
+        XunitAssert.Equal(2, XunitAssert.IsType<ProtocolVersionEvent>(sink.Events[0]).Version);
+        XunitAssert.Equal(new CatalogEntryEvent("a", "a", "Space.Fixture.Adds", "/src/Fixture.cs", 12), sink.Events[1]);
+        // A category is metadata with no value; a property has one. Their order is the property bag's.
+        XunitAssert.Equivalent(
+            new TestRunEvent[] { new CatalogTraitEvent("a", "TestCategory", "fast"), new CatalogTraitEvent("a", "Property", "owner=core") },
+            sink.Events.OfType<CatalogTraitEvent>().ToArray());
+        XunitAssert.Equal(new HostResultEvent(0, "listed=1"), sink.Events[^1]);
+        XunitAssert.Equal(5, sink.Events.Count);
     }
 
     [Fact]
