@@ -43,12 +43,31 @@ behave as upstream's do. The VSTest adapter starts the program to list and run t
 - TUnit's reflection mode is not available, nor are the reflection fallbacks of its
   source-generated mode. A custom data source attribute's `DisplayName`, `Skip` and
   `Categories` properties are not read; TUnit's own attributes are unaffected.
-- `[MatrixDataSource]` is not supported yet.
 - Test classes are treated as top-level types of the test program's assembly, so a
   nested test class is named without its enclosing class.
 - Test projects build at `NetWasmOptimization=O0` for now: an optimized build of
   TUnit's engine exceeds WebAssembly's function size limit (NW1013). Pass
   `-p:NetWasmOptimization=O0` to a Release build.
+- A large test project can stop at O0 with NW1014, "Cannot allocate a buffer of size
+  2147483592": its compiled units exceed the compiler's 2 GB store. Build it with
+  `-p:NetWasmCompiledUnits=false`, or split it.
+- `Satisfies` on a collection item that is itself a collection, such as
+  `LastItem().Satisfies(item => item.Count().IsEqualTo(3))` for a list of lists, does
+  not compile yet (NW1003).
+- Assertions that need reflection throw `PlatformNotSupportedException`: structural
+  equivalence (`IsEquivalentTo` on objects), equality between different types
+  through conversion operators, `IsParsableInto` and `WhenParsedInto`, `Type`
+  visibility and nesting assertions, and `Exception.TargetSite`.
+- `Member(x => x.Value, ...)` needs the member to be a primitive, an enum, a class or
+  an array; a `DateTime` or another struct is not supported by NetWasm's expression
+  interpreter.
+- WASI has no threads, processes or Unix file permissions, and NetWasm uses invariant
+  globalization, so assertions about those, and `CompletesWithin` on a delegate that
+  blocks, do not apply. Exceptions in Release builds carry no stack trace unless the
+  project sets `NetWasmManagedStackTrace=true`.
+
+`eng/netwasm-assertion-tests.sh` runs upstream's TUnit.Assertions tests on
+`netwasm0.1` and reports each failure class.
 
 ## Packages
 

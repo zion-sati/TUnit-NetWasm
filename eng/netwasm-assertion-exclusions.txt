@@ -1,0 +1,12 @@
+# Upstream TUnit.Assertions test files eng/netwasm-assertion-tests.sh leaves out, as paths under
+# tests/TUnit.Assertions.Tests, each after a comment giving its reason. A file belongs here only when it cannot
+# compile for netwasm0.1; tests that compile and fail stay in the run and are reported.
+
+# Reads JSON with ReadFromJsonAsync<T>() without a JsonTypeInfo, the reflection-based serializer NetWasm does not
+# provide.
+AsyncMapTests.cs
+
+# Satisfies<TSource> over collection items calls TSource.Create, a static abstract interface method, with a class
+# that is not sealed (CollectionAssertion<T> and kin). NetWasm's compiler does not resolve that call yet (NW1003).
+Bugs/Issue5706Tests.cs
+Bugs/Issue5778Tests.cs
