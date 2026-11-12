@@ -30,7 +30,8 @@
   <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <SignAssembly>false</SignAssembly>
-    <NoWarn>$(NoWarn);NU1510</NoWarn>
+    <!-- Upstream's library settings (eng/Library.props) accept these documentation-comment warnings. -->
+    <NoWarn>$(NoWarn);NU1510;CS1591;CS1570;CS1572;CS1573;CS1574;CS1584;CS1587;CS1658;CS1734;CS0419</NoWarn>
   </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
     <Compile Include="..\src\TUnit.Engine\**\*.cs"
@@ -49,7 +50,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="NetWasm.TUnit.Core" Version="[$(NetWasmTUnitPackageVersion)]" />
+    <!-- As upstream's project reference: Core's consumer build files (implicit usings) are not the engine's. -->
+    <PackageReference Include="NetWasm.TUnit.Core" Version="[$(NetWasmTUnitPackageVersion)]">
+      <ExcludeAssets>Build;BuildTransitive</ExcludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.5.2]" NoWarn="NU1701">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
@@ -73,6 +77,14 @@
     <None Include="$(MSBuildProjectDirectory)\..\src\TUnit.Engine\bin\$(Configuration)\net10.0\TUnit.Engine.xml"
           Pack="true" PackagePath="lib/net10.0/TUnit.Engine.xml" Visible="false" />
   </ItemGroup>
+
+  <!-- Upstream builds the engine without TUnit.Core's analyzers and source generator, which are for test projects.
+       NuGet still resolves them from the package reference despite ExcludeAssets, so they are removed here. -->
+  <Target Name="NetWasmTUnitRemoveCoreAnalyzers" AfterTargets="ResolveLockFileAnalyzers" Condition="'$(TargetFramework)' == 'netwasm0.1'">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.NuGetPackageId)' == 'NetWasm.TUnit.Core'" />
+    </ItemGroup>
+  </Target>
 
   <Target Name="BuildForkEngine" BeforeTargets="GenerateNuspec" Condition="'$(NoBuild)' != 'true'">
     <MSBuild Projects="$(MSBuildProjectDirectory)\..\src\TUnit.Engine\TUnit.Engine.csproj"
