@@ -68,18 +68,16 @@ public class InfrastructureGenerator : IIncrementalGenerator
             .Select((compilation, _) => memo.GetAssemblyInfo(compilation))
             .WithTrackingName(ExtractAssemblyInfoStep)
             .Combine(enabledProvider);
-        var netWasmProvider = context.ParseOptionsProvider
-            .Select(static (options, _) => options.PreprocessorSymbolNames.Contains("NETWASM"));
 
-        context.RegisterSourceOutput(assemblyInfoProvider.Combine(netWasmProvider), (sourceContext, data) =>
+        context.RegisterSourceOutput(assemblyInfoProvider, (sourceContext, data) =>
         {
-            var ((assemblyInfo, isEnabled), isNetWasm) = data;
+            var (assemblyInfo, isEnabled) = data;
             if (!isEnabled)
             {
                 return;
             }
 
-            GenerateCode(sourceContext, assemblyInfo, isNetWasm);
+            GenerateCode(sourceContext, assemblyInfo);
         });
     }
 
@@ -494,7 +492,7 @@ public class InfrastructureGenerator : IIncrementalGenerator
         }
     }
 
-    private static void GenerateCode(SourceProductionContext context, AssemblyInfoModel model, bool isNetWasm)
+    private static void GenerateCode(SourceProductionContext context, AssemblyInfoModel model)
     {
         var sourceBuilder = new CodeWriter();
 
@@ -597,16 +595,6 @@ public class InfrastructureGenerator : IIncrementalGenerator
                 {
                     sourceBuilder.AppendLine($"global::System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(global::TUnit.Generated.{shell}).TypeHandle);");
                 }
-
-                if (isNetWasm)
-                {
-                    // NetWasm does not yet run these shells' initializers for RunClassConstructor; reading one
-                    // of their static fields does.
-                    foreach (var shell in RegistrationShells)
-                    {
-                        sourceBuilder.AppendLine($"_ = global::TUnit.Generated.{shell}.NetWasmInitialized;");
-                    }
-                }
                 sourceBuilder.AppendLine();
 
                 sourceBuilder.AppendLine("try");
@@ -630,9 +618,7 @@ public class InfrastructureGenerator : IIncrementalGenerator
         foreach (var shell in RegistrationShells)
         {
             sourceBuilder.AppendLine("[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute]");
-            sourceBuilder.AppendLine(isNetWasm
-                ? $"internal static partial class {shell} {{ internal static readonly bool NetWasmInitialized = true; }}"
-                : $"internal static partial class {shell} {{ }}");
+            sourceBuilder.AppendLine($"internal static partial class {shell} {{ }}");
         }
         sourceBuilder.Unindent();
         sourceBuilder.AppendLine("}");
