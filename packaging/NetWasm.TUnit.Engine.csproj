@@ -30,15 +30,15 @@
   <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <SignAssembly>false</SignAssembly>
-    <!-- Microsoft.Testing.Platform and System.Threading.Channels restore their .NET Standard assets. -->
-    <NoWarn>$(NoWarn);NU1510;NU1701</NoWarn>
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
   </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
     <Compile Include="..\src\TUnit.Engine\**\*.cs"
              Exclude="..\src\TUnit.Engine\obj\**\*;..\src\TUnit.Engine\bin\**\*" />
     <Compile Include="..\src\TUnit.Core.SourceGenerator\Helpers\GenericMethodInferencePolicy.cs" Link="Discovery\GenericMethodInferencePolicy.cs" />
     <Compile Include="..\src\TUnit.Core.SourceGenerator\Helpers\GenericClassInferencePolicy.cs" Link="Discovery\GenericClassInferencePolicy.cs" />
-    <PackageReference Include="System.Threading.Channels" Version="[9.0.0]" />
+    <!-- Restored from its .NET Standard asset, as is the TRX abstractions package below. -->
+    <PackageReference Include="System.Threading.Channels" Version="[9.0.0]" NoWarn="NU1701" />
   </ItemGroup>
   <Import Project="NetWasmUpstreamSources.props" />
 
@@ -50,7 +50,7 @@
 
   <ItemGroup>
     <PackageReference Include="NetWasm.TUnit.Core" Version="[$(NetWasmTUnitPackageVersion)]" />
-    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.5.2]">
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.5.2]" NoWarn="NU1701">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Testing.Platform" Version="[2.5.2]">
