@@ -779,7 +779,11 @@ internal static class TUnit_TestProject_Bugs__7222_ClassRowsGenerateGenericTestA
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7222.ClassRowsGenerateGenericTestArityTests<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,
@@ -1176,7 +1180,11 @@ internal static class TUnit_TestProject_Bugs__7222_BroadSourceOnGenericClassRowT
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7222.BroadSourceOnGenericClassRowTests<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,
@@ -1334,7 +1342,11 @@ internal static class TUnit_TestProject_Bugs__7222_BroadSourceJoinsClassRowTests
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7222.BroadSourceJoinsClassRowTests<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,

@@ -19,7 +19,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceField
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceFieldTests).GetProperty("PropertyRows", typeof(global::System.Collections.Generic.IEnumerable<int>)),
+                #endif
                 Type = typeof(global::System.Collections.Generic.IEnumerable<int>),
                 Name = "PropertyRows",
                 IsStatic = false,

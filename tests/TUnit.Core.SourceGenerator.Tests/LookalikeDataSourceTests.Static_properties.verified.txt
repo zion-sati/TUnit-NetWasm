@@ -33,7 +33,11 @@ namespace TUnit.Core.Generated
                 Name = "Value",
                 Type = typeof(string),
                 IsStatic = true,
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("Value", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Static),
+                #endif
                 Getter = _ => global::TUnit.TestProject.LookalikeDataSourceTests.Value,
                 ClassMetadata = containingTypeMetadata,
                 ContainingTypeMetadata = containingTypeMetadata
@@ -90,7 +94,11 @@ namespace TUnit.Core.Generated
                 Name = "OtherValue",
                 Type = typeof(string),
                 IsStatic = true,
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("OtherValue", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Static),
+                #endif
                 Getter = _ => global::TUnit.TestProject.LookalikeDataSourceTests.OtherValue,
                 ClassMetadata = containingTypeMetadata,
                 ContainingTypeMetadata = containingTypeMetadata
@@ -147,7 +155,11 @@ namespace TUnit.Core.Generated
                 Name = "DerivedProperty",
                 Type = typeof(string),
                 IsStatic = true,
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("DerivedProperty", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Static),
+                #endif
                 Getter = _ => global::TUnit.TestProject.LookalikeDataSourceTests.DerivedProperty,
                 ClassMetadata = containingTypeMetadata,
                 ContainingTypeMetadata = containingTypeMetadata

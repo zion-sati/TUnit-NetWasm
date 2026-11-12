@@ -19,7 +19,11 @@ internal static class TUnit_TestProject_Bugs__6657_CovariantPropertyOverrideTest
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._6657.CovariantPropertyOverrideTests).GetProperty("Thing", typeof(global::TUnit.TestProject.Bugs._6657.Thing)),
+                #endif
                 Type = typeof(global::TUnit.TestProject.Bugs._6657.Thing),
                 Name = "Thing",
                 IsStatic = false,

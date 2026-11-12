@@ -19,7 +19,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceMembe
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceMemberShapeTests).GetProperty("ObjectProperty", typeof(object)),
+                #endif
                 Type = typeof(object),
                 Name = "ObjectProperty",
                 IsStatic = false,
@@ -30,7 +34,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceMembe
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceMemberShapeTests).GetProperty("TupleRows", typeof(global::System.Collections.Generic.IEnumerable<global::System.ValueTuple<int, int>>)),
+                #endif
                 Type = typeof(global::System.Collections.Generic.IEnumerable<global::System.ValueTuple<int, int>>),
                 Name = "TupleRows",
                 IsStatic = false,
@@ -41,7 +49,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceMembe
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceMemberShapeTests).GetProperty("ReferenceTupleRows", typeof(global::System.Collections.Generic.IEnumerable<global::System.Tuple<int, int>>)),
+                #endif
                 Type = typeof(global::System.Collections.Generic.IEnumerable<global::System.Tuple<int, int>>),
                 Name = "ReferenceTupleRows",
                 IsStatic = false,
@@ -52,7 +64,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceMembe
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceMemberShapeTests).GetProperty("OneElementReferenceTupleRows", typeof(global::System.Collections.Generic.IEnumerable<global::System.Tuple<int>>)),
+                #endif
                 Type = typeof(global::System.Collections.Generic.IEnumerable<global::System.Tuple<int>>),
                 Name = "OneElementReferenceTupleRows",
                 IsStatic = false,
@@ -63,7 +79,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceMembe
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceMemberShapeTests).GetProperty("OneElementReferenceTupleOfNullRows", typeof(global::System.Collections.Generic.IEnumerable<global::System.Tuple<string>>)),
+                #endif
                 Type = typeof(global::System.Collections.Generic.IEnumerable<global::System.Tuple<string>>),
                 Name = "OneElementReferenceTupleOfNullRows",
                 IsStatic = false,
@@ -74,7 +94,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceMembe
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceMemberShapeTests).GetProperty("NullRows", typeof(object)),
+                #endif
                 Type = typeof(object),
                 Name = "NullRows",
                 IsStatic = false,
@@ -85,7 +109,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceMembe
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceMemberShapeTests).GetProperty("NullAsyncRows", typeof(global::System.Collections.Generic.IAsyncEnumerable<int>)),
+                #endif
                 Type = typeof(global::System.Collections.Generic.IAsyncEnumerable<int>),
                 Name = "NullAsyncRows",
                 IsStatic = false,
@@ -96,7 +124,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceMembe
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceMemberShapeTests).GetProperty("NonGenericValueTaskRows", typeof(global::System.Threading.Tasks.ValueTask)),
+                #endif
                 Type = typeof(global::System.Threading.Tasks.ValueTask),
                 Name = "NonGenericValueTaskRows",
                 IsStatic = false,
@@ -107,7 +139,11 @@ internal static class TUnit_TestProject_Bugs__7225_InstanceMethodDataSourceMembe
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7225.InstanceMethodDataSourceMemberShapeTests).GetProperty("StaticNonGenericTaskRows", typeof(global::System.Threading.Tasks.Task)),
+                #endif
                 Type = typeof(global::System.Threading.Tasks.Task),
                 Name = "StaticNonGenericTaskRows",
                 IsStatic = true,

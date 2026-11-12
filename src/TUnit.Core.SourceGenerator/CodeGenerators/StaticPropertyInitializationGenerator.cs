@@ -479,7 +479,12 @@ public class StaticPropertyInitializationGenerator : IIncrementalGenerator
         writer.AppendLine($"Name = \"{propertyName}\",");
         writer.AppendLine($"Type = typeof({propertyData.Property.GloballyQualifiedType}),");
         writer.AppendLine($"IsStatic = true,");
+        // NetWasm keeps no member metadata at run time (see MetadataGenerationHelper.WritePropertyMetadata).
+        writer.AppendLine("#if NETWASM");
+        writer.AppendLine("ReflectionInfo = null!,");
+        writer.AppendLine("#else");
         writer.AppendLine($"ReflectionInfo = typeof({typeName}).GetProperty(\"{propertyName}\", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Static),");
+        writer.AppendLine("#endif");
         writer.AppendLine($"Getter = _ => {typeName}.{IdentifierHelper.Escape(propertyName)},");
         writer.AppendLine("ClassMetadata = containingTypeMetadata,");
         writer.AppendLine("ContainingTypeMetadata = containingTypeMetadata");

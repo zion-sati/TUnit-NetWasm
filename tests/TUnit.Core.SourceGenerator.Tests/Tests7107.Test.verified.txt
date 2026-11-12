@@ -927,7 +927,11 @@ internal static class TUnit_TestProject_Bugs__7107_ClassAndMethodRowsConstraintT
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7107.ClassAndMethodRowsConstraintTests<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,

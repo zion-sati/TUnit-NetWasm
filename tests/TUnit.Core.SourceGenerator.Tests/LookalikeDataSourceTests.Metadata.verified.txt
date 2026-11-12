@@ -174,7 +174,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Derived_instanc
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("Value", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "Value",
                 IsStatic = true,
@@ -185,7 +189,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Derived_instanc
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("OtherValue", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "OtherValue",
                 IsStatic = true,
@@ -196,7 +204,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Derived_instanc
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("DerivedProperty", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "DerivedProperty",
                 IsStatic = true,
@@ -292,7 +304,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Derived_static_
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("Value", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "Value",
                 IsStatic = true,
@@ -303,7 +319,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Derived_static_
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("OtherValue", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "OtherValue",
                 IsStatic = true,
@@ -314,7 +334,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Derived_static_
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("DerivedProperty", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "DerivedProperty",
                 IsStatic = true,
@@ -406,7 +430,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Remapped_source
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("Value", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "Value",
                 IsStatic = true,
@@ -417,7 +445,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Remapped_source
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("OtherValue", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "OtherValue",
                 IsStatic = true,
@@ -428,7 +460,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Remapped_source
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("DerivedProperty", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "DerivedProperty",
                 IsStatic = true,
@@ -519,7 +555,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Derived_method_
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("Value", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "Value",
                 IsStatic = true,
@@ -530,7 +570,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Derived_method_
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("OtherValue", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "OtherValue",
                 IsStatic = true,
@@ -541,7 +585,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Derived_method_
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("DerivedProperty", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "DerivedProperty",
                 IsStatic = true,
@@ -631,7 +679,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Only_real_metho
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("Value", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "Value",
                 IsStatic = true,
@@ -642,7 +694,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Only_real_metho
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("OtherValue", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "OtherValue",
                 IsStatic = true,
@@ -653,7 +709,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests_Only_real_metho
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("DerivedProperty", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "DerivedProperty",
                 IsStatic = true,
@@ -744,7 +804,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests__TestSource
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("Value", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "Value",
                 IsStatic = true,
@@ -755,7 +819,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests__TestSource
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("OtherValue", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "OtherValue",
                 IsStatic = true,
@@ -766,7 +834,11 @@ internal static class TUnit_TestProject_LookalikeDataSourceTests__TestSource
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.LookalikeDataSourceTests).GetProperty("DerivedProperty", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "DerivedProperty",
                 IsStatic = true,

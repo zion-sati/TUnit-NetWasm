@@ -326,7 +326,13 @@ internal static class MetadataGenerationHelper
             ? $"typeof({safeTypeNameForReflection}).GetProperty(\"{property.Name}\")"
             : $"typeof({safeTypeNameForReflection}).GetProperty(\"{property.Name}\", typeof({safePropertyTypeName}))";
 
+        // NetWasm keeps no member metadata at run time, so a NetWasm build leaves the property's reflection info unset,
+        // as DataGeneratorMetadataCreator does for properties it has no PropertyInfo for.
+        writer.AppendLine("#if NETWASM");
+        writer.AppendLine("ReflectionInfo = null!,");
+        writer.AppendLine("#else");
         writer.AppendLine($"ReflectionInfo = {reflectionInfo},");
+        writer.AppendLine("#endif");
         writer.AppendLine($"Type = typeof({safePropertyTypeName}),");
         writer.AppendLine($"Name = \"{property.Name}\",");
         writer.AppendLine($"IsStatic = {property.IsStatic.ToString().ToLowerInvariant()},");

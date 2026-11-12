@@ -22,7 +22,11 @@ internal static class TUnit_TestProject_Bugs__7355_OnlyUntypedClassSourceInfersT
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7355.OnlyUntypedClassSourceInfersT<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,
@@ -87,7 +91,11 @@ internal static class TUnit_TestProject_Bugs__7355_ExplicitClassSource_T_Test_Te
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7355.ExplicitClassSource<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,
@@ -181,7 +189,11 @@ internal static class TUnit_TestProject_Bugs__7355_ArgumentsClassSource_T_Test_T
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7355.ArgumentsClassSource<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,
@@ -280,7 +292,11 @@ internal static class TUnit_TestProject_Bugs__7355_InheritedUntypedClassSource_T
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7355.InheritedUntypedClassSource<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,
@@ -342,7 +358,11 @@ internal static class TUnit_TestProject_Bugs__7355_UninferredMethodWithInferredC
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7355.UninferredMethodWithInferredClass<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,
@@ -451,7 +471,11 @@ internal static class TUnit_TestProject_Bugs__7355_UninferredMethodAndClass_T_Te
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7355.UninferredMethodAndClass<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,

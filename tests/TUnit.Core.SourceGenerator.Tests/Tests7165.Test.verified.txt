@@ -26,7 +26,11 @@ internal static class TUnit_TestProject_Bugs__7165_DynamicParameterTests__TestSo
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7165.DynamicParameterTests).GetProperty("Property", typeof(object)),
+                #endif
                 Type = typeof(object),
                 Name = "Property",
                 IsStatic = false,

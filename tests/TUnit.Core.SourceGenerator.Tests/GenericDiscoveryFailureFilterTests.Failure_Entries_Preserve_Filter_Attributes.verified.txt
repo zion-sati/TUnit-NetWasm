@@ -153,7 +153,11 @@ internal static class TUnit_TestProject_Bugs__7437_UninferredClass_T_Run_TestSou
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7437.UninferredClass<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,

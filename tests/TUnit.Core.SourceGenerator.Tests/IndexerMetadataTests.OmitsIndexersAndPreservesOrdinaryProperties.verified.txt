@@ -22,7 +22,11 @@ internal static class TUnit_TestProject_Bugs__7531_GenericIndexerMetadataTests_T
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7531.GenericIndexerMetadataTests<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,
@@ -109,7 +113,11 @@ internal static class TUnit_TestProject_Bugs__7531_IndexerMetadataTests__TestSou
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7531.IndexerMetadataTests).GetProperty("Label", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "Label",
                 IsStatic = false,
@@ -209,7 +217,11 @@ internal static class TUnit_TestProject_Bugs__7531_OverloadedIndexerMetadataTest
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7531.OverloadedIndexerMetadataTests).GetProperty("Label", typeof(string)),
+                #endif
                 Type = typeof(string),
                 Name = "Label",
                 IsStatic = false,

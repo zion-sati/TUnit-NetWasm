@@ -195,7 +195,11 @@ internal static class TUnit_TestProject_Bugs__7440_RequiredConstructorArgumentTe
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7440.RequiredConstructorArgumentTests<>).GetProperty("Value"),
+                #endif
                 Type = typeof(object),
                 Name = "Value",
                 IsStatic = false,
@@ -206,7 +210,11 @@ internal static class TUnit_TestProject_Bugs__7440_RequiredConstructorArgumentTe
             },
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7440.RequiredConstructorArgumentTests<>).GetProperty("Number", typeof(int)),
+                #endif
                 Type = typeof(int),
                 Name = "Number",
                 IsStatic = false,
@@ -928,7 +936,11 @@ internal static class TUnit_TestProject_Bugs__7440_SingleGenericRequiredFieldTes
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._7440.SingleGenericRequiredFieldTests<>).GetProperty("Property", typeof(int)),
+                #endif
                 Type = typeof(int),
                 Name = "Property",
                 IsStatic = false,
