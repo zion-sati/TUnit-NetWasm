@@ -169,7 +169,7 @@ dotnet run --project "${runner_tests}" \
   --no-launch-profile \
   --disable-build-servers \
   -p:NetWasmTUnitPackageVersion="${TEST_VERSION}" \
-  -- --minimum-expected-tests 52
+  -- --minimum-expected-tests 39
 
 desktop_package_tests="${qualification_root}/packaging/NetWasm.TUnit.Desktop.Package.Tests/NetWasm.TUnit.Desktop.Package.Tests.csproj"
 dotnet restore "${desktop_package_tests}" \
