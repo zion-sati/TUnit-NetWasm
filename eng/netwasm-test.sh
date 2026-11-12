@@ -83,7 +83,7 @@ fi
 "${REPOSITORY_ROOT}/eng/netwasm-build-packages.sh" "${build_arguments[@]}"
 
 qualification_root="${test_root}/source"
-# A detached worktree, not an archive: the catalog generator tests locate
+# A detached worktree, not an archive: the source generator tests locate
 # the repository through Git (Sourcy.Git).
 git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree add --quiet --detach "${qualification_root}" HEAD
 if [[ -n "${NETWASM_TUNIT_BUILD_SDK_VERSION:-}" ]]; then
