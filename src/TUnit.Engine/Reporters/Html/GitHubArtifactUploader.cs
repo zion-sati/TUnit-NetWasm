@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -153,8 +154,10 @@ internal static class GitHubArtifactUploader
 
     private static string BuildCreateArtifactJson(string runId, string jobId, string fileName, string? expiresAt)
     {
-        using var ms = new MemoryStream();
-        using var w = new Utf8JsonWriter(ms);
+        // A buffer writer rather than a MemoryStream: the result is only decoded, and NetWasm's System.Text.Json
+        // writes to buffer writers only.
+        var buffer = new ArrayBufferWriter<byte>();
+        using var w = new Utf8JsonWriter(buffer);
         w.WriteStartObject();
         w.WriteString("workflow_run_backend_id", runId);
         w.WriteString("workflow_job_run_backend_id", jobId);
@@ -168,7 +171,7 @@ internal static class GitHubArtifactUploader
         }
         w.WriteEndObject();
         w.Flush();
-        return Encoding.UTF8.GetString(ms.ToArray());
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     private static int? ReadMaxRetentionDays()
@@ -204,8 +207,10 @@ internal static class GitHubArtifactUploader
 
     private static string BuildFinalizeArtifactJson(string runId, string jobId, string fileName, long size, string sha256Hash)
     {
-        using var ms = new MemoryStream();
-        using var w = new Utf8JsonWriter(ms);
+        // A buffer writer rather than a MemoryStream: the result is only decoded, and NetWasm's System.Text.Json
+        // writes to buffer writers only.
+        var buffer = new ArrayBufferWriter<byte>();
+        using var w = new Utf8JsonWriter(buffer);
         w.WriteStartObject();
         w.WriteString("workflow_run_backend_id", runId);
         w.WriteString("workflow_job_run_backend_id", jobId);
@@ -214,7 +219,7 @@ internal static class GitHubArtifactUploader
         w.WriteString("hash", $"sha256:{sha256Hash}");
         w.WriteEndObject();
         w.Flush();
-        return Encoding.UTF8.GetString(ms.ToArray());
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     private static (string? RunId, string? JobId) ExtractBackendIds(string jwt)
