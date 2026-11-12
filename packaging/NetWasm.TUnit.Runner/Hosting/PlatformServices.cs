@@ -59,6 +59,28 @@ public sealed class PlatformServices : IServiceProvider
             if (IsEnabled(logLevel))
             {
                 diagnostics.WriteLine(formatter(state, exception));
+                if (exception is not null)
+                {
+                    WriteException(exception, depth: 0);
+                }
+            }
+        }
+
+        // Each exception's type, message and stack trace, and those of its inner exceptions: they locate a failure the
+        // engine reports from across its async boundaries, and NetWasm's Exception.ToString carries messages only.
+        private void WriteException(Exception exception, int depth)
+        {
+            var indent = new string(' ', depth * 2);
+            diagnostics.WriteLine($"{indent}{exception.GetType().FullName}: {exception.Message}");
+            if (exception.StackTrace is { } stackTrace)
+            {
+                diagnostics.WriteLine(stackTrace);
+            }
+
+            var inner = exception is AggregateException aggregate ? aggregate.InnerExceptions : [.. exception.InnerException is { } single ? [single] : Array.Empty<Exception>()];
+            foreach (var innerException in inner)
+            {
+                WriteException(innerException, depth + 1);
             }
         }
 
