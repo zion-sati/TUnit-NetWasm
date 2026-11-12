@@ -45,7 +45,7 @@
 
   <ItemGroup>
     <None Update="..\README.md" Pack="false" />
-    <None Update="NetWasm.TUnit.Engine\README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="NetWasm.TUnit.Engine\README.md" Pack="true" PackagePath="README.md" Visible="false" />
     <None Include="..\LICENSE" Pack="true" PackagePath="" Visible="false" />
   </ItemGroup>
 
