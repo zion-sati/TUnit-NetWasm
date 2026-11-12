@@ -1,7 +1,12 @@
 # Upstream TUnit.Assertions test files eng/netwasm-assertion-tests.sh leaves out, as paths under
 # tests/TUnit.Assertions.Tests, each after a comment giving its reason. A file belongs here only when it cannot
-# compile for netwasm0.1; tests that compile and fail stay in the run and are reported.
+# compile for netwasm0.1; tests that compile and fail stay in the run and are reported. A line "test <name>" filters
+# out one test (a fully qualified name or a part of one) that blocks forever, which would stop its project's run.
 
 # Reads JSON with ReadFromJsonAsync<T>() without a JsonTypeInfo, the reflection-based serializer NetWasm does not
 # provide.
 AsyncMapTests.cs
+
+# Awaits a signal the asserted delegate sends. When the assertion fails before it runs the delegate, as the compiler's
+# generic-cycle cutoff can make it fail for some programs, the test waits forever.
+test ConcurrentAssertMultipleTests.SuccessfulPreWorkDoesNotSkipItemAssertionAfterConcurrentFailure

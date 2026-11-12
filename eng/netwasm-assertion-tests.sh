@@ -9,7 +9,8 @@
 #   NETWASM_TUNIT_ASSERTION_OUTPUT    keeps the projects and logs there instead of a temporary directory
 #
 # The suite is split across several projects so each compiles in a reasonable time and memory. Files listed in
-# eng/netwasm-assertion-exclusions.txt are left out, each with its reason. The script fails when a project does not
+# eng/netwasm-assertion-exclusions.txt are left out, and tests it lists as "test <name>" are filtered out, each with
+# its reason. The script fails when a project does not
 # build or run; failing tests are reported, not fatal, so a run measures how much of the suite passes.
 
 set -euo pipefail
@@ -56,7 +57,7 @@ tests = repository / 'tests' / 'TUnit.Assertions.Tests'
 excluded = {
     line.strip()
     for line in (repository / 'eng' / 'netwasm-assertion-exclusions.txt').read_text().splitlines()
-    if line.strip() and not line.lstrip().startswith('#')
+    if line.strip() and not line.lstrip().startswith('#') and not line.lstrip().startswith('test ')
 }
 missing = sorted(name for name in excluded if not (tests / name).is_file())
 if missing:
@@ -104,6 +105,12 @@ for index, bucket in enumerate(buckets):
 PY
 
 properties=(-c Release "-p:NetWasmOptimization=${OPTIMIZATION}")
+# Tests the exclusions file names, as a VSTest filter: a test that blocks forever stops its whole project's run.
+test_filter="$(sed -n 's/^test \(.*\)$/FullyQualifiedName!~\1/p' "${REPOSITORY_ROOT}/eng/netwasm-assertion-exclusions.txt" | paste -sd '&' -)"
+test_arguments=()
+if [[ -n "${test_filter}" ]]; then
+  test_arguments=(--filter "${test_filter}")
+fi
 summary="${run_root}/summary.txt"
 : > "${summary}"
 status=0
@@ -116,7 +123,7 @@ for (( index = 0; index < SHARDS; index++ )); do
     status=1
     continue
   fi
-  dotnet test "${project}" "${properties[@]}" --no-build --nologo > "${project}/test.log" 2>&1 || true
+  dotnet test "${project}" "${properties[@]}" --no-build --nologo ${test_arguments[@]+"${test_arguments[@]}"} > "${project}/test.log" 2>&1 || true
   line="$(grep -E '^(Passed|Failed)!' "${project}/test.log" | tail -1 || true)"
   if [[ -z "${line}" ]]; then
     echo "Shard${index} did not report a result; see ${project}/test.log." >&2
