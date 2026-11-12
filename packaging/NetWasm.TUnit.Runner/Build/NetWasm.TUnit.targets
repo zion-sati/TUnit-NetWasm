@@ -9,9 +9,12 @@
   <Target Name="NetWasmTUnitDeclareCapabilities"
           BeforeTargets="NetWasmSdkPrepareLocalDeployment"
           Condition="'$(TargetFrameworkIdentifier)' == 'NetWasm' AND '$(TargetFrameworkVersion)' == 'v0.1'">
+    <!-- The runner times tests with the monotonic clock. With no grants of its own the project gets the SDK's
+         default, both clocks, so add monotonic only to a list the project has already restricted: adding it to an
+         empty list would replace that default and leave tests without the wall clock. -->
     <ItemGroup>
       <NetWasmClockGrant Include="monotonic"
-                         Condition="$([System.String]::Copy(';@(NetWasmClockGrant);').Contains(';monotonic;')) != 'True'" />
+                         Condition="'@(NetWasmClockGrant)' != '' AND $([System.String]::Copy(';@(NetWasmClockGrant);').Contains(';monotonic;')) != 'True'" />
     </ItemGroup>
   </Target>
 </Project>
