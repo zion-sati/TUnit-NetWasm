@@ -5,6 +5,6 @@
     "allowPrerelease": false
   },
   "msbuild-sdks": {
-    "NetWasm.Sdk": "0.13.0-qualification.23"
+    "NetWasm.Sdk": "0.13.0-qualification.25"
   }
 }
