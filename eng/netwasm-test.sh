@@ -117,12 +117,18 @@ native_path() {
   fi
 }
 package_dir_xml="$(xml_escape "$(native_path "${PACKAGE_DIR}")")"
+# NETWASM_PACKAGE_SOURCE adds a directory of unpublished NetWasm candidate packages beside nuget.org.
+candidate_source_xml=""
+if [[ -n "${NETWASM_PACKAGE_SOURCE:-}" ]]; then
+  candidate_source_xml="    <add key=\"netwasm-candidate\" value=\"$(xml_escape "$(native_path "${NETWASM_PACKAGE_SOURCE}")")\" />"
+fi
 printf '%s\n' \
   '<?xml version="1.0" encoding="utf-8"?>' \
   '<configuration>' \
   '  <packageSources>' \
   '    <clear />' \
   "    <add key=\"current-build\" value=\"${package_dir_xml}\" />" \
+  ${candidate_source_xml:+"${candidate_source_xml}"} \
   '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />' \
   '  </packageSources>' \
   '</configuration>' > "${nuget_config}"
