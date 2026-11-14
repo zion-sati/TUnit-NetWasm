@@ -1,6 +1,9 @@
 <Project>
     <PropertyGroup>
-        <TargetFrameworks>netstandard2.0;net10.0;net11.0</TargetFrameworks>
+        <!-- NetWasm: the NetWasm package scripts set TUnitLibraryTargetFrameworks to netstandard2.0;net10.0, all
+             their packages use, so a .NET 10 SDK can build them. -->
+        <TargetFrameworks>$(TUnitLibraryTargetFrameworks)</TargetFrameworks>
+        <TargetFrameworks Condition="'$(TargetFrameworks)' == ''">netstandard2.0;net10.0;net11.0</TargetFrameworks>
 
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 

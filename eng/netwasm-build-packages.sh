@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+# The packages carry net10.0 and netwasm0.1 assets only: build upstream's libraries without net11.0, which a
+# .NET 10 SDK cannot target.
+export TUnitLibraryTargetFrameworks="${TUnitLibraryTargetFrameworks:-netstandard2.0;net10.0}"
 
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 OUTPUT_DIR="${REPOSITORY_ROOT}/artifacts/netwasm-packages"
