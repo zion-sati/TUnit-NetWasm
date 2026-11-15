@@ -55,8 +55,9 @@ concurrency:
 jobs:
   test:
     runs-on: ${{ matrix.runner }}
-    # wasm-opt -O3 alone takes about 35 minutes on the package test module.
-    timeout-minutes: ${{ matrix.optimization == 'O3' && 90 || 45 }}
+    # At O3, wasm-opt takes 25-35 minutes on each of the package test, Generated.Tests and
+    # DualTarget.Tests modules, so the lane needs about 95 minutes.
+    timeout-minutes: ${{ matrix.optimization == 'O3' && 150 || 45 }}
     name: test / ${{ matrix.host }} / isolated SDK ${{ matrix.sdk-major }}${{ matrix.optimization != 'Default' && format(' / {0}', matrix.optimization) || '' }}
     strategy:
       fail-fast: false
