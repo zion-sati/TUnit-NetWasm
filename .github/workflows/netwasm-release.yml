@@ -102,6 +102,14 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           global-json-file: source/global.json
+      # The package consumer tests run from packaging/, whose global.json pins its own
+      # .NET 10 SDK with roll-forward disabled. Install it rather than rely on the runner
+      # image, which replaces patch releases without notice.
+      - name: Install the packaging .NET SDK
+        if: steps.train-state.outputs.mode == 'build'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: source/packaging/global.json
       - name: Build and qualify preview and stable packages
         if: steps.train-state.outputs.mode == 'build'
         shell: bash
