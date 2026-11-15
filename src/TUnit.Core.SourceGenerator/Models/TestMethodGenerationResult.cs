@@ -14,9 +14,6 @@ namespace TUnit.Core.SourceGenerator.Models;
 /// </remarks>
 public sealed record TestMethodGenerationResult
 {
-    /// <summary>The generated catalog source rooted by the closed-world assembly entry point.</summary>
-    public string? CatalogRootName { get; init; }
-
     /// <summary>Pre-generated code for a non-generic test declared directly on its class, emitted in the per-class TestSource.</summary>
     public PerClassTestMethodCode? PerClassMethod { get; init; }
 
@@ -33,14 +30,11 @@ public sealed record TestMethodGenerationResult
 /// </summary>
 public sealed record PerClassTestMethodCode
 {
-    public required bool IsCatalogOnly { get; init; }
     public required string ClassFullyQualified { get; init; }
     public required string TestSourceName { get; init; }
     public required string InstanceFactoryBodyCode { get; init; }
     public required string ReflectionFieldAccessorsCode { get; init; }
     public required string SharedFieldsCode { get; init; }
-    public required string LifecycleCode { get; init; }
-    public required string CatalogGeneratedCaseDataCode { get; init; }
 
     /// <summary>Attribute factory body, deduplicated across the class by the grouping step.</summary>
     public required string AttributesCode { get; init; }

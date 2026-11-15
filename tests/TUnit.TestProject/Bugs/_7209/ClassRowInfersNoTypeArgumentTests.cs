@@ -1,0 +1,386 @@
+using TUnit.TestProject.Attributes;
+
+namespace TUnit.TestProject.Bugs._7209;
+
+// The class row's value goes to an int constructor parameter, not to T, so it supplies no class type
+// argument. T comes from the method rows, as it does without a class row: C<int> for [Arguments(1)]
+// and C<object> for [Arguments(null)] (#7141). Each instance is constructed from the class row
+// (number = 42), never from a method row. Same in both modes.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42)]
+public class ClassRowInfersNoTypeArgument<T>(int number)
+{
+    [Test]
+    [Arguments(null)]
+    [Arguments(1)]
+    public async Task Run(T value)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(typeof(T)).IsEqualTo(value is null ? typeof(object) : typeof(int));
+        await Assert.That((object?)value is null or 1).IsTrue();
+    }
+}
+
+// A class row that does infer T keeps supplying it: the method rows run on C<string>, and the null row
+// infers nothing of its own.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments("class")]
+public class ClassRowInfersTypeArgument<T>(T classValue)
+{
+    [Test]
+    [Arguments(null)]
+    public async Task Run(T? value)
+    {
+        await Assert.That(typeof(T)).IsEqualTo(typeof(string));
+        await Assert.That((object?)classValue).IsEqualTo("class");
+        await Assert.That(value).IsNull();
+    }
+}
+
+// With several public constructors, both modes bind the class row to the first one, as reflection's GetConstructors()
+// does: (int number) takes no T, so the row is type-free and the method rows infer C<string> and C<int>. Same in both modes.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42)]
+public class TypeFreeClassRowOverloadedConstructors<T>
+{
+    private readonly int _number;
+
+    public TypeFreeClassRowOverloadedConstructors(int number) => _number = number;
+
+    public TypeFreeClassRowOverloadedConstructors(T value, int number) : this(number)
+    {
+    }
+
+    [Test]
+    [Arguments("s")]
+    [Arguments(1)]
+    public async Task Run(T value)
+    {
+        await Assert.That(_number).IsEqualTo(42);
+        await Assert.That(typeof(T)).IsEqualTo(value!.GetType());
+    }
+}
+
+// A primary constructor comes first, before an explicit constructor that takes T. The source generator used to skip
+// the primary constructor because it has no constructor declaration, bind the row to (T value, int number) and infer
+// C<int> from it, while reflection bound the row to the primary constructor. Both modes now bind to the primary
+// constructor, so the row is type-free and the method rows infer C<string> and C<int>.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42)]
+public class TypeFreeClassRowPrimaryConstructorBesideTypedConstructor<T>(int number)
+{
+    public TypeFreeClassRowPrimaryConstructorBesideTypedConstructor(T value, int number) : this(number)
+    {
+    }
+
+    [Test]
+    [Arguments("s")]
+    [Arguments(1)]
+    public async Task Run(T value)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(typeof(T)).IsEqualTo(value!.GetType());
+    }
+}
+
+// A class row binds to the constructor marked [TestConstructor], the one reflection builds the instance with, not to
+// the first public constructor: (T value) takes the row, so it infers C<int>, and the method row runs on it. Same in
+// both modes.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42)]
+public class TypeFreeClassRowTestConstructorTakesTypeParameter<T>
+{
+    private readonly string _constructor;
+
+    public TypeFreeClassRowTestConstructorTakesTypeParameter(long number) => _constructor = $"long:{number}";
+
+    [TestConstructor]
+    public TypeFreeClassRowTestConstructorTakesTypeParameter(T value) => _constructor = $"T:{value}";
+
+    [Test]
+    [Arguments(null)]
+    public async Task Run(T? value)
+    {
+        await Assert.That(typeof(T)).IsEqualTo(typeof(int));
+        await Assert.That(_constructor).IsEqualTo("T:42");
+    }
+}
+
+// The [TestConstructor] constructor takes no T, so the class row is type-free even though the first public
+// constructor takes T: the method rows infer C<string> and C<bool>, each built through the marked constructor.
+// Same in both modes.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42)]
+public class TypeFreeClassRowTestConstructorTakesNoTypeParameter<T>
+{
+    private readonly int _number;
+
+    public TypeFreeClassRowTestConstructorTakesNoTypeParameter(T value) => _number = -1;
+
+    [TestConstructor]
+    public TypeFreeClassRowTestConstructorTakesNoTypeParameter(int number) => _number = number;
+
+    [Test]
+    [Arguments("s")]
+    [Arguments(true)]
+    public async Task Run(T value)
+    {
+        await Assert.That(_number).IsEqualTo(42);
+        await Assert.That(typeof(T)).IsEqualTo(value!.GetType());
+    }
+}
+
+// A method data source that infers no class type runs beside the inferring [Arguments] row on the instantiation that
+// row infers, with the instance built from the type-free class row: C<int> runs [Arguments(1)] and the source's 2
+// and 3. Reflection mode used to drop the source there. Same in both modes.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42)]
+public class TypeFreeClassRowWithUninferredMethodSource<T>(int number)
+{
+    [Test]
+    [Arguments(1)]
+    [MethodDataSource(typeof(TypeFreeClassRowSources), nameof(TypeFreeClassRowSources.Values))]
+    public async Task Run(T value)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(typeof(T)).IsEqualTo(typeof(int));
+        await Assert.That((object?)value is 1 or 2 or 3).IsTrue();
+    }
+}
+
+// An empty class row has no value to supply a type argument, so it is type-free like [Arguments(42)] on
+// C<T>(int number): the method rows infer C<int> and C<string>, each built from the empty row. Same in both modes.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments]
+public class EmptyClassRow<T>
+{
+    [Test]
+    [Arguments(1)]
+    [Arguments("s")]
+    public async Task Run(T value)
+    {
+        await Assert.That(typeof(T)).IsEqualTo(value!.GetType());
+    }
+}
+
+// The type-free class row supplies no class type argument, so the null method row's object breaks the struct
+// constraint and is reported as a failed test, as without a class row (#7141), rather than dropped. Same in both
+// modes. No [EngineTest] attribute: the failing row must not be picked up by the `/**[EngineTest=Pass]` run.
+[Arguments(42)]
+public class ConstrainedClassWithTypeFreeClassRow<T>(int number) where T : struct
+{
+    [Test]
+    [Arguments(1)]
+    [Arguments(null)]
+    public async Task Run(T value)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(value).IsEqualTo((T)(object)1);
+    }
+}
+
+// A CancellationToken declared before the data parameters is supplied by the engine, so [Arguments(1, "s")] binds
+// 1 to value and infers C<int>, which meets the struct constraint. The constraint check beside the type-free class
+// row must skip the token too, or it reads "s" as T's value and reports a false failure. Same in both modes.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42)]
+public class TypeFreeClassRowConstrainedWithLeadingToken<T>(int number) where T : struct
+{
+    [Test]
+    [Arguments(1, "s")]
+    public async Task Run(CancellationToken token, T value, object extra)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(value).IsEqualTo((T)(object)1);
+        await Assert.That(extra).IsEqualTo("s");
+    }
+}
+
+public static class TypeFreeClassRowSources
+{
+    public static IEnumerable<object> Values() => [2, 3];
+}
+
+// Only the supplied prefix participates in inference. The omitted optional T must retain its default.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42)]
+public class TypeFreeClassRowWithOptionalTypeParameter<T>(int number, T value = default!)
+{
+    [Test]
+    [Arguments(1)]
+    [Arguments("s")]
+    public async Task Run(T methodValue)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(value).IsEqualTo(default(T));
+        await Assert.That(typeof(T)).IsEqualTo(methodValue!.GetType());
+    }
+}
+
+// Expanded values bind to an int[] parameter, so they cannot infer the class type parameter.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(1, 2)]
+public class TypeFreeClassRowWithParams<T>(params int[] numbers)
+{
+    [Test]
+    [Arguments(3)]
+    [Arguments("s")]
+    public async Task Run(T value)
+    {
+        await Assert.That(numbers.Length).IsEqualTo(2);
+        await Assert.That(numbers[0]).IsEqualTo(1);
+        await Assert.That(numbers[1]).IsEqualTo(2);
+        await Assert.That(typeof(T)).IsEqualTo(value!.GetType());
+    }
+}
+
+// Expanded values bind to T[] and must infer the element type, rather than an array class argument.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(1, 2)]
+public class TypeBearingClassRowWithParams<T>(params T[] values)
+{
+    [Test]
+    [Arguments(3)]
+    public async Task Run(T value)
+    {
+        await Assert.That(typeof(T)).IsEqualTo(typeof(int));
+        await Assert.That(values.Length).IsEqualTo(2);
+        await Assert.That((object?)values[0]).IsEqualTo(1);
+        await Assert.That((object?)values[1]).IsEqualTo(2);
+        await Assert.That((object?)value).IsEqualTo(3);
+    }
+}
+
+// The generic attribute supplies one constructor value, not a class type argument of its own.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments<int>(42)]
+public class TypeFreeGenericClassRow<T>(int number)
+{
+    [Test]
+    [Arguments(1)]
+    [Arguments("s")]
+    public async Task Run(T value)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(typeof(T)).IsEqualTo(value!.GetType());
+    }
+}
+
+// Both rows construct C<int>, with distinct supplied and omitted values for the optional T.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42, 1)]
+[Arguments(42)]
+public class MixedTypeFreeAndTypeBearingClassRows<T>(int number, T value = default!)
+{
+    [Test]
+    [Arguments(3)]
+    public async Task Run(T methodValue)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(typeof(T)).IsEqualTo(typeof(int));
+        await Assert.That((object?)value is 0 or 1).IsTrue();
+        await Assert.That((object?)methodValue).IsEqualTo(3);
+    }
+}
+
+// Neither foreign attribute is a data source, despite sharing TUnit's attribute simple name.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42)]
+[UnrelatedAttributes.Arguments("ignored")]
+[UnrelatedAttributes.Arguments<double>(1.5)]
+public class TypeFreeClassRowWithUnrelatedArgumentsAttributes<T>(int number)
+{
+    [Test]
+    [Arguments(1)]
+    [Arguments("s")]
+    public async Task Run(T value)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(typeof(T)).IsEqualTo(value!.GetType());
+    }
+}
+
+public static class UnrelatedAttributes
+{
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class ArgumentsAttribute(string value) : Attribute
+    {
+        public string Value { get; } = value;
+    }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class ArgumentsAttribute<T>(T value) : Attribute
+    {
+        public T Value { get; } = value;
+    }
+}
+
+// A null trailing array supplies no element type and must not infer object beside the explicit int instantiation.
+[EngineTest(ExpectedResult.Pass)]
+[GenerateGenericTest(typeof(int))]
+[Arguments(42, null)]
+public class NullTrailingClassArray<T>(int number, T[]? values) where T : struct
+{
+    [Test]
+    public async Task Run()
+    {
+        await Assert.That(number).IsEqualTo(42);
+        await Assert.That(values).IsNull();
+        await Assert.That(typeof(T)).IsEqualTo(typeof(int));
+    }
+}
+
+// The first expanded element fixes T, just as an explicitly supplied array fixes its element type.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(1, 2L)]
+public class MixedTrailingClassValues<T>(params T[] values)
+{
+    [Test]
+    public async Task Run()
+    {
+        await Assert.That(typeof(T)).IsEqualTo(typeof(int));
+        await Assert.That(values.Length).IsEqualTo(2);
+        await Assert.That((object?)values[0]).IsEqualTo(1);
+        await Assert.That((object?)values[1]).IsEqualTo(2);
+    }
+}
+
+// Constructor inference uses the expanded elements, rather than a fixed prefix's unrelated type.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments("prefix", 1, 2L)]
+public class PrefixedMixedTrailingClassValues<T>(string prefix, params T[] values)
+{
+    [Test]
+    public async Task Run()
+    {
+        await Assert.That(prefix).IsEqualTo("prefix");
+        await Assert.That(typeof(T)).IsEqualTo(typeof(int));
+        await Assert.That(values.Length).IsEqualTo(2);
+        await Assert.That((object?)values[0]).IsEqualTo(1);
+        await Assert.That((object?)values[1]).IsEqualTo(2);
+    }
+}
+
+// A null method row runs on C<int>, but does not infer int and cannot add its optional class row.
+[EngineTest(ExpectedResult.Pass)]
+[Arguments(42, 1)]
+[Arguments(42)]
+public class MixedClassRowsWithNullMethodRow<T>(int number, T value = default!)
+{
+    [Test]
+    [Arguments("s")]
+    [Arguments(null)]
+    public async Task Run(T methodValue)
+    {
+        await Assert.That(number).IsEqualTo(42);
+        if (typeof(T) == typeof(int))
+        {
+            await Assert.That((object?)value).IsEqualTo(1);
+        }
+        else
+        {
+            await Assert.That(typeof(T)).IsEqualTo(typeof(string));
+            await Assert.That((object?)value).IsNull();
+        }
+    }
+}

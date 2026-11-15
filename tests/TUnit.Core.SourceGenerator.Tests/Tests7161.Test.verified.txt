@@ -63,13 +63,13 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "arg", new gl
 {
     new global::TUnit.Core.ArgumentsAttribute(1),
 },
-            classDataSources: new global::TUnit.Core.IDataSourceAttribute[]
+            classDataSources: global::TUnit.Core.GenericClassRowPartition.Create(new global::System.Type[] { typeof(int) }, global::TUnit.Core.GenericClassRowFallback.AllRows, new global::TUnit.Core.IDataSourceAttribute[]
 {
     new global::TUnit.Core.MethodDataSourceAttribute(typeof(global::TUnit.TestProject.Bugs._7161.Issue7161Sources), "Five")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._7161.Issue7161Sources.Five()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._7161.Issue7161Sources.Five()),
     },
-},
+}, 0),
             methodMetadata: __mm_0,
             createInstance: __CreateInstance_0,
             invokeBody: __Invoke_0,
@@ -114,13 +114,13 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "arg", new gl
 {
     new global::TUnit.Core.ArgumentsAttribute("a"),
 },
-            classDataSources: new global::TUnit.Core.IDataSourceAttribute[]
+            classDataSources: global::TUnit.Core.GenericClassRowPartition.Create(new global::System.Type[] { typeof(string) }, global::TUnit.Core.GenericClassRowFallback.AllRows, new global::TUnit.Core.IDataSourceAttribute[]
 {
     new global::TUnit.Core.MethodDataSourceAttribute(typeof(global::TUnit.TestProject.Bugs._7161.Issue7161Sources), "Five")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._7161.Issue7161Sources.Five()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._7161.Issue7161Sources.Five()),
     },
-},
+}, 0),
             methodMetadata: __mm_0,
             createInstance: __CreateInstance_1,
             invokeBody: __Invoke_1,
@@ -171,7 +171,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "arg", new gl
 }));
     private static global::TUnit.TestProject.Bugs._7161.GenerateGenericTestTypeOnlyMethodRowsInfer<int> __CreateInstance_0(global::System.Type[] typeArgs, object?[] args)
     {
-        return (global::TUnit.TestProject.Bugs._7161.GenerateGenericTestTypeOnlyMethodRowsInfer<int>)global::System.Activator.CreateInstance(typeof(global::TUnit.TestProject.Bugs._7161.GenerateGenericTestTypeOnlyMethodRowsInfer<int>), new object[] { 5 })!;
+        return new global::TUnit.TestProject.Bugs._7161.GenerateGenericTestTypeOnlyMethodRowsInfer<int>(global::TUnit.Core.Helpers.CastHelper.Cast<int>(args[0]));
     }
     private static global::System.Threading.Tasks.ValueTask __Invoke_0(global::TUnit.TestProject.Bugs._7161.GenerateGenericTestTypeOnlyMethodRowsInfer<int> instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)
     {
@@ -309,7 +309,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(object), "arg", new gl
 }));
     private static global::TUnit.TestProject.Bugs._7161.GenericArgumentsClassRowWithUnmatchedMethodRow<int> __CreateInstance_0(global::System.Type[] typeArgs, object?[] args)
     {
-        return (global::TUnit.TestProject.Bugs._7161.GenericArgumentsClassRowWithUnmatchedMethodRow<int>)global::System.Activator.CreateInstance(typeof(global::TUnit.TestProject.Bugs._7161.GenericArgumentsClassRowWithUnmatchedMethodRow<int>), args)!;
+        return new global::TUnit.TestProject.Bugs._7161.GenericArgumentsClassRowWithUnmatchedMethodRow<int>(global::TUnit.Core.Helpers.CastHelper.Cast<int>(args[0]));
     }
     private static global::System.Threading.Tasks.ValueTask __Invoke_0(global::TUnit.TestProject.Bugs._7161.GenericArgumentsClassRowWithUnmatchedMethodRow<int> instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)
     {
@@ -438,7 +438,7 @@ internal static class TUnit_TestProject_Bugs__7161_GenericArgumentsArrayClassRow
     private static readonly global::TUnit.Core.MethodMetadata __mm_0 = global::TUnit.Core.MethodMetadataFactory.Create("Test", __classType, typeof(global::System.Threading.Tasks.Task), __classMetadata);
     private static global::TUnit.TestProject.Bugs._7161.GenericArgumentsArrayClassRow<int[]> __CreateInstance_0(global::System.Type[] typeArgs, object?[] args)
     {
-        return (global::TUnit.TestProject.Bugs._7161.GenericArgumentsArrayClassRow<int[]>)global::System.Activator.CreateInstance(typeof(global::TUnit.TestProject.Bugs._7161.GenericArgumentsArrayClassRow<int[]>), args)!;
+        return new global::TUnit.TestProject.Bugs._7161.GenericArgumentsArrayClassRow<int[]>((args.Length == 1 ? (args[0] is null ? null : args[0] is int[] arr ? arr : global::TUnit.Core.Helpers.CastHelper.ToTrailingArray<int>(args[0])) : (args.Length > 0 ? global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Select(global::System.Linq.Enumerable.Range(0, args.Length), i => global::TUnit.Core.Helpers.CastHelper.Cast<int>(args[i]))) : global::System.Array.Empty<int>())));
     }
     private static global::System.Threading.Tasks.ValueTask __Invoke_0(global::TUnit.TestProject.Bugs._7161.GenericArgumentsArrayClassRow<int[]> instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)
     {

@@ -1,10 +1,10 @@
+using TUnit.SourceGeneration;
 using TUnit.Core.SourceGenerator.Extensions;
 using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using TUnit.Core.SourceGenerator.Helpers;
 using TUnit.Core.SourceGenerator.Models.Extracted;
-using TUnit.Core.SourceGenerator.Utilities;
 
 namespace TUnit.Core.SourceGenerator.CodeGenerators;
 
@@ -16,7 +16,11 @@ public class DynamicTestsGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select(static (options, _) => SourceGenerationMode.Read(options).IsDesktop);
+            .Select((options, _) =>
+            {
+                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
+                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+            });
 
         var standardTests = context.SyntaxProvider
             .ForAttributeWithMetadataName(
@@ -147,7 +151,7 @@ public class DynamicTestsGenerator : IIncrementalGenerator
         }
         catch (Exception ex)
         {
-            var descriptor = new DiagnosticDescriptor(id: "TUnit0000",
+            var descriptor = new DiagnosticDescriptor(id: GeneratorDiagnosticIds.DynamicTestGenerationFailed,
                 title: "Error Generating Source",
                 messageFormat: "{0}",
                 category: "SourceGenerator",

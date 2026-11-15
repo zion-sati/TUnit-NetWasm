@@ -119,11 +119,11 @@ export JUNIT_XML_OUTPUT_PATH=/path/to/output.xml
 
 ### TUNIT_MAX_PARALLEL_TESTS
 
-Sets the maximum number of tests that can run in parallel.
+Sets the maximum number of tests that can run in parallel. The default is 2 x the processor count.
 
 ```bash
 export TUNIT_MAX_PARALLEL_TESTS=4    # Limit to 4 concurrent tests
-export TUNIT_MAX_PARALLEL_TESTS=0    # Unlimited parallelism
+export TUNIT_MAX_PARALLEL_TESTS=0    # Use the default limit (2 x CPU cores)
 ```
 
 **Equivalent to:** `--maximum-parallel-tests`
@@ -143,6 +143,14 @@ export TUNIT_DISABLE_THREADPOOL_TUNING=1
 **Programmatic equivalent:** `context.Settings.Execution.ThreadPoolTuningEnabled = false` (see [Programmatic Configuration](./programmatic-configuration.md))
 
 **Note:** The environment variable takes precedence over the programmatic setting.
+
+### TUNIT_DISABLE_JIT_WARMUP
+
+When a test run starts, TUnit compiles the engine's own startup code on a background thread while the test platform is still initializing. This shortens startup, which matters most for short runs. It is skipped on single-core machines and under Native AOT. Set this variable to `1`, `true` or `yes` to turn the behavior off.
+
+```bash
+export TUNIT_DISABLE_JIT_WARMUP=1
+```
 
 ### TUNIT_EXECUTION_MODE
 
@@ -318,6 +326,7 @@ When the same setting is configured in multiple places, TUnit follows this prior
 | `JUNIT_XML_OUTPUT_PATH` | - | JUnit output path |
 | `TUNIT_MAX_PARALLEL_TESTS` | `--maximum-parallel-tests` | Max parallel tests |
 | `TUNIT_DISABLE_THREADPOOL_TUNING` | - | Disables the thread pool starvation monitor (`1` to disable) |
+| `TUNIT_DISABLE_JIT_WARMUP` | - | Disables background compilation of the engine's startup code (`1` to disable) |
 | `TUNIT_EXECUTION_MODE` | `--reflection` | Selects source-generation (`sourcegeneration`/`aot`) or `reflection` execution mode |
 | `TUNIT_DISCOVERY_DIAGNOSTICS` | - | Enables discovery-time diagnostics (`1` to enable) |
 | `TUNIT_DIAGNOSTIC_CAST` | - | Enables `CastHelper` conversion diagnostics (`true` to enable) |

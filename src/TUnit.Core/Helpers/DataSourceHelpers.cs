@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using TUnit.Core.Interfaces;
+using TUnit.Core.PropertyInjection;
 
 namespace TUnit.Core.Helpers;
 
@@ -11,6 +12,106 @@ namespace TUnit.Core.Helpers;
 /// </summary>
 public static class DataSourceHelpers
 {
+    internal static bool IsErasedGenericTupleParameter(ParameterMetadata parameter)
+        => parameter.Type == typeof(object)
+            && parameter.TypeInfo is ConstructedGeneric generic
+            && generic.GenericDefinition.FullName is { } name
+            && (name.StartsWith("System.ValueTuple`", StringComparison.Ordinal)
+                || name.StartsWith("System.Tuple`", StringComparison.Ordinal));
+
+    // Reference-tuple targets and sources need every element for invoker conversions. Value tuples can
+    // retain their nested shape unless mutable element boxes must reach invocation.
+    internal static bool ShouldFlattenErasedTuple(object tuple, ParameterMetadata parameter)
+    {
+        var targetName = (parameter.TypeInfo as ConstructedGeneric)?.GenericDefinition.FullName;
+        var targetIsReferenceTuple = targetName?.StartsWith("System.Tuple`", StringComparison.Ordinal) == true;
+
+        // A flattened [null] is indistinguishable from a null row. The reference-tuple
+        // invoker can reconstruct a preserved singleton containing null, including conversions.
+        if (targetName == "System.Tuple`1" && IsSingletonTupleContainingNull(tuple))
+        {
+            return false;
+        }
+
+        // Keep singleton value-tuple rows wrapped even across tuple families. An element
+        // may itself be a singleton tuple; flattening would lose which container is the row.
+        if (targetName == "System.ValueTuple`1")
+        {
+            return RequiresFlattenedTupleBinding(tuple);
+        }
+
+        return targetIsReferenceTuple
+            || !tuple.GetType().IsValueType
+            || RequiresFlattenedTupleBinding(tuple);
+    }
+
+    private static bool IsSingletonTupleContainingNull(object value)
+    {
+#if NET5_0_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        // Inspect only the singleton element, without copying the row into a temporary array.
+        if (value is ITuple tuple)
+        {
+            return tuple.Length == 1 && tuple[0] is null;
+        }
+#endif
+
+        return UnwrapTupleAot(value) is [null];
+    }
+
+    private static readonly ConcurrentDictionary<Type, bool> TupleMutableElementShapes = new();
+
+    // Property injection, initialization, and event callbacks mutate boxed structs.
+    // Keep populated mutable elements in the flattened row so invocation reconstructs
+    // the tuple from those same boxes. Empty nullable elements still preserve the tuple.
+    internal static bool RequiresFlattenedTupleBinding(object tuple)
+    {
+        if (!HasMutableTupleElementShape(tuple.GetType()))
+        {
+            return false;
+        }
+
+        return ContainsMutableTupleElement(RetainTupleElements(tuple));
+    }
+
+    private static bool ContainsMutableTupleElement(object?[] elements)
+    {
+        // Nullable struct elements box to null when empty. Only flatten when an actual
+        // mutable value needs reconstruction; otherwise retain the tuple container.
+        foreach (var element in elements)
+        {
+            if (element is TupleArgument
+                || element is not null && element.GetType().IsValueType
+                && (element is IAsyncInitializer or IEventReceiver
+                    || PropertyInjectionCache.HasInjectableProperties(element.GetType())))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasMutableTupleElementShape(Type tupleType)
+        => TupleMutableElementShapes.GetOrAdd(tupleType, static type =>
+        {
+            var elements = type.GetGenericArguments();
+            for (var i = 0; i < elements.Length; i++)
+            {
+                var element = Nullable.GetUnderlyingType(elements[i]) ?? elements[i];
+                if (IsMutableTupleElementType(element)
+                    || TupleHelper.IsTupleType(element) && HasMutableTupleElementShape(element))
+                {
+                    return true;
+                }
+            }
+            return false;
+        });
+
+    private static bool IsMutableTupleElementType(Type type)
+        => type.IsValueType && (typeof(IAsyncInitializer).IsAssignableFrom(type)
+            || typeof(IEventReceiver).IsAssignableFrom(type)
+            || PropertyInjectionCache.HasInjectableProperties(type));
+
     /// <summary>
     /// Invokes a Func&lt;T&gt; if the value is one, otherwise returns the value as-is.
     /// Note: Most Func invocation should be handled by the source generator at compile time for AOT compatibility.
@@ -87,6 +188,31 @@ public static class DataSourceHelpers
     }
 #endif
 
+    internal static object?[] RetainTupleElements(object? tuple)
+    {
+        var elements = UnwrapTupleAot(tuple);
+        for (var i = 0; i < elements.Length; i++)
+        {
+            elements[i] = RetainNestedTuple(elements[i]);
+        }
+        return elements;
+    }
+
+    // Recursively keep the same mutable boxes at each nested tuple boundary. Invocation
+    // reconstructs each retained tuple after discovery services finish mutating its elements.
+    private static object? RetainNestedTuple(object? element)
+    {
+        if (element is null || !TupleHelper.IsTupleType(element.GetType())
+            || !HasMutableTupleElementShape(element.GetType()))
+        {
+            return element;
+        }
+
+        // Inspect and retain one extraction, rather than recursively extracting twice per level.
+        var elements = RetainTupleElements(element);
+        return ContainsMutableTupleElement(elements) ? new TupleArgument(element.GetType(), elements) : element;
+    }
+
     /// <summary>
     /// AOT-compatible tuple unwrapping that handles common tuple types without reflection
     /// </summary>
@@ -95,6 +221,11 @@ public static class DataSourceHelpers
         if (value == null)
         {
             return [null];
+        }
+
+        if (value is TupleArgument argument)
+        {
+            return argument.Elements;
         }
 
 #if NET5_0_OR_GREATER || NETCOREAPP3_0_OR_GREATER
@@ -401,10 +532,19 @@ public static class DataSourceHelpers
             // If we have expected types, handle nested tuples intelligently
             if (expectedTypes != null && expectedTypes.Length > 0)
             {
-                // Special case: If there's a single parameter that expects a tuple type,
-                // and the item is a tuple, don't unwrap
-                if (expectedTypes.Length == 1 && TupleHelper.IsTupleType(expectedTypes[0]))
+                // Keep a matching first tuple parameter whole, including when later parameters
+                // are omitted. A nested row of a different type still spreads into columns.
+                if (TupleHelper.IsTupleType(expectedTypes[0])
+                    && (expectedTypes.Length == 1 || expectedTypes[0].ContainsGenericParameters
+                        && TupleHelper.MatchesOpenTuple(expectedTypes[0], item.GetType())
+                        || expectedTypes[0].IsInstanceOfType(item)))
                 {
+                    if (RequiresFlattenedTupleBinding(item))
+                    {
+                        var elements = RetainTupleElements(item);
+                        return expectedTypes.Length == 1 ? elements : [new TupleArgument(item.GetType(), elements)];
+                    }
+
                     return [item];
                 }
 
@@ -445,6 +585,11 @@ public static class DataSourceHelpers
 
     public static bool IsTuple(object? obj)
     {
+        if (obj is TupleArgument)
+        {
+            return true;
+        }
+
         if (obj is null)
         {
             return false;

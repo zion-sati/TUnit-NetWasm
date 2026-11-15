@@ -23,6 +23,7 @@ internal static class ReflectionMetadataBuilder
     {
         return new MethodMetadata
         {
+            ReflectionInfo = method,
             Name = method.Name,
             Type = type,
             TypeInfo = CreateTypeInfo(type),
@@ -51,8 +52,9 @@ internal static class ReflectionMetadataBuilder
         return ClassMetadata.GetOrAdd(type.FullName ?? type.Name, () =>
         {
             // Get constructor parameters for the class
-            var constructors = type.GetConstructors(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-            var constructor = constructors.FirstOrDefault();
+            // The [TestConstructor] the instance is built with, else the first public constructor
+            var constructor = TUnit.Core.PropertyInjection.ClassMetadataHelper.GetParameterConstructor(
+                type.GetConstructors(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance));
 
             // Constructor params pass a null fallback so a null ParameterInfo.Name yields
             // "param{index}" (not "unnamed"), preserving the original per-callsite behaviour.
@@ -60,7 +62,7 @@ internal static class ReflectionMetadataBuilder
                 ? []
                 : ParameterMetadataFactory.Build(constructor.GetParameters(), nameFallback: null, computeIsNullable: true);
 
-            return new ClassMetadata
+            return TUnit.Core.PropertyInjection.ClassMetadataHelper.WithProperties(new ClassMetadata
             {
                 Name = TypeNameFormatter.GetNameWithoutGenericArity(type),
                 Type = type,
@@ -73,7 +75,7 @@ internal static class ReflectionMetadataBuilder
                 Parameters = constructorParameters,
                 Properties = [],
                 Parent = type.DeclaringType != null ? CreateClassMetadata(type.DeclaringType) : null
-            };
+            });
         });
     }
 }

@@ -128,6 +128,7 @@ internal static class PropertyInjectionPlanBuilder
         // Try source-generated plan first
         var plan = BuildSourceGeneratedPlan(type);
 
+#if !NETWASM // NetWasm has no run-time member lookup; its plans are the generated ones.
         // If no properties found in source-gen mode, fall back to reflection
         // This handles generic types that couldn't be registered at compile time
         if (!plan.HasProperties)
@@ -138,6 +139,7 @@ internal static class PropertyInjectionPlanBuilder
                 return reflectionPlan;
             }
         }
+#endif
 
         return plan;
     }

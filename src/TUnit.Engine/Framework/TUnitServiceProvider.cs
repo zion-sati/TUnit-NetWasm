@@ -72,10 +72,18 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
         Filter = filter;
         TestSessionId = context.Request.Session.SessionUid.Value;
 
+#if NETWASM
+        // The NetWasm host supplies these services itself; the platform's helpers expect its own service container.
+        var loggerFactory = (Microsoft.Testing.Platform.Logging.ILoggerFactory) frameworkServiceProvider.GetService(typeof(Microsoft.Testing.Platform.Logging.ILoggerFactory))!;
+        var outputDevice = (Microsoft.Testing.Platform.OutputDevice.IOutputDevice) frameworkServiceProvider.GetService(typeof(Microsoft.Testing.Platform.OutputDevice.IOutputDevice))!;
+        CommandLineOptions = (Microsoft.Testing.Platform.CommandLine.ICommandLineOptions) frameworkServiceProvider.GetService(typeof(Microsoft.Testing.Platform.CommandLine.ICommandLineOptions))!;
+        var configuration = (Microsoft.Testing.Platform.Configurations.IConfiguration) frameworkServiceProvider.GetService(typeof(Microsoft.Testing.Platform.Configurations.IConfiguration))!;
+#else
         var loggerFactory = frameworkServiceProvider.GetLoggerFactory();
         var outputDevice = frameworkServiceProvider.GetOutputDevice();
         CommandLineOptions = frameworkServiceProvider.GetCommandLineOptions();
         var configuration = frameworkServiceProvider.GetConfiguration();
+#endif
 
         TestContext.Configuration = new ConfigurationAdapter(configuration);
         TestContext.ResultsDirectory = configuration.GetTestResultDirectory();
@@ -216,7 +224,8 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
                 ContextProvider,
                 EventReceiverOrchestrator));
 
-        DiscoveryService = Register(new TestDiscoveryService(TestExecutor, TestBuilderPipeline, TestFilterService, dependencyExpander));
+        var dependencyResolver = Register(new TestDependencyResolver());
+        DiscoveryService = Register(new TestDiscoveryService(TestExecutor, TestBuilderPipeline, TestFilterService, dependencyExpander, dependencyResolver));
 
         // Create test finder service after discovery service so it can use its cache
         TestFinder = Register<ITestFinder>(new TestFinder(DiscoveryService));
@@ -246,11 +255,9 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
         var testRunner = Register(
             new TestRunner(
                 testCoordinator,
-                MessageBus,
                 isFailFastEnabled,
                 FailFastCancellationSource,
                 Logger,
-                testStateManager,
                 ParallelLimitLockProvider,
                 notInParallelLock));
 
@@ -268,11 +275,11 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
             hashSetPool,
             maxParallelismLimiter));
 
-        var staticPropertyHandler = Register(new StaticPropertyHandler(Logger, objectTracker, trackableObjectGraphProvider, lazyPropertyInjector, objectGraphDiscoveryService));
+        var staticPropertyHandler = Register(new StaticPropertyHandler(Logger, objectTracker, trackableObjectGraphProvider, lazyPropertyInjector, objectGraphDiscoveryService, ContextProvider.TestSessionContext));
 
         var dynamicTestQueue = Register<IDynamicTestQueue>(new DynamicTestQueue(MessageBus));
 
-        var deferredTestExpander = Register(new DeferredTestExpander(TestBuilderPipeline, TestFilterService));
+        var deferredTestExpander = Register(new DeferredTestExpander(TestBuilderPipeline, TestFilterService, objectTracker));
 
         var testScheduler = Register<ITestScheduler>(new TestScheduler(
             Logger,
@@ -298,9 +305,10 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
             MessageBus,
             staticPropertyInitializer,
             objectTracker,
-            deferredTestExpander));
+            deferredTestExpander,
+            dependencyResolver));
 
-        Register<ITestRegistry>(new TestRegistry(TestBuilderPipeline, testCoordinator, dynamicTestQueue, TestFilterService, TestSessionId, CancellationToken.Token));
+        Register<ITestRegistry>(new TestRegistry(TestBuilderPipeline, testCoordinator, dynamicTestQueue, TestFilterService, objectTracker, TestSessionId, CancellationToken.Token));
 
         InitializeConsoleInterceptors();
     }
@@ -335,6 +343,13 @@ internal class TUnitServiceProvider : IServiceProvider, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await TestOnDisposeRaiser.RaiseDeferredForSessionAsync(ContextProvider.TestSessionContext, Logger).ConfigureAwait(false);
+        // Generated/reflection static initializers can fail before the scheduler starts.
+        if (_services.TryGetValue(typeof(StaticPropertyHandler), out var staticPropertyHandler))
+        {
+            await ((StaticPropertyHandler)staticPropertyHandler).ReleaseSessionCallbacksAfterFailedInitializationAsync().ConfigureAwait(false);
+        }
+
         foreach (var service in _services.Values)
         {
             if (service is IAsyncDisposable asyncDisposable)

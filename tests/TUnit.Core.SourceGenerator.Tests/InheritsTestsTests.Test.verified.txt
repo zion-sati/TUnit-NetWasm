@@ -23,7 +23,11 @@ internal static class TUnit_TestProject_Bugs__1924_None_BaseClass__TestSource
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._1924.None.BaseClass).GetProperty("Data", typeof(global::TUnit.TestProject.Bugs._1924.DataClass)),
+                #endif
                 Type = typeof(global::TUnit.TestProject.Bugs._1924.DataClass),
                 Name = "Data",
                 IsStatic = false,
@@ -158,7 +162,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "value", new glo
             Data = default!,
         };
     }
-    private static global::System.Threading.Tasks.ValueTask __Invoke_0(global::TUnit.TestProject.Bugs._1924.None.Tests instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)
+    private static global::System.Threading.Tasks.ValueTask __Invoke_0(global::TUnit.TestProject.Bugs._1924.None.BaseClass instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)
     {
         try
         {
@@ -253,7 +257,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "value", new glo
             Data = default!,
         };
     }
-    private static global::System.Threading.Tasks.ValueTask __Invoke_0(global::TUnit.TestProject.Bugs._1924.None.Tests2 instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)
+    private static global::System.Threading.Tasks.ValueTask __Invoke_0(global::TUnit.TestProject.Bugs._1924.None.BaseClass instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)
     {
         try
         {
@@ -348,7 +352,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "value", new glo
             Data = default!,
         };
     }
-    private static global::System.Threading.Tasks.ValueTask __Invoke_0(global::TUnit.TestProject.Bugs._1924.None.Tests3 instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)
+    private static global::System.Threading.Tasks.ValueTask __Invoke_0(global::TUnit.TestProject.Bugs._1924.None.BaseClass instance, int methodIndex, object?[] args, global::System.Threading.CancellationToken cancellationToken)
     {
         try
         {

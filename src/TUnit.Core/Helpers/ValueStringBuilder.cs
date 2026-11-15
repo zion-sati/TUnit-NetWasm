@@ -151,7 +151,9 @@ internal ref struct ValueStringBuilder
 #if NET8_0_OR_GREATER
     private void AppendSpanFormattable<T>(T value) where T : ISpanFormattable
     {
+#if !NETWASM // NetWasm has no run-time type-owner metadata.
         Debug.Assert(typeof(T).Assembly.Equals(typeof(object).Assembly), "Implementation trusts the results of TryFormat because T is expected to be something known");
+#endif
 
         if (value.TryFormat(_chars[_pos..], out int charsWritten, format: default, provider: null))
         {

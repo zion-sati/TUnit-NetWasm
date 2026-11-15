@@ -76,9 +76,9 @@ public class TUnitFrameworkLogger(IExtension extension, IOutputDevice outputDevi
             return ConsoleColor.DarkRed;
         }
 
-        // Console.ForegroundColor is not supported on browser platforms
+        // Console.ForegroundColor is not supported on browser or WASI platforms
 #if NET5_0_OR_GREATER
-        if (!OperatingSystem.IsBrowser())
+        if (!OperatingSystem.IsBrowser() && !OperatingSystem.IsWasi())
         {
             return Console.ForegroundColor;
         }

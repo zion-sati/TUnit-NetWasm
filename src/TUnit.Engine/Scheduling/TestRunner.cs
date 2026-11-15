@@ -15,30 +15,24 @@ namespace TUnit.Engine.Scheduling;
 public sealed class TestRunner
 {
     private readonly ITestCoordinator _testCoordinator;
-    private readonly ITUnitMessageBus _tunitMessageBus;
     private readonly bool _isFailFastEnabled;
     private readonly CancellationTokenSource _failFastCancellationSource;
     private readonly TUnitFrameworkLogger _logger;
-    private readonly TestStateManager _testStateManager;
     private readonly ParallelLimitLockProvider _parallelLimitLockProvider;
     private readonly NotInParallelLock _notInParallelLock;
 
     internal TestRunner(
         ITestCoordinator testCoordinator,
-        ITUnitMessageBus tunitMessageBus,
         bool isFailFastEnabled,
         CancellationTokenSource failFastCancellationSource,
         TUnitFrameworkLogger logger,
-        TestStateManager testStateManager,
         ParallelLimitLockProvider parallelLimitLockProvider,
         NotInParallelLock notInParallelLock)
     {
         _testCoordinator = testCoordinator;
-        _tunitMessageBus = tunitMessageBus;
         _isFailFastEnabled = isFailFastEnabled;
         _failFastCancellationSource = failFastCancellationSource;
         _logger = logger;
-        _testStateManager = testStateManager;
         _parallelLimitLockProvider = parallelLimitLockProvider;
         _notInParallelLock = notInParallelLock;
     }
@@ -53,6 +47,11 @@ public sealed class TestRunner
 
     public ValueTask ExecuteTestAsync(AbstractExecutableTest test, CancellationToken cancellationToken)
     {
+        if (test is DeferredEnumerationExecutableTest { ExpansionCompletedWithoutChildren: true })
+        {
+            return default;
+        }
+
         if (!test.RequiresExecutionDedup)
         {
             if (test.ExecutionTask is { } executionTask)
@@ -133,9 +132,13 @@ public sealed class TestRunner
 
                 if (dependency.Test.State != TestState.Passed && !dependency.ProceedOnFailure)
                 {
-                    _testStateManager.MarkSkipped(test, "Skipped due to failed dependencies");
-                    await _tunitMessageBus.Skipped(test.Context, "Skipped due to failed dependencies").ConfigureAwait(false);
-                    return;
+                    // Use the coordinator's early-skip path so tracked objects, row scopes,
+                    // completion accounting and context resources follow the normal cleanup path.
+                    if (string.IsNullOrEmpty(test.Context.SkipReason))
+                    {
+                        test.Context.SkipReason = "Skipped due to failed dependencies";
+                    }
+                    break;
                 }
             }
 
@@ -191,6 +194,12 @@ public sealed class TestRunner
             if (_logger.IsDebugEnabled)
             {
                 await _logger.LogDebugAsync($"Test {test.TestId} was not started because the test run was cancelled.").ConfigureAwait(false);
+            }
+
+            if (!test.HasStartedExecution)
+            {
+                // TestCoordinator raises OnDispose for tests that reached it (#7205).
+                await TestOnDisposeRaiser.RaiseOnceAsync(test, _logger).ConfigureAwait(false);
             }
         }
         catch (Exception ex)

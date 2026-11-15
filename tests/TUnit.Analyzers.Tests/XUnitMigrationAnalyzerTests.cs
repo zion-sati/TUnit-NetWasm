@@ -8,6 +8,248 @@ namespace TUnit.Analyzers.Tests;
 
 public class XUnitMigrationAnalyzerTests
 {
+    [Arguments("new object[] { 1, 2 }", "1")]
+    [Arguments("new object[] { 2 }", "1")]
+    [Arguments("new object[] { 1, 1 }", "1")]
+    [Arguments("new object[] { null, 2 }", "(object)null")]
+    [Arguments("new System.Collections.ArrayList { 1, 2 }", "1")]
+    [Arguments("singleArguments()", "singleItem()")]
+    [Arguments("new System.Collections.ArrayList { new object() }", "new()")]
+    [Test]
+    public async Task XUnit_Single_Expected_Value_Converted(string collection, string expected)
+    {
+        await CodeFixer.VerifyCodeFixAsync(
+            $$"""
+            {|#0:using Xunit;
+
+            public class MyClass
+            {
+                private object[] singleArguments() => new object[] { 1, 2 };
+                private object singleItem() => 1;
+
+                [Fact]
+                public void MyTest()
+                {
+                    Assert.Single({{collection}}, {{expected}});
+                }
+            }|}
+            """,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0),
+            $$"""
+            using System.Threading.Tasks;
+
+            public class MyClass
+            {
+                private object[] singleArguments() => new object[] { 1, 2 };
+                private object singleItem() => 1;
+
+                [Test]
+                public async Task MyTest()
+                {
+                    await Assert.That(((global::System.Collections.IEnumerable)({{collection}}), (object)((({{expected}}))!))).Satisfies(singleArguments_ => global::System.Linq.Enumerable.Count(global::System.Linq.Enumerable.Cast<object>(singleArguments_.Item1), singleItem_ => global::System.Object.Equals(singleItem_, singleArguments_.Item2)) == 1);
+                }
+            }
+            """,
+            ConfigureXUnitTest);
+    }
+
+    [Arguments(false)]
+    [Arguments(true)]
+    [Test]
+    public async Task XUnit_Single_Named_Arguments_Converted_In_Source_Order(bool expectedFirst)
+    {
+        var arguments = expectedFirst
+            ? "expected: GetExpected(), collection: GetCollection()"
+            : "collection: GetCollection(), expected: GetExpected()";
+        var captures = expectedFirst
+            ? "(object)(((GetExpected()))!), (global::System.Collections.IEnumerable)(GetCollection())"
+            : "(global::System.Collections.IEnumerable)(GetCollection()), (object)(((GetExpected()))!)";
+        var collectionItem = expectedFirst ? "Item2" : "Item1";
+        var expectedItem = expectedFirst ? "Item1" : "Item2";
+        await CodeFixer.VerifyCodeFixAsync(
+            $$"""
+            {|#0:using Xunit;
+            using Assert = Xunit.Assert;
+
+            public class MyClass
+            {
+                private object[] GetCollection() => new object[] { 1, 2 };
+                private object GetExpected() => 1;
+
+                [Fact]
+                public void MyTest()
+                {
+                    Assert.Single({{arguments}});
+                }
+            }|}
+            """,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0),
+            $$"""
+            using System.Threading.Tasks;
+
+            public class MyClass
+            {
+                private object[] GetCollection() => new object[] { 1, 2 };
+                private object GetExpected() => 1;
+
+                [Test]
+                public async Task MyTest()
+                {
+                    await Assert.That(({{captures}})).Satisfies(singleArguments => global::System.Linq.Enumerable.Count(global::System.Linq.Enumerable.Cast<object>(singleArguments.{{collectionItem}}), singleItem => global::System.Object.Equals(singleItem, singleArguments.{{expectedItem}})) == 1);
+                }
+            }
+            """,
+            test =>
+            {
+                ConfigureXUnitTest(test);
+                test.CompilerDiagnostics = CompilerDiagnostics.Errors;
+                test.ReferenceAssemblies = TUnit.Tests.Shared.AnalyzerTestCompatibility.RuntimeReferenceAssemblies;
+                test.TestState.AdditionalReferences.Add(typeof(TUnit.Assertions.Assert).Assembly);
+                test.TestState.Sources.Add(("GlobalUsings.cs", "global using TUnit.Core; global using TUnit.Assertions; global using TUnit.Assertions.Extensions;"));
+                test.FixedState.Sources.Add(("GlobalUsings.cs", "global using TUnit.Core; global using TUnit.Assertions; global using TUnit.Assertions.Extensions;"));
+            });
+    }
+
+    [Arguments("expected")]
+    [Arguments("true ? expected : new object()")]
+    [Arguments("null")]
+    [Arguments("new()")]
+    [Test]
+    public async Task XUnit_Single_Nullable_Expected_Compiles(string expected)
+    {
+        await CodeFixer.VerifyCodeFixAsync(
+            $$"""
+            #nullable enable
+            {|#0:using Xunit;
+            using Assert = Xunit.Assert;
+
+            public class MyClass
+            {
+                [Fact]
+                public void MyTest()
+                {
+                    object? expected = null;
+                    Assert.Single((System.Collections.IEnumerable)new object?[] { null, 2 }, {{expected}});
+                }
+            }|}
+            """,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0),
+            $$"""
+            using System.Threading.Tasks;
+            #nullable enable
+
+            public class MyClass
+            {
+                [Test]
+                public async Task MyTest()
+                {
+                    object? expected = null;
+                    await Assert.That(((global::System.Collections.IEnumerable)((System.Collections.IEnumerable)new object?[] { null, 2 }), (object)((({{expected}}))!))).Satisfies(singleArguments => global::System.Linq.Enumerable.Count(global::System.Linq.Enumerable.Cast<object>(singleArguments.Item1), singleItem => global::System.Object.Equals(singleItem, singleArguments.Item2)) == 1);
+                }
+            }
+            """,
+            test =>
+            {
+                ConfigureXUnitTest(test);
+                // The shared verifier promotes all nullable warnings to errors.
+                test.CompilerDiagnostics = CompilerDiagnostics.Errors;
+                test.ReferenceAssemblies = TUnit.Tests.Shared.AnalyzerTestCompatibility.RuntimeReferenceAssemblies;
+                test.TestState.AdditionalReferences.Add(typeof(TUnit.Assertions.Assert).Assembly);
+                test.TestState.Sources.Add(("GlobalUsings.cs", "global using TUnit.Core; global using TUnit.Assertions; global using TUnit.Assertions.Extensions;"));
+                test.FixedState.Sources.Add(("GlobalUsings.cs", "global using TUnit.Core; global using TUnit.Assertions; global using TUnit.Assertions.Extensions;"));
+            });
+    }
+
+    [Arguments(0, false, false)]
+    [Arguments(1, true, false)]
+    [Arguments(2, false, false)]
+    [Arguments(0, false, true)]
+    [Arguments(1, true, true)]
+    [Arguments(2, false, true)]
+    [Test]
+    [Arguments(1, true, false, true)]
+    public async Task XUnit_Single_Expected_Value_Semantics(int matches, bool shouldPass, bool nullExpected, bool expectedFirst = false)
+    {
+        var calls = new List<string>();
+        object? expectedValue = nullExpected ? null : new SingleEqualityItem();
+        System.Collections.IEnumerable GetCollection()
+        {
+            calls.Add("collection");
+            return Enumerate();
+        }
+        IEnumerable<object?> Enumerate()
+        {
+            calls.Add("enumeration");
+            yield return new SingleEqualityItem();
+            yield return 2;
+            for (var i = 0; i < matches; i++)
+            {
+                yield return expectedValue;
+            }
+        }
+        object? GetExpected()
+        {
+            calls.Add("expected");
+            return expectedValue;
+        }
+
+        // The generated expression must evaluate each argument once before enumeration.
+        async Task CheckCollectionFirstAsync() => await TUnit.Assertions.Assert.That(((global::System.Collections.IEnumerable)(GetCollection()), (object?)(GetExpected()))).Satisfies(singleArguments => global::System.Linq.Enumerable.Count(global::System.Linq.Enumerable.Cast<object>(singleArguments.Item1), singleItem => global::System.Object.Equals(singleItem, singleArguments.Item2)) == 1);
+        async Task CheckExpectedFirstAsync() => await TUnit.Assertions.Assert.That(((object?)(GetExpected()), (global::System.Collections.IEnumerable)(GetCollection()))).Satisfies(singleArguments => global::System.Linq.Enumerable.Count(global::System.Linq.Enumerable.Cast<object>(singleArguments.Item2), singleItem => global::System.Object.Equals(singleItem, singleArguments.Item1)) == 1);
+        Task CheckAsync() => expectedFirst ? CheckExpectedFirstAsync() : CheckCollectionFirstAsync();
+        if (shouldPass)
+        {
+            await CheckAsync();
+        }
+        else
+        {
+            await TUnit.Assertions.Assert.That(() => CheckAsync()).Throws<TUnit.Assertions.Exceptions.AssertionException>();
+        }
+        await TUnit.Assertions.Assert.That(calls.SequenceEqual(expectedFirst ? new[] { "expected", "collection", "enumeration" } : new[] { "collection", "expected", "enumeration" })).IsTrue();
+    }
+
+    // IEquatable<T> must not replace object equality (the expected overload is non-generic).
+    private sealed class SingleEqualityItem : IEquatable<SingleEqualityItem>
+    {
+        public bool Equals(SingleEqualityItem? other) => true;
+        public override bool Equals(object? obj) => false;
+        public override int GetHashCode() => 0;
+    }
+
+    [Arguments("", "")]
+    [Arguments(", item => item == 1", "item => item == 1")]
+    [Test]
+    public async Task XUnit_Single_Other_Overloads_Retained(string argument, string predicate)
+    {
+        await CodeFixer.VerifyCodeFixAsync(
+            $$"""
+            {|#0:using Xunit;
+
+            public class MyClass
+            {
+                [Fact]
+                public void MyTest()
+                {
+                    Assert.Single(new[] { 1 }{{argument}});
+                }
+            }|}
+            """,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0),
+            $$"""
+            using System.Threading.Tasks;
+
+            public class MyClass
+            {
+                [Test]
+                public async Task MyTest()
+                {
+                    await Assert.That(new[] { 1 }).HasSingleItem({{predicate}});
+                }
+            }
+            """,
+            ConfigureXUnitTest);
+    }
+
     [Arguments("Fact")]
     [Arguments("Theory")]
     [Arguments("Xunit.Fact")]
@@ -1239,7 +1481,7 @@ public class XUnitMigrationAnalyzerTests
     }
 
     [Test]
-    public async Task Assert_ProperSubset_Adds_Todo_Comment()
+    public async Task Assert_ProperSubset_Preserves_Operands_And_Strictness()
     {
         await CodeFixer
             .VerifyCodeFixAsync(
@@ -1272,8 +1514,7 @@ public class XUnitMigrationAnalyzerTests
                     {
                         var subset = new HashSet<int> { 1, 2 };
                         var superset = new HashSet<int> { 1, 2, 3 };
-                        // TODO: TUnit migration - ProperSubset requires strict subset (not equal). Add additional assertion if needed.
-                        await Assert.That(superset).IsSubsetOf(subset);
+                        await Assert.That(((global::System.Collections.Generic.ISet<int>)(superset), (global::System.Collections.Generic.ISet<int>)(subset))).Satisfies(setArguments => setArguments.Item2 != null && setArguments.Item2.IsProperSubsetOf(setArguments.Item1));
                     }
                 }
                 """,
@@ -1282,7 +1523,7 @@ public class XUnitMigrationAnalyzerTests
     }
 
     [Test]
-    public async Task Assert_ProperSuperset_Adds_Todo_Comment()
+    public async Task Assert_ProperSuperset_Preserves_Operands_And_Strictness()
     {
         await CodeFixer
             .VerifyCodeFixAsync(
@@ -1315,13 +1556,316 @@ public class XUnitMigrationAnalyzerTests
                     {
                         var subset = new HashSet<int> { 1, 2 };
                         var superset = new HashSet<int> { 1, 2, 3 };
-                        // TODO: TUnit migration - ProperSuperset requires strict superset (not equal). Add additional assertion if needed.
-                        await Assert.That(subset).IsSupersetOf(superset);
+                        await Assert.That(((global::System.Collections.Generic.ISet<int>)(subset), (global::System.Collections.Generic.ISet<int>)(superset))).Satisfies(setArguments => setArguments.Item2 != null && setArguments.Item2.IsProperSupersetOf(setArguments.Item1));
                     }
                 }
                 """,
                 ConfigureXUnitTest
             );
+    }
+
+    [Test]
+    public async Task Assert_ProperSubset_Preserves_Out_Variable_Evaluation_Order()
+    {
+        await CodeFixer.VerifyCodeFixAsync(
+            """
+            {|#0:using System.Collections.Generic;
+            using Xunit;
+
+            public class MyClass
+            {
+                private HashSet<int> CreateSet(out HashSet<int> actual)
+                {
+                    actual = new HashSet<int> { 1 };
+                    return new HashSet<int> { 1, 2 };
+                }
+
+                [Fact]
+                public void MyTest()
+                {
+                    Assert.ProperSubset(CreateSet(out var actual), actual);
+                }
+            }|}
+            """,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0),
+            """
+            using System.Collections.Generic;
+            using System.Threading.Tasks;
+
+            public class MyClass
+            {
+                private HashSet<int> CreateSet(out HashSet<int> actual)
+                {
+                    actual = new HashSet<int> { 1 };
+                    return new HashSet<int> { 1, 2 };
+                }
+
+                [Test]
+                public async Task MyTest()
+                {
+                    await Assert.That(((global::System.Collections.Generic.ISet<int>)(CreateSet(out var actual)), (global::System.Collections.Generic.ISet<int>)(actual))).Satisfies(setArguments => setArguments.Item2 != null && setArguments.Item2.IsProperSubsetOf(setArguments.Item1));
+                }
+            }
+            """,
+            ConfigureXUnitTest);
+    }
+
+    [Test]
+    public async Task Assert_ProperSuperset_Preserves_Out_Variable_Evaluation_Order()
+    {
+        await CodeFixer.VerifyCodeFixAsync(
+            """
+            {|#0:using System.Collections.Generic;
+            using Xunit;
+
+            public class MyClass
+            {
+                private HashSet<int> CreateSet(out HashSet<int> actual)
+                {
+                    actual = new HashSet<int> { 1 };
+                    return new HashSet<int> { 1, 2 };
+                }
+
+                [Fact]
+                public void MyTest()
+                {
+                    Assert.ProperSuperset(CreateSet(out var actual), actual);
+                }
+            }|}
+            """,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0),
+            """
+            using System.Collections.Generic;
+            using System.Threading.Tasks;
+
+            public class MyClass
+            {
+                private HashSet<int> CreateSet(out HashSet<int> actual)
+                {
+                    actual = new HashSet<int> { 1 };
+                    return new HashSet<int> { 1, 2 };
+                }
+
+                [Test]
+                public async Task MyTest()
+                {
+                    await Assert.That(((global::System.Collections.Generic.ISet<int>)(CreateSet(out var actual)), (global::System.Collections.Generic.ISet<int>)(actual))).Satisfies(setArguments => setArguments.Item2 != null && setArguments.Item2.IsProperSupersetOf(setArguments.Item1));
+                }
+            }
+            """,
+            ConfigureXUnitTest);
+    }
+
+    [Arguments("ProperSubset", "IsProperSubsetOf")]
+    [Arguments("ProperSuperset", "IsProperSupersetOf")]
+    [Test]
+    public async Task Proper_Set_Conversion_Preserves_Comparer(string method, string relation)
+    {
+        await CodeFixer.VerifyCodeFixAsync(
+            $$"""
+            {|#0:using System;
+            using System.Collections.Generic;
+            using Xunit;
+
+            public class MyClass
+            {
+                [Fact]
+                public void MyTest()
+                {
+                    var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "A", "B" };
+                    var actual = new HashSet<string>(StringComparer.Ordinal) { "a" };
+                    Assert.{{method}}(expected, actual);
+                }
+            }|}
+            """,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0),
+            $$"""
+            using System;
+            using System.Collections.Generic;
+            using System.Threading.Tasks;
+
+            public class MyClass
+            {
+                [Test]
+                public async Task MyTest()
+                {
+                    var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "A", "B" };
+                    var actual = new HashSet<string>(StringComparer.Ordinal) { "a" };
+                    await Assert.That(((global::System.Collections.Generic.ISet<string>)(expected), (global::System.Collections.Generic.ISet<string>)(actual))).Satisfies(setArguments => setArguments.Item2 != null && setArguments.Item2.{{relation}}(setArguments.Item1));
+                }
+            }
+            """,
+            ConfigureXUnitTest);
+    }
+
+    [Arguments("expected, null", "(global::System.Collections.Generic.ISet<string>)(expected), (global::System.Collections.Generic.ISet<string>)(null)", "Item2", "Item1")]
+    [Arguments("expected, default", "(global::System.Collections.Generic.ISet<string>)(expected), (global::System.Collections.Generic.ISet<string>)(default)", "Item2", "Item1")]
+    [Arguments("actual: actual, expectedSubset: expected", "(global::System.Collections.Generic.ISet<string>)(actual), (global::System.Collections.Generic.ISet<string>)(expected)", "Item1", "Item2")]
+    [Test]
+    public async Task Proper_Set_Conversion_Preserves_Argument_Syntax(string arguments, string captures, string actualItem, string expectedItem)
+    {
+        await CodeFixer.VerifyCodeFixAsync(
+            $$"""
+            {|#0:using System.Collections.Generic;
+            using Xunit;
+
+            public class MyClass
+            {
+                [Fact]
+                public void MyTest()
+                {
+                    var expected = new HashSet<string> { "A", "B" };
+                    var actual = new HashSet<string> { "A" };
+                    Assert.ProperSubset({{arguments}});
+                }
+            }|}
+            """,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0),
+            $$"""
+            using System.Collections.Generic;
+            using System.Threading.Tasks;
+
+            public class MyClass
+            {
+                [Test]
+                public async Task MyTest()
+                {
+                    var expected = new HashSet<string> { "A", "B" };
+                    var actual = new HashSet<string> { "A" };
+                    await Assert.That(({{captures}})).Satisfies(setArguments => setArguments.{{actualItem}} != null && setArguments.{{actualItem}}.IsProperSubsetOf(setArguments.{{expectedItem}}));
+                }
+            }
+            """,
+            ConfigureXUnitTest);
+    }
+
+    [Arguments("ProperSubset", "IsProperSubsetOf", false)]
+    [Arguments("ProperSuperset", "IsProperSupersetOf", false)]
+    [Arguments("ProperSubset", "IsProperSubsetOf", true)]
+    [Arguments("ProperSuperset", "IsProperSupersetOf", true)]
+    [Test]
+    public async Task Proper_Set_Conversion_Preserves_Explicit_Interface_Methods(string method, string relation, bool actualFirst)
+    {
+        var expectedName = method == "ProperSubset" ? "expectedSubset" : "expectedSuperset";
+        var arguments = actualFirst ? $"actual: actual, {expectedName}: expected" : "expected, actual";
+        var captures = actualFirst
+            ? "(global::System.Collections.Generic.ISet<int>)(actual), (global::System.Collections.Generic.ISet<int>)(expected)"
+            : "(global::System.Collections.Generic.ISet<int>)(expected), (global::System.Collections.Generic.ISet<int>)(actual)";
+        var actualItem = actualFirst ? "Item1" : "Item2";
+        var expectedItem = actualFirst ? "Item2" : "Item1";
+        const string customSet = """
+            using System.Collections;
+            using System.Collections.Generic;
+
+            public class CustomSet : ISet<int>
+            {
+                private readonly HashSet<int> items = new HashSet<int> { 1 };
+                bool ISet<int>.IsProperSubsetOf(IEnumerable<int> other) => items.IsProperSubsetOf(other);
+                bool ISet<int>.IsProperSupersetOf(IEnumerable<int> other) => items.IsProperSupersetOf(other);
+                public bool Add(int item) => items.Add(item);
+                void ICollection<int>.Add(int item) => items.Add(item);
+                public void ExceptWith(IEnumerable<int> other) => items.ExceptWith(other);
+                public void IntersectWith(IEnumerable<int> other) => items.IntersectWith(other);
+                public bool IsSubsetOf(IEnumerable<int> other) => items.IsSubsetOf(other);
+                public bool IsSupersetOf(IEnumerable<int> other) => items.IsSupersetOf(other);
+                public bool Overlaps(IEnumerable<int> other) => items.Overlaps(other);
+                public bool SetEquals(IEnumerable<int> other) => items.SetEquals(other);
+                public void SymmetricExceptWith(IEnumerable<int> other) => items.SymmetricExceptWith(other);
+                public void UnionWith(IEnumerable<int> other) => items.UnionWith(other);
+                public int Count => items.Count;
+                public bool IsReadOnly => false;
+                public void Clear() => items.Clear();
+                public bool Contains(int item) => items.Contains(item);
+                public void CopyTo(int[] array, int index) => items.CopyTo(array, index);
+                public bool Remove(int item) => items.Remove(item);
+                public IEnumerator<int> GetEnumerator() => items.GetEnumerator();
+                IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+            """;
+        await CodeFixer.VerifyCodeFixAsync(
+            $$"""
+            {|#0:using Xunit;
+            using Assert = Xunit.Assert;
+
+            public class MyClass
+            {
+                [Fact]
+                public void MyTest()
+                {
+                    var expected = new CustomSet();
+                    var actual = new CustomSet();
+                    Assert.{{method}}({{arguments}});
+                }
+            }|}
+            """,
+            Verifier.Diagnostic(Rules.XunitMigration).WithLocation(0),
+            $$"""
+            using System.Threading.Tasks;
+
+            public class MyClass
+            {
+                [Test]
+                public async Task MyTest()
+                {
+                    var expected = new CustomSet();
+                    var actual = new CustomSet();
+                    await Assert.That(({{captures}})).Satisfies(setArguments => setArguments.{{actualItem}} != null && setArguments.{{actualItem}}.{{relation}}(setArguments.{{expectedItem}}));
+                }
+            }
+            """,
+            test =>
+            {
+                ConfigureXUnitTest(test);
+                test.CompilerDiagnostics = CompilerDiagnostics.Errors;
+                test.ReferenceAssemblies = TUnit.Tests.Shared.AnalyzerTestCompatibility.RuntimeReferenceAssemblies;
+                test.TestState.AdditionalReferences.Add(typeof(TUnit.Assertions.Assert).Assembly);
+                test.TestState.Sources.Add(("CustomSet.cs", customSet));
+                test.FixedState.Sources.Add(("CustomSet.cs", customSet));
+                const string globalUsings = "global using TUnit.Core; global using TUnit.Assertions; global using TUnit.Assertions.Extensions;";
+                test.TestState.Sources.Add(("GlobalUsings.cs", globalUsings));
+                test.FixedState.Sources.Add(("GlobalUsings.cs", globalUsings));
+            });
+    }
+
+    [Arguments(false)]
+    [Arguments(true)]
+    [Test]
+    public async Task Proper_Set_Conversion_Uses_Actual_Comparer_At_Runtime(bool superset)
+    {
+        var calls = new List<string>();
+        HashSet<string> GetExpected()
+        {
+            calls.Add("expected");
+            return new HashSet<string>(superset ? new[] { "A" } : new[] { "A", "B" }, StringComparer.OrdinalIgnoreCase);
+        }
+        HashSet<string> GetActual()
+        {
+            calls.Add("actual");
+            return new HashSet<string>(superset ? new[] { "a", "b" } : new[] { "a" }, StringComparer.Ordinal);
+        }
+
+        if (superset)
+        {
+            Xunit.Assert.Throws<Xunit.Sdk.ProperSupersetException>(() => Xunit.Assert.ProperSuperset(GetExpected(), GetActual()));
+        }
+        else
+        {
+            Xunit.Assert.Throws<Xunit.Sdk.ProperSubsetException>(() => Xunit.Assert.ProperSubset(GetExpected(), GetActual()));
+        }
+        calls.Clear();
+        async Task CheckAsync()
+        {
+            if (superset)
+            {
+                await TUnit.Assertions.Assert.That((GetExpected(), GetActual())).Satisfies(setArguments => setArguments.Item2 != null && setArguments.Item2.IsProperSupersetOf(setArguments.Item1));
+            }
+            else
+            {
+                await TUnit.Assertions.Assert.That((GetExpected(), GetActual())).Satisfies(setArguments => setArguments.Item2 != null && setArguments.Item2.IsProperSubsetOf(setArguments.Item1));
+            }
+        }
+        await TUnit.Assertions.Assert.That(() => CheckAsync()).Throws<TUnit.Assertions.Exceptions.AssertionException>();
+        await TUnit.Assertions.Assert.That(calls.SequenceEqual(new[] { "expected", "actual" })).IsTrue();
     }
 
     [Test]

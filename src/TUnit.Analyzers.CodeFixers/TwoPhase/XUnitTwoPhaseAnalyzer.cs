@@ -32,6 +32,8 @@ public class XUnitTwoPhaseAnalyzer : MigrationAnalyzer
     // Track assertions that are assigned to variables (should not be converted)
     private readonly HashSet<InvocationExpressionSyntax> _variableAssignedAssertions = new();
 
+    private HashSet<string>? _sourceIdentifiers;
+
     private static readonly HashSet<string> XUnitAttributeNames = new()
     {
         "Fact", "Theory", "InlineData", "MemberData", "ClassData",
@@ -356,7 +358,7 @@ public class XUnitTwoPhaseAnalyzer : MigrationAnalyzer
             // xUnit has two overloads with a second parameter:
             //   Assert.Single<T>(IEnumerable<T>, Predicate<T>) - predicate overload
             //   Assert.Single(IEnumerable, object?) - expected value overload
-            // Only convert the predicate overload to HasSingleItem(predicate).
+            // The predicate overload can use HasSingleItem(predicate) directly.
             var symbol = SemanticModel.GetSymbolInfo(memberAccess).Symbol;
             if (symbol is IMethodSymbol { Parameters.Length: 2 } methodSymbol &&
                 methodSymbol.Parameters[1].Type is INamedTypeSymbol { DelegateInvokeMethod: not null })
@@ -365,9 +367,28 @@ public class XUnitTwoPhaseAnalyzer : MigrationAnalyzer
                 return (AssertionConversionKind.Single, $"await Assert.That({collection}).HasSingleItem({predicate})", true, null);
             }
 
-            // For the expected value overload, fall back to HasSingleItem() without predicate
-            return (AssertionConversionKind.Single, $"await Assert.That({collection}).HasSingleItem()", true,
-                "// TODO: xUnit Assert.Single(collection, expected) matched by value - verify conversion");
+            // Capture both arguments before enumeration, in their original evaluation order.
+            // xUnit uses object.Equals(item, expected), including for non-generic collections.
+            // Avoid introducing lambda parameters that shadow names in the migrated source.
+            var identifiers = _sourceIdentifiers ??= new HashSet<string>(memberAccess.SyntaxTree.GetRoot().DescendantTokens()
+                .Where(token => token.IsKind(SyntaxKind.IdentifierToken)).Select(token => token.ValueText));
+            var pair = "singleArguments";
+            while (identifiers.Contains(pair)) pair += "_";
+            var item = "singleItem";
+            while (identifiers.Contains(item)) item += "_";
+            var expectedFirst = args[0].NameColon?.Name.Identifier.ValueText == "expected";
+            collection = args[expectedFirst ? 1 : 0].Expression.ToString();
+            var expected = args[expectedFirst ? 0 : 1].Expression.ToString();
+            var collectionCapture = $"(global::System.Collections.IEnumerable)({collection})";
+            var expectedCapture = $"(object)((({expected}))!)";
+            var captures = expectedFirst
+                ? $"{expectedCapture}, {collectionCapture}"
+                : $"{collectionCapture}, {expectedCapture}";
+            var collectionItem = expectedFirst ? "Item2" : "Item1";
+            var expectedItem = expectedFirst ? "Item1" : "Item2";
+            return (AssertionConversionKind.Single,
+                $"await Assert.That(({captures})).Satisfies({pair} => global::System.Linq.Enumerable.Count(global::System.Linq.Enumerable.Cast<object>({pair}.{collectionItem}), {item} => global::System.Object.Equals({item}, {pair}.{expectedItem})) == 1)",
+                true, null);
         }
 
         return (AssertionConversionKind.Single, $"await Assert.That({collection}).HasSingleItem()", true, null);
@@ -727,31 +748,39 @@ public class XUnitTwoPhaseAnalyzer : MigrationAnalyzer
     }
 
     private (AssertionConversionKind, string?, bool, string?) ConvertProperSubset(SeparatedSyntaxList<ArgumentSyntax> args)
-    {
-        if (args.Count < 2) return (AssertionConversionKind.Contains, null, false, null);
-
-        // xUnit: Assert.ProperSubset(expectedSuperset, actual)
-        // actual should be a proper subset of expectedSuperset
-        // TUnit: Assert.That(first_arg).IsSubsetOf(second_arg) with TODO comment
-        var first = args[0].Expression.ToString();
-        var second = args[1].Expression.ToString();
-
-        var todoComment = "// TODO: TUnit migration - ProperSubset requires strict subset (not equal). Add additional assertion if needed.";
-        return (AssertionConversionKind.Contains, $"await Assert.That({first}).IsSubsetOf({second})", true, todoComment);
-    }
+        => ConvertProperSet(args, "IsProperSubsetOf");
 
     private (AssertionConversionKind, string?, bool, string?) ConvertProperSuperset(SeparatedSyntaxList<ArgumentSyntax> args)
+        => ConvertProperSet(args, "IsProperSupersetOf");
+
+    private (AssertionConversionKind, string?, bool, string?) ConvertProperSet(SeparatedSyntaxList<ArgumentSyntax> args, string relation)
     {
         if (args.Count < 2) return (AssertionConversionKind.Contains, null, false, null);
 
-        // xUnit: Assert.ProperSuperset(expectedSubset, actual)
-        // actual should be a proper superset of expectedSubset
-        // TUnit: Assert.That(first_arg).IsSupersetOf(second_arg) with TODO comment
-        var first = args[0].Expression.ToString();
-        var second = args[1].Expression.ToString();
+        // Capture in source order, then use actual's comparer for the strict relation.
+        // The inverse relation is not equivalent when the sets have different comparers.
+        var identifiers = _sourceIdentifiers ??= new HashSet<string>(args[0].SyntaxTree.GetRoot().DescendantTokens()
+            .Where(token => token.IsKind(SyntaxKind.IdentifierToken)).Select(token => token.ValueText));
+        var pair = "setArguments";
+        while (identifiers.Contains(pair)) pair += "_";
+        var actualFirst = args[0].NameColon?.Name.Identifier.ValueText == "actual";
+        var actual = $"{pair}.{(actualFirst ? "Item1" : "Item2")}";
+        var expected = $"{pair}.{(actualFirst ? "Item2" : "Item1")}";
 
-        var todoComment = "// TODO: TUnit migration - ProperSuperset requires strict superset (not equal). Add additional assertion if needed.";
-        return (AssertionConversionKind.Contains, $"await Assert.That({first}).IsSupersetOf({second})", true, todoComment);
+        // Preserve the parameter types for explicit interface methods and target-typed expressions.
+        string Capture(ArgumentSyntax argument)
+        {
+            var expression = argument.Expression;
+            if (SemanticModel.GetTypeInfo(expression).ConvertedType is { } type)
+            {
+                return $"({type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})({expression})";
+            }
+            return expression.ToString();
+        }
+
+        return (AssertionConversionKind.Contains,
+            $"await Assert.That(({Capture(args[0])}, {Capture(args[1])})).Satisfies({pair} => {actual} != null && {actual}.{relation}({expected}))",
+            true, null);
     }
 
     private (AssertionConversionKind, string?, bool, string?) ConvertDistinct(SeparatedSyntaxList<ArgumentSyntax> args)

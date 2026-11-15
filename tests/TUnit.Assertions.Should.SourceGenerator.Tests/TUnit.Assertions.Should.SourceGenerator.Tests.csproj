@@ -3,12 +3,12 @@
   <PropertyGroup>
     <!-- Snapshot tests for a netstandard2.0 generator: the emitted source is determined
          by the input compilation, not the consumer runtime, so per-TFM snapshots all
-         contain identical text. Multi-targeting net8.0/9.0/10.0 keeps cross-TFM coverage
+         contain identical text. Multi-targeting net10.0/11.0 keeps cross-TFM coverage
          for the generator host (Roslyn). net472 is omitted because the in-memory
          compilation harness can't resolve user-declared generic assertions reliably
          against the .NET Framework BCL — adds zero coverage for an output-deterministic
          generator and 4x build cost. -->
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
   </PropertyGroup>
 
   <Import Project="..\..\eng\TestProject.props" />
@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Compile Include="..\SharedTestHelpers\TestHostReferences.cs" Link="Shared\TestHostReferences.cs" />
+    <Compile Include="..\SharedTestHelpers\GeneratorTestInput.cs" Link="Shared\GeneratorTestInput.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,7 +29,12 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.SourceGenerators.Testing" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" />
+    <!-- Host the generator (built against Roslyn 4.7) on the Roslyn that a current SDK loads.
+         Roslyn 4.7 cannot bind fixtures that use newer syntax, such as collection expressions in
+         attribute arguments, so it would snapshot what the generator does with broken input (#7190). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" VersionOverride="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" VersionOverride="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" VersionOverride="4.14.0" />
     <PackageReference Include="Microsoft.Testing.Extensions.HangDump" />
     <PackageReference Include="NuGet.Protocol" />
     <PackageReference Include="Sourcy.DotNet">

@@ -202,7 +202,15 @@ internal static class DataGeneratorMetadataCreator
         }
         else
         {
-            testBuilderContext = TestSessionContext.GlobalStaticPropertyContext;
+            testBuilderContext = events == null
+                ? TestSessionContext.GlobalStaticPropertyContext
+                : new TestBuilderContext
+                {
+                    TestMetadata = TestSessionContext.GlobalStaticPropertyContext.TestMetadata,
+                    Events = events,
+                    DataSourceAttribute = dataSource,
+                    StateBag = objectBag ?? new ConcurrentDictionary<string, object?>()
+                };
         }
 
         return new DataGeneratorMetadata
@@ -308,8 +316,7 @@ internal static class DataGeneratorMetadataCreator
     {
         return ClassMetadata.GetOrAdd(type.FullName ?? type.Name, () =>
         {
-            var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
-            var constructor = constructors.FirstOrDefault();
+            var constructor = PropertyInjection.ClassMetadataHelper.GetParameterConstructor(type.GetConstructors(BindingFlags.Public | BindingFlags.Instance));
 
             var constructorParameters = constructor?.GetParameters().Select((p, i) => new ParameterMetadata(p.ParameterType)
             {
@@ -318,7 +325,7 @@ internal static class DataGeneratorMetadataCreator
                 ReflectionInfo = p
             }).ToArray() ?? [];
 
-            return new ClassMetadata
+            return PropertyInjection.ClassMetadataHelper.WithProperties(new ClassMetadata
             {
                 Type = type,
                 TypeInfo = new ConcreteType(type),
@@ -331,7 +338,7 @@ internal static class DataGeneratorMetadataCreator
                 Properties = [],
                 Parameters = constructorParameters,
                 Parent = type.DeclaringType != null ? GetClassMetadataForType(type.DeclaringType) : null
-            };
+            });
         });
     }
 }

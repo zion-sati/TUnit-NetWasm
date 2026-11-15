@@ -6,7 +6,6 @@ namespace TUnit.Core.SourceGenerator.Models;
 /// </summary>
 public sealed record ClassTestGroup
 {
-    public required bool IsCatalogOnly { get; init; }
     public required string ClassFullyQualified { get; init; }
     public required string TestSourceName { get; init; }
     public required EquatableArray<TestMethodSourceCode> Methods { get; init; }
@@ -24,7 +23,4 @@ public sealed record ClassTestGroup
     /// Used to inline MethodMetadata construction into field initializers.
     /// </summary>
     public required string SharedFieldsCode { get; init; }
-
-    /// <summary>Pre-generated setup/teardown actions shared by this class's entries.</summary>
-    public required string LifecycleCode { get; init; }
 }

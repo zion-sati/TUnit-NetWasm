@@ -43,6 +43,26 @@ public static class ParameterMetadataFactory
         };
     }
 
+#if NETWASM
+    /// <summary>
+    /// Attaches each parameter's data-source attributes ([Matrix] and kin), which the generated code of a NetWasm
+    /// build supplies: NetWasm keeps no member metadata at run time, so data sources read these instead of the
+    /// parameters' <see cref="ParameterInfo"/>. <paramref name="attributes"/> has one array per parameter.
+    /// </summary>
+    public static ParameterMetadata[] WithDataSourceAttributes(ParameterMetadata[] parameters, params Attribute[][] attributes)
+    {
+        var attached = new ParameterMetadata[parameters.Length];
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            attached[i] = i < attributes.Length && attributes[i].Length > 0
+                ? parameters[i] with { CachedDataSourceAttributes = attributes[i] }
+                : parameters[i];
+        }
+
+        return attached;
+    }
+
+#endif
     /// <summary>
     /// Attaches lazy <see cref="ParameterMetadata.ReflectionInfo"/> resolution to the parameters of a
     /// non-generic public method. The method is looked up once, on first access, by name and the parameters' types.
@@ -228,11 +248,30 @@ internal sealed class ParameterInfoResolver
                 ?? FindNonPublicMethod(),
             Kind.MethodByShape => FindBestMatch(_declaringType!.GetMethods(PublicMethods)) ?? FindNonPublicMethod(),
             Kind.Constructor => _declaringType!.GetConstructor(GetParameterTypes()),
-            Kind.ConstructorByParameterCount => FindBestMatch(_declaringType!.GetConstructors()),
+            Kind.ConstructorByParameterCount => FindConstructorByParameterCount(_declaringType!.GetConstructors()),
             _ => FindDeclaredNonPublicMethod(),
         };
 
         return member?.GetParameters() ?? [];
+    }
+
+    /// <summary>
+    /// The generator describes the <c>[TestConstructor]</c> when the class marks one, so that constructor owns the
+    /// parameters. Matching by shape alone could pick an earlier overload such as <c>Foo(object)</c> for
+    /// <c>[TestConstructor] Foo(T)</c>, whose <c>T</c> parameter is emitted as <c>object</c> (#7208).
+    /// </summary>
+    private MethodBase? FindConstructorByParameterCount(ConstructorInfo[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (candidate.IsDefined(typeof(TestConstructorAttribute), inherit: false)
+                && candidate.GetParameters().Length == _parameters.Length)
+            {
+                return candidate;
+            }
+        }
+
+        return FindBestMatch(candidates);
     }
 
     [UnconditionalSuppressMessage("Trimming", "IL2080",

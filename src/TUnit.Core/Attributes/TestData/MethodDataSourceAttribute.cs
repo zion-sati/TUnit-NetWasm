@@ -95,6 +95,11 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
     /// </remarks>
     public Func<DataGeneratorMetadata, IAsyncEnumerable<Func<Task<object?[]?>>>>? Factory { get; set; }
 
+    // Configured only by GenericClassRowPartition.ConfigureInferredSource for generated code.
+    internal bool FilterClassRows { get; set; }
+
+    internal Type[]? InferredClassTypeArguments { get; set; }
+
     /// <summary>
     /// Gets or sets the arguments to pass to the data source method.
     /// Use this when the data source method requires parameters.
@@ -147,6 +152,8 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
         converted.Arguments = Arguments;
         converted.SkipIfEmpty = SkipIfEmpty;
         converted.DeferEnumeration = DeferEnumeration;
+        converted.FilterClassRows = FilterClassRows;
+        converted.InferredClassTypeArguments = InferredClassTypeArguments;
 
         return converted;
     }
@@ -161,12 +168,31 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
             await foreach (var func in Factory(dataGeneratorMetadata))
             {
                 factoryYieldedAny = true;
-                yield return func;
+                if (FilterClassRows)
+                {
+                    var row = await func().ConfigureAwait(false);
+                    if (row is null)
+                    {
+                        continue;
+                    }
+
+                    row = GenericClassRowPartition.EvaluateWrappedFactory(row);
+                    if (ClassProvidingDataSource is null || GenericClassRowPartition.HasNonNullValues(row))
+                    {
+                        // Reuse the value evaluated for filtering only once. Later method rows and
+                        // repetitions must call the source factory for fresh constructor data.
+                        yield return new EvaluatedDataRow(row, func).FetchAsync;
+                    }
+                }
+                else
+                {
+                    yield return func;
+                }
             }
 
             // An empty source runs the test once with no arguments, like NoDataSource (#2862), unless
             // SkipIfEmpty is set. Same rule as the reflection path below, so both modes agree (#7092).
-            if (!factoryYieldedAny && !SkipIfEmpty)
+            if (!factoryYieldedAny && !SkipIfEmpty && !FilterClassRows)
             {
                 yield return static () => Task.FromResult<object?[]?>([]);
             }
@@ -263,22 +289,19 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
             }
         }
 
-        // Handle different return types
-        if (methodResult == null)
-        {
-            yield break;
-        }
-
         var hasAnyItems = false;
-        await foreach (var row in GetRowsFromRuntimeValueAsync(methodResult, dataGeneratorMetadata))
+        if (methodResult is not null)
         {
-            hasAnyItems = true;
-            yield return row;
+            await foreach (var row in GetRowsFromRuntimeValueAsync(methodResult, dataGeneratorMetadata))
+            {
+                hasAnyItems = true;
+                yield return row;
+            }
         }
 
-        // If the source was empty, yield one empty result like NoDataSource does
+        // If the source was null or empty, yield one empty result like NoDataSource does
         // unless SkipIfEmpty is true, in which case we yield nothing (test will be skipped)
-        if (!hasAnyItems && !SkipIfEmpty)
+        if (!hasAnyItems && !SkipIfEmpty && !FilterClassRows)
         {
             yield return () => Task.FromResult<object?[]?>([]);
         }
@@ -290,12 +313,21 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
     /// <see cref="System.Collections.IEnumerable"/> other than a string or tuple (one row per item), or a single row.
     /// Used by the reflection fallback above and by the source-generated factory for a field, or a private or protected
     /// property, whose declared type does not say which of these it holds, so both read such a member the same way.
-    /// An empty source yields nothing; the caller decides whether that becomes an empty row.
+    /// Resultless Task and ValueTask sources are awaited and yield one row containing null.
+    /// An empty source or a generic task with a null result yields nothing; the caller decides whether that becomes an empty row.
     /// </summary>
     [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "Method data sources require runtime discovery. AOT users should use Factory property.")]
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Method data sources require runtime discovery. AOT users should use Factory property.")]
     internal static async IAsyncEnumerable<Func<Task<object?[]?>>> GetRowsFromRuntimeValueAsync(object methodResult, DataGeneratorMetadata dataGeneratorMetadata)
     {
+        // A resultless source still supplies one null-valued row, after completion.
+        if (methodResult is ValueTask valueTask)
+        {
+            await valueTask.ConfigureAwait(false);
+            yield return static () => Task.FromResult<object?[]?>([null]);
+            yield break;
+        }
+
         // ValueTask<T> is neither a Task nor an IEnumerable, so normalise it to Task<T> and let
         // the Task branch below await it, as the source-generated Factory does.
         if (TryConvertValueTaskToTask(methodResult) is { } valueTaskAsTask)
@@ -307,6 +339,40 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
         // Use MembersToGenerate which contains the correct parameters for this data generator type
         // (constructor params for class-level, method params for method-level)
         var paramTypes = GetMemberTypes(dataGeneratorMetadata.MembersToGenerate);
+        var genericTupleParameter = GetSingleErasedGenericTupleParameter(dataGeneratorMetadata.MembersToGenerate);
+
+        object?[] ToRow(object? item)
+        {
+            // Property injection consumes a value, not the invoker's flattened argument boxes.
+            if (dataGeneratorMetadata.MembersToGenerate is [PropertyMetadata property]
+                && TupleHelper.IsTupleType(property.Type))
+            {
+                item = DataSourceHelpers.InvokeIfFunc(item);
+                if (DataSourceHelpers.IsTuple(item))
+                {
+                    return [item];
+                }
+            }
+
+            // Retain nested value tuples, or all reference-tuple elements, until binding.
+            if (genericTupleParameter is not null)
+            {
+                item = DataSourceHelpers.InvokeIfFunc(item);
+                if (DataSourceHelpers.IsTuple(item))
+                {
+                    return DataSourceHelpers.ShouldFlattenErasedTuple(item!, genericTupleParameter)
+                        ? DataSourceHelpers.UnwrapTupleAot(item)
+                        : [item];
+                }
+
+                // Invoke only the outer factory, matching ToObjectArrayWithTypes.
+                return item is object?[] array && item.GetType() == typeof(object[])
+                    ? array
+                    : [item];
+            }
+
+            return item.ToObjectArrayWithTypes(paramTypes);
+        }
 
         // If it's IAsyncEnumerable, handle it specially
         if (IsAsyncEnumerable(methodResult.GetType()))
@@ -315,7 +381,7 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
             {
                 yield return async () =>
                 {
-                    return await Task.FromResult<object?[]?>(item.ToObjectArrayWithTypes(paramTypes));
+                    return await Task.FromResult<object?[]?>(ToRow(item));
                 };
             }
         }
@@ -324,6 +390,11 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
         {
             await task.ConfigureAwait(false);
             var taskResult = GetTaskResult(task);
+            if (taskResult is null && GetTaskResultType(task.GetType()) is { } resultType
+                && resultType.FullName != "System.Threading.Tasks.VoidTaskResult")
+            {
+                yield break;
+            }
 
             if (taskResult is System.Collections.IEnumerable enumerable and not string && !DataSourceHelpers.IsTuple(taskResult))
             {
@@ -331,7 +402,7 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
                 {
                     yield return async () =>
                     {
-                        return await Task.FromResult<object?[]?>(item.ToObjectArrayWithTypes(paramTypes));
+                        return await Task.FromResult<object?[]?>(ToRow(item));
                     };
                 }
             }
@@ -339,7 +410,7 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
             {
                 yield return async () =>
                 {
-                    return await Task.FromResult<object?[]?>(taskResult.ToObjectArrayWithTypes(paramTypes));
+                    return await Task.FromResult<object?[]?>(ToRow(taskResult));
                 };
             }
         }
@@ -349,16 +420,125 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
         {
             foreach (var item in enumerable)
             {
-                yield return () => Task.FromResult<object?[]?>(item.ToObjectArrayWithTypes(paramTypes));
+                yield return () => Task.FromResult<object?[]?>(ToRow(item));
             }
         }
         else
         {
             yield return async () =>
             {
-                return await Task.FromResult<object?[]?>(methodResult.ToObjectArrayWithTypes(paramTypes));
+                return await Task.FromResult<object?[]?>(ToRow(methodResult));
             };
         }
+    }
+
+    /// <summary>
+    /// The declared type of one row of a data source member of type <paramref name="memberType"/>, read the way
+    /// <see cref="GetRowsFromRuntimeValueAsync"/> reads its value: a <c>Task</c> or <c>ValueTask</c> is unwrapped; an
+    /// <c>IAsyncEnumerable&lt;X&gt;</c>, an array of <c>X</c> or an <c>IEnumerable&lt;X&gt;</c> other than a string
+    /// yields rows of <c>X</c>; any other value, such as a string or a tuple, is a single row. A <c>Func&lt;X&gt;</c>
+    /// row is unwrapped, then one <c>TestDataRow&lt;X&gt;</c> and one <c>Func&lt;X&gt;</c> inside it. Null for <c>object[]</c> rows and non-generic sequences, whose element types are unknown.
+    /// Reflection discovery uses it to infer a generic class's type arguments from a member it cannot read yet
+    /// (#7208). Keep it in step with <see cref="GetRowsFromRuntimeValueAsync"/>; MethodDataSourceDeclaredRowTypeTests
+    /// checks the two against each other.
+    /// </summary>
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Reflection mode requires dynamic access to data source members")]
+    internal static Type? GetDeclaredRowType(Type memberType)
+    {
+        if (memberType == typeof(Task) || memberType == typeof(ValueTask))
+        {
+            return null;
+        }
+
+        var awaited = false;
+        if (memberType.IsGenericType
+            && (memberType.GetGenericTypeDefinition() == typeof(Task<>) || memberType.GetGenericTypeDefinition() == typeof(ValueTask<>)))
+        {
+            memberType = memberType.GetGenericArguments()[0];
+            awaited = true;
+        }
+
+        Type? rowType;
+        if (memberType == typeof(string))
+        {
+            rowType = memberType;
+        }
+        else if (!awaited && GetSequenceElementType(memberType, typeof(IAsyncEnumerable<>)) is { } asyncElementType)
+        {
+            // An awaited IAsyncEnumerable is not enumerated by invocation, so only a direct one yields rows
+            rowType = asyncElementType;
+        }
+        else if (memberType.IsArray)
+        {
+            rowType = memberType.GetElementType();
+        }
+        else if (GetSequenceElementType(memberType, typeof(IEnumerable<>)) is { } elementType)
+        {
+            rowType = elementType;
+        }
+        else if (typeof(System.Collections.IEnumerable).IsAssignableFrom(memberType))
+        {
+            return null;
+        }
+        else
+        {
+            rowType = memberType;
+        }
+
+        // Peel only the layers the row reader removes: DataSourceHelpers.ToObjectArray invokes one outer Func, then
+        // TestDataRowUnwrapper.UnwrapArray strips one TestDataRow and invokes one Func inside it
+        rowType = UnwrapFunc(rowType);
+        if (rowType != null && TestDataRowUnwrapper.GetInnerDataType(rowType) is { } rowData)
+        {
+            rowType = UnwrapFunc(rowData);
+        }
+
+        return rowType == null || rowType == typeof(object[]) ? null : rowType;
+    }
+
+    private static Type? UnwrapFunc(Type? type) =>
+        type is { IsGenericType: true } && type.GetGenericTypeDefinition() == typeof(Func<>)
+            ? type.GetGenericArguments()[0]
+            : type;
+
+    /// <summary>
+    /// <c>X</c> when <paramref name="type"/> is or implements <paramref name="sequenceDefinition"/> of <c>X</c>
+    /// (<c>IEnumerable&lt;&gt;</c> or <c>IAsyncEnumerable&lt;&gt;</c>), otherwise null.
+    /// </summary>
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Reflection mode requires dynamic access to data source members")]
+    private static Type? GetSequenceElementType(Type type, Type sequenceDefinition)
+    {
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == sequenceDefinition)
+        {
+            return type.GetGenericArguments()[0];
+        }
+
+        foreach (var implemented in type.GetInterfaces())
+        {
+            if (implemented.IsGenericType && implemented.GetGenericTypeDefinition() == sequenceDefinition)
+            {
+                return implemented.GetGenericArguments()[0];
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The declared type of the member this source reads on <paramref name="targetType"/>: the return type of the
+    /// method overload <see cref="GetDataRowsAsync"/> invokes, else the property or field type. Null when no such
+    /// member exists. Reflection discovery uses it to infer a generic class's type arguments before reading the
+    /// member, so it resolves the member exactly as invocation does.
+    /// </summary>
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Method data sources require runtime discovery. AOT users should use Factory property.")]
+    internal Type? GetDeclaredMemberType([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods | DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields)] Type targetType)
+    {
+        var methodInfo = ResolveDataSourceMethod(targetType)
+            ?? targetType.GetMethod(MethodNameProvidingDataSource, BindingFlags);
+
+        return methodInfo?.ReturnType
+            ?? targetType.GetProperty(MethodNameProvidingDataSource, BindingFlags)?.PropertyType
+            ?? targetType.GetField(MethodNameProvidingDataSource, BindingFlags)?.FieldType;
     }
 
     // Resolves the data-source method overload that best matches the supplied Arguments.
@@ -370,12 +550,12 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
     // GetData(object) vs GetData(string) — where a plain IsAssignableFrom scan would match both and
     // throw on SingleOrDefault.
     //
-    // When any argument is null it has no runtime type, so it cannot be expressed in the binder's
-    // Type[]. The overloads are then scored the way the source generator scores them (ScoreArguments):
+    // When an argument is null, or the binder finds no exact-arity match, the overloads are scored
+    // the way the source generator scores them (ScoreArguments):
     // a null needs a reference or Nullable<T> parameter, other arguments may use numeric widening,
     // missing trailing parameters must be optional or a CancellationToken, and exact-count overloads and
-    // exact argument types rank higher. A single best overload is used. Otherwise we fall back to the
-    // caller's name-only lookup.
+    // exact argument types rank higher. Ties prefer more specific supplied parameter types, then the
+    // first declaration, as in the generator. If none match, use the caller's name-only lookup.
     //
     // With zero arguments the empty Type[] flows through the same binder path and selects the
     // parameterless overload directly — including when the name is shared with other-arity
@@ -396,7 +576,7 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
             if (argumentType is null)
             {
                 // A null argument has no runtime type the binder can match on.
-                return ResolveDataSourceMethodWithNullArgument(targetType, arguments);
+                return ResolveDataSourceMethodByScore(targetType, arguments);
             }
 
             argumentTypes[i] = argumentType;
@@ -409,7 +589,7 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
         // IEnumerable<int> Rows() is used rather than an ambiguous match with IEnumerable<T> Rows<T>(),
         // as the source generator does.
 #if NET
-        return targetType.GetMethod(MethodNameProvidingDataSource, genericParameterCount: 0, BindingFlags, binder: null, argumentTypes, modifiers: null);
+        var resolvedMethod = targetType.GetMethod(MethodNameProvidingDataSource, genericParameterCount: 0, BindingFlags, binder: null, argumentTypes, modifiers: null);
 #else
         List<MethodBase>? candidates = null;
         foreach (var method in targetType.GetMethods(BindingFlags))
@@ -420,17 +600,20 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
             }
         }
 
-        return candidates is null
+        var resolvedMethod = candidates is null
             ? null
             : (MethodInfo?)Type.DefaultBinder.SelectMethod(BindingFlags, candidates.ToArray(), argumentTypes, modifiers: null);
 #endif
+        // The binder requires exact arity. Match omitted optional and CancellationToken parameters
+        // with the same scoring used for null arguments and by the source generator.
+        return resolvedMethod ?? ResolveDataSourceMethodByScore(targetType, arguments);
     }
 
     [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Method data sources require runtime discovery. AOT users should use Factory property.")]
-    private MethodInfo? ResolveDataSourceMethodWithNullArgument([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type targetType, object?[] arguments)
+    private MethodInfo? ResolveDataSourceMethodByScore([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type targetType, object?[] arguments)
     {
         var bestScore = -1;
-        var best = new List<MethodInfo>();
+        MethodInfo? best = null;
         foreach (var method in targetType.GetMethods(BindingFlags))
         {
             if (method.Name != MethodNameProvidingDataSource || method.IsGenericMethodDefinition)
@@ -438,43 +621,18 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
                 continue;
             }
 
-            var score = ScoreArguments(method.GetParameters(), arguments);
-            if (score < 0 || score < bestScore)
+            var parameters = method.GetParameters();
+            var score = ScoreArguments(parameters, arguments);
+            if (score > bestScore
+                || (score == bestScore && score >= 0 && IsMoreSpecific(parameters, best!.GetParameters(), arguments.Length)))
             {
-                continue;
-            }
-
-            if (score > bestScore)
-            {
-                best.Clear();
                 bestScore = score;
-            }
-
-            best.Add(method);
-        }
-
-        // On a tie, the overload with the more specific parameter types wins, as with the binder and the source
-        // generator: Rows(string?, long) beats Rows(string?, object) for { null, 20 }.
-        foreach (var candidate in best)
-        {
-            var mostSpecific = true;
-            foreach (var other in best)
-            {
-                if (!ReferenceEquals(candidate, other) && !IsMoreSpecific(candidate.GetParameters(), other.GetParameters(), arguments.Length))
-                {
-                    mostSpecific = false;
-                    break;
-                }
-            }
-
-            if (mostSpecific)
-            {
-                return candidate;
+                best = method;
             }
         }
 
-        // Still ambiguous, or nothing accepts the arguments: the caller's name-only lookup reports it
-        return null;
+        // Keep the first declaration on an otherwise equal tie, just as the source generator does.
+        return best;
     }
 
     private static bool IsMoreSpecific(ParameterInfo[] candidate, ParameterInfo[] other, int argumentCount)
@@ -497,10 +655,21 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
                 continue;
             }
 
-            var otherUnderlying = Nullable.GetUnderlyingType(otherType) ?? otherType;
+            var candidateNullable = Nullable.GetUnderlyingType(candidateType);
+            var otherNullable = Nullable.GetUnderlyingType(otherType);
+            var otherUnderlying = otherNullable ?? otherType;
+            // Specificity compares parameter types, not boxed argument conversions. Nullable numeric
+            // conversions are lifted, and decimal conversions count even though Invoke cannot widen to decimal.
+            var numericSource = candidateNullable ?? candidateType;
+            var hasNumericConversion = (candidateNullable is null || otherNullable is not null)
+                && (IsNumericWidening(numericSource, otherUnderlying)
+                    || (otherUnderlying == typeof(decimal) && !numericSource.IsEnum
+                        && Type.GetTypeCode(numericSource) is TypeCode.SByte or TypeCode.Byte
+                            or TypeCode.Int16 or TypeCode.UInt16 or TypeCode.Char or TypeCode.Int32
+                            or TypeCode.UInt32 or TypeCode.Int64 or TypeCode.UInt64));
             if (!otherType.IsAssignableFrom(candidateType)
                 && candidateType != otherUnderlying
-                && !IsNumericWidening(candidateType, otherUnderlying))
+                && !hasNumericConversion)
             {
                 return false;
             }
@@ -621,6 +790,34 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
             }
         }
         return args;
+    }
+
+    private static ParameterMetadata? GetSingleErasedGenericTupleParameter(IMemberMetadata[]? members)
+    {
+        ParameterMetadata? dataParameter = null;
+        foreach (var member in members ?? [])
+        {
+            if (member is not ParameterMetadata parameter)
+            {
+                return null;
+            }
+
+            if (parameter.Type == typeof(CancellationToken))
+            {
+                continue;
+            }
+
+            if (dataParameter is not null)
+            {
+                return null;
+            }
+
+            dataParameter = parameter;
+        }
+
+        return dataParameter is not null && DataSourceHelpers.IsErasedGenericTupleParameter(dataParameter)
+            ? dataParameter
+            : null;
     }
 
     private static Type[]? GetMemberTypes(IMemberMetadata[]? members)
@@ -761,12 +958,32 @@ public class MethodDataSourceAttribute : Attribute, IDataSourceAttribute
         return asTaskMethod?.Invoke(methodResult, null) as Task;
     }
 
+    private static Type? GetTaskResultType(Type taskType)
+    {
+        for (var current = taskType; current is not null; current = current.BaseType)
+        {
+            if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(Task<>))
+            {
+                return current.GetGenericArguments()[0];
+            }
+        }
+
+        return null;
+    }
+
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reflection usage is documented. AOT-safe path available via Factory property")]
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Reflection usage is documented. AOT-safe path available via Factory property")]
     [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Dynamic code usage is documented. AOT-safe path available via Factory property")]
     private static object? GetTaskResult(Task task)
     {
         var taskType = task.GetType();
+
+        // Async Task methods and Task.CompletedTask can use Task<VoidTaskResult> internally.
+        // That runtime implementation detail is not a data-source result.
+        if (GetTaskResultType(taskType)?.FullName == "System.Threading.Tasks.VoidTaskResult")
+        {
+            return null;
+        }
 
         if (taskType.IsGenericType)
         {

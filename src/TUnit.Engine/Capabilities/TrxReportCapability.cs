@@ -1,4 +1,5 @@
-﻿using Microsoft.Testing.Extensions.TrxReport.Abstractions;
+﻿#if !NETWASM // NetWasm builds no TRX report, so the engine names no TRX types there.
+using Microsoft.Testing.Extensions.TrxReport.Abstractions;
 
 namespace TUnit.Engine.Capabilities;
 
@@ -13,3 +14,4 @@ internal class TrxReportCapability : ITrxReportCapability
 
     public bool IsSupported => true;
 }
+#endif

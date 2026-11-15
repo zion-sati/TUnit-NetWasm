@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using TUnit.Core.SourceGenerator.Models;
-using TUnit.Core.SourceGenerator.Utilities;
 using TUnit.Core.SourceGenerator.Models.Extracted;
 
 namespace TUnit.Core.SourceGenerator.CodeGenerators;
@@ -53,7 +52,11 @@ public class InfrastructureGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select(static (options, _) => SourceGenerationMode.Read(options).IsDesktop);
+            .Select((options, _) =>
+            {
+                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
+                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+            });
 
         // Extract assembly names as primitives in the transform step. AssemblyInfoModel equality
         // keeps the generated source cached across keystrokes. No custom Compilation comparer here:

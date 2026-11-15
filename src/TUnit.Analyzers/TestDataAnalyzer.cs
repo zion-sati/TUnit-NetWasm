@@ -12,6 +12,14 @@ namespace TUnit.Analyzers;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
 {
+    private static readonly SymbolDisplayFormat TestDataTypeDisplayFormat =
+        new(
+            typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypes,
+            genericsOptions: SymbolDisplayFormat.MinimallyQualifiedFormat.GenericsOptions,
+            memberOptions: SymbolDisplayFormat.MinimallyQualifiedFormat.MemberOptions,
+            parameterOptions: SymbolDisplayFormat.MinimallyQualifiedFormat.ParameterOptions,
+            miscellaneousOptions: SymbolDisplayFormat.MinimallyQualifiedFormat.MiscellaneousOptions);
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
         ImmutableArray.Create(
             Rules.WrongArgumentTypeTestData,
@@ -128,7 +136,7 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
             return;
         }
 
-        var parameters = namedTypeSymbol.InstanceConstructors.FirstOrDefault()?.Parameters ??
+        var parameters = namedTypeSymbol.GetTestConstructor()?.Parameters ??
                          ImmutableArray<IParameterSymbol>.Empty;
 
         Analyze(context, attributes, parameters, null, namedTypeSymbol);
@@ -446,6 +454,7 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
                                                    methodSymbol.Name == methodName &&
                                                    !methodSymbol.IsGenericMethod &&
                                                    ArgumentsMatchParameterTypes(context, argumentsForMethodCall, methodSymbol.Parameters.WithoutCancellationTokenParameter().Select(p => p.Type)))
+                                           ?? FindOptionalDataSource(context, argumentsForMethodCall, methodSymbols, methodName!, type!)
                                            ?? methodSymbols.FirstOrDefault(x => x.Name == methodName && !x.IsGenericMethod)
                                            ?? methodSymbols.FirstOrDefault(x => x.Name == methodName);
 
@@ -509,7 +518,7 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
             }
 
             var canBeInstanceMethod = context.Symbol is IPropertySymbol or IMethodSymbol
-                && testClassType.InstanceConstructors.First().Parameters.IsDefaultOrEmpty;
+                && testClassType.InstanceConstructors.Any(c => c.Parameters.IsDefaultOrEmpty);
 
             if (!canBeInstanceMethod && !dataSourceMethod.IsStatic && attribute.ConstructorArguments.Length != 1)
             {
@@ -616,23 +625,47 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
                 return;
             }
             
+            // A scalar row can bind the first parameter while optional test parameters keep
+            // their defaults and params tails are empty. Typed tuple rows use their separate
+            // whole-tuple binding rules below. Runtime tuple rows must either bind whole
+            // to a tuple-compatible parameter or keep their expansion diagnostics.
+            if (!isTuples && unwrappedTypes.Length == 1 && testParameterTypes.Length > 1
+                && (!IsRuntimeTupleRow(unwrappedTypes[0])
+                    || (IsRuntimeTupleRow(testParameterTypes[0], unwrapNullable: false)
+                        && context.Compilation.ClassifyCommonConversion(unwrappedTypes[0], testParameterTypes[0])
+                            is { IsImplicit: true, IsUserDefined: false }))
+                && context.Symbol is IMethodSymbol testMethod
+                && testMethod.Parameters.WithoutTestMethodCancellationTokens().Skip(1)
+                    .All(p => p.IsOptional || p.HasExplicitDefaultValue || p.IsParams))
+            {
+                testParameterTypes = testParameterTypes.Take(1).ToImmutableArray();
+            }
+
             if (isTuples && unwrappedTypes.Length != testParameterTypes.Length)
             {
                 context.ReportDiagnostic(Diagnostic.Create(
                     Rules.WrongArgumentTypeTestData,
                     attribute.GetLocation(),
-                    string.Join(", ", unwrappedTypes.Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "null")),
-                    string.Join(", ", testParameterTypes.Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "null")))
+                    string.Join(", ", unwrappedTypes.Select(t => t?.ToDisplayString(TestDataTypeDisplayFormat) ?? "null")),
+                    string.Join(", ", testParameterTypes.Select(t => t?.ToDisplayString(TestDataTypeDisplayFormat) ?? "null")))
                 );
                 return;
             }
             
-            // Only a bare type-parameter test parameter reads the inferred type arguments.
-            var inferredTypeArguments = testParameterTypes.Any(t => t is ITypeParameterSymbol)
-                ? CompilationExtensions.InferTypeArguments(unwrappedTypes, testParameterTypes)
+            // Include nullable class parameters so repeated occurrences only validate certain inference.
+            var inferredTypeArguments = testParameterTypes.Any(t => t is ITypeParameterSymbol
+                or INamedTypeSymbol
+                {
+                    OriginalDefinition.SpecialType: SpecialType.System_Nullable_T,
+                    TypeArguments: [ITypeParameterSymbol { DeclaringMethod: null }]
+                })
+                ? CompilationExtensions.InferTypeArguments(context.Compilation, unwrappedTypes, testParameterTypes)
                 : null;
 
-            var conversions = unwrappedTypes.ZipAll(testParameterTypes,
+            var wholeTupleWithOmissions = unwrappedTypes.Length == 1
+                && CanBindWholeTupleWithOmissions(context, unwrappedTypes[0], testParameterTypes);
+
+            var conversions = unwrappedTypes.ZipAll(wholeTupleWithOmissions ? testParameterTypes.Take(1) : testParameterTypes,
                 (argument, parameter) => 
                 {
                     // Handle exact type matches for property injection where types might have different metadata
@@ -643,7 +676,9 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
                     {
                         return true;
                     }
-                    return context.Compilation.CanBindToTestParameter(argument, parameter, inferredTypeArguments);
+                    // Only a preserved whole row can use runtime tuple reconstruction.
+                    return (!isTuples && CanConvertReferenceTuple(argument, parameter, context))
+                        || context.Compilation.CanBindToTestParameter(argument, parameter, inferredTypeArguments);
                 });
 
             if (!conversions.All(x => x))
@@ -663,13 +698,15 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
                     Diagnostic.Create(
                         Rules.WrongArgumentTypeTestData,
                         attribute.GetLocation(),
-                        string.Join(", ", unwrappedTypes.Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "null")),
-                        string.Join(", ", testParameterTypes.Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "null")))
+                        string.Join(", ", unwrappedTypes.Select(t => t?.ToDisplayString(TestDataTypeDisplayFormat) ?? "null")),
+                        string.Join(", ", testParameterTypes.Select(t => t?.ToDisplayString(TestDataTypeDisplayFormat) ?? "null")))
                 );
                 return;
             }
 
-            if (!ArgumentsMatchParameterTypes(context, argumentsForMethodCall, dataSourceMethodParameterTypes))
+            if (!(argumentsForMethodCall.Length == dataSourceMethod.Parameters.Length
+                    ? ArgumentsMatchParameterTypes(context, argumentsForMethodCall, dataSourceMethod.Parameters.Select(p => p.Type))
+                    : ScoreOptionalDataSource(context, argumentsForMethodCall, dataSourceMethod) >= 0))
             {
                 context.ReportDiagnostic(
                     Diagnostic.Create(
@@ -682,10 +719,10 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
                 return;
             }
 
-            if (testParameterTypes.Length == 1
+            if (wholeTupleWithOmissions || (testParameterTypes.Length == 1
                 && unwrappedTypes.Length == 1
-                && context.Compilation.CanBindToTestParameter(unwrappedTypes[0],
-                    testParameterTypes[0]))
+                && ((!isTuples && CanConvertReferenceTuple(unwrappedTypes[0], testParameterTypes[0], context))
+                    || context.Compilation.CanBindToTestParameter(unwrappedTypes[0], testParameterTypes[0]))))
             {
                 return;
             }
@@ -703,8 +740,8 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
                     context.ReportDiagnostic(Diagnostic.Create(
                         Rules.WrongArgumentTypeTestData,
                         attribute.GetLocation(),
-                        string.Join(", ", unwrappedTypes.Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "null")),
-                        string.Join(", ", testParameterTypes.Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "null")))
+                        string.Join(", ", unwrappedTypes.Select(t => t?.ToDisplayString(TestDataTypeDisplayFormat) ?? "null")),
+                        string.Join(", ", testParameterTypes.Select(t => t?.ToDisplayString(TestDataTypeDisplayFormat) ?? "null")))
                     );
                     return;
                 }
@@ -739,10 +776,138 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
                 Diagnostic.Create(
                     Rules.WrongArgumentTypeTestData,
                     attribute.GetLocation(),
-                    string.Join(", ", unwrappedTypes.Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "null")),
-                    string.Join(", ", testParameterTypes.Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "null")))
+                    string.Join(", ", unwrappedTypes.Select(t => t?.ToDisplayString(TestDataTypeDisplayFormat) ?? "null")),
+                    string.Join(", ", testParameterTypes.Select(t => t?.ToDisplayString(TestDataTypeDisplayFormat) ?? "null")))
             );
         }
+    }
+
+    private static IMethodSymbol? FindOptionalDataSource(SymbolAnalysisContext context, TypedConstant[] arguments,
+        IMethodSymbol[] methods, string name, ITypeSymbol targetType)
+    {
+        // Inaccessible declarations cannot hide an otherwise available base source.
+        var availableMethods = methods.Where(method => method.Name == name && !method.IsGenericMethod
+            && (SymbolEqualityComparer.Default.Equals(method.ContainingType, targetType)
+                || (method.DeclaredAccessibility != Accessibility.Private
+                    && context.Compilation.IsSymbolAccessibleWithin(method, context.Compilation.Assembly))))
+            .ToArray();
+        IMethodSymbol? best = null;
+        var bestScore = -1;
+        foreach (var method in availableMethods)
+        {
+            if (availableMethods.Any(derived => HidesBaseSignature(derived, method)))
+            {
+                continue;
+            }
+
+            var score = ScoreOptionalDataSource(context, arguments, method);
+            var moreSpecific = best is not null && score == bestScore && score >= 0
+                && IsMoreSpecificOptionalDataSource(context.Compilation, method, best, arguments.Length);
+            if (score > bestScore || moreSpecific)
+            {
+                best = method;
+                bestScore = score;
+            }
+        }
+
+        return best;
+    }
+
+    // Specificity compares parameter conversions, including lifted nullable conversions, rather than
+    // boxed argument conversions. Mirrors IsMoreSpecificDataSourceOverload and reflection's IsMoreSpecific.
+    private static bool IsMoreSpecificOptionalDataSource(Compilation compilation, IMethodSymbol candidate,
+        IMethodSymbol other, int argumentCount)
+    {
+        var anyDifferent = false;
+        for (var i = 0; i < argumentCount; i++)
+        {
+            var candidateType = candidate.Parameters[i].Type;
+            var otherType = other.Parameters[i].Type;
+            if (SymbolEqualityComparer.Default.Equals(candidateType, otherType))
+            {
+                continue;
+            }
+
+            if (compilation.ClassifyCommonConversion(candidateType, otherType) is not { IsImplicit: true, IsUserDefined: false })
+            {
+                return false;
+            }
+
+            anyDifferent = true;
+        }
+
+        return anyDifferent;
+    }
+
+    private static bool HidesBaseSignature(IMethodSymbol derived, IMethodSymbol candidate)
+    {
+        if (derived.Name != candidate.Name || derived.Arity != candidate.Arity
+            || derived.Parameters.Length != candidate.Parameters.Length)
+        {
+            return false;
+        }
+
+        var isDerived = derived.ContainingType.BaseType?.GetSelfAndBaseTypes()
+            .Any(type => SymbolEqualityComparer.Default.Equals(type, candidate.ContainingType)) == true;
+        return isDerived && derived.Parameters.Zip(candidate.Parameters, (left, right) =>
+            left.RefKind == right.RefKind && SymbolEqualityComparer.Default.Equals(left.Type, right.Type)).All(equal => equal);
+    }
+
+    // Mirrors the invocation conversions accepted by both MethodDataSource execution paths.
+    private static bool IsOptionalInvocationConversion(Compilation compilation, ITypeSymbol? argumentType, ITypeSymbol parameterType)
+    {
+        var conversion = compilation.ClassifyCommonConversion(argumentType!, parameterType);
+        if (conversion is not { IsImplicit: true, IsUserDefined: false })
+        {
+            return false;
+        }
+
+        if (conversion.IsNullable)
+        {
+            return parameterType is INamedTypeSymbol { TypeArguments: [var underlying] }
+                && SymbolEqualityComparer.Default.Equals(underlying, argumentType);
+        }
+
+        return !conversion.IsNumeric || parameterType.SpecialType != SpecialType.System_Decimal;
+    }
+
+    // Defaults belong to the selected declaration: an override does not inherit its base method's defaults.
+    // Supplied arguments bind positionally; only omitted token parameters are injected.
+    private static int ScoreOptionalDataSource(SymbolAnalysisContext context, TypedConstant[] arguments, IMethodSymbol method)
+    {
+        if (arguments.Length > method.Parameters.Length)
+        {
+            return -1;
+        }
+
+        var score = 0;
+        for (var i = 0; i < method.Parameters.Length; i++)
+        {
+            var parameter = method.Parameters[i];
+            if (i >= arguments.Length)
+            {
+                if (!parameter.HasExplicitDefaultValue
+                    && parameter.Type.ToDisplayString() != "System.Threading.CancellationToken")
+                {
+                    return -1;
+                }
+
+                continue;
+            }
+
+            var argument = arguments[i];
+            if (!DataSourceArgumentMatches(context.Compilation, argument, parameter.Type, invocationOnly: true))
+            {
+                return -1;
+            }
+
+            if (!argument.IsNull)
+            {
+                score += SymbolEqualityComparer.Default.Equals(argument.Type, parameter.Type) ? 2 : 1;
+            }
+        }
+
+        return score;
     }
 
     private static bool ArgumentsMatchParameterTypes(SymbolAnalysisContext context, TypedConstant[] argumentsForMethodCall,
@@ -760,9 +925,7 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
         for (var i = 0; i < argumentsForMethodCall.Length; i++)
         {
             var argument = argumentsForMethodCall[i];
-            var matches = argument.IsNull
-                ? CanAcceptNull(parameterTypeArray[i])
-                : context.Compilation.HasImplicitConversionOrGenericParameter(argument.Type, parameterTypeArray[i]);
+            var matches = DataSourceArgumentMatches(context.Compilation, argument, parameterTypeArray[i], invocationOnly: false);
 
             if (!matches)
             {
@@ -771,6 +934,18 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
         }
 
         return true;
+    }
+
+    // Exact-count matching retains its existing generic/conversion behavior; optional overload selection
+    // is restricted to conversions supported by invocation in both execution modes.
+    private static bool DataSourceArgumentMatches(Compilation compilation, TypedConstant argument,
+        ITypeSymbol parameterType, bool invocationOnly)
+    {
+        return argument.IsNull
+            ? CanAcceptNull(parameterType)
+            : invocationOnly
+                ? IsOptionalInvocationConversion(compilation, argument.Type, parameterType)
+                : compilation.HasImplicitConversionOrGenericParameter(argument.Type, parameterType);
     }
 
     // Mirrors the null-argument overload selection in both execution modes (added in #7143): a null argument binds to
@@ -787,6 +962,44 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
 
         return !parameterType.IsValueType
                || parameterType.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
+    }
+
+    // Nullable value tuples box as their underlying tuple type before runtime row expansion.
+    private static bool IsRuntimeTupleRow(ITypeSymbol type, bool unwrapNullable = true)
+    {
+        if (unwrapNullable && type is INamedTypeSymbol
+            {
+                OriginalDefinition.SpecialType: SpecialType.System_Nullable_T,
+                TypeArguments: [var underlyingType]
+            })
+        {
+            type = underlyingType;
+        }
+
+        return type.IsGloballyQualified("global::System.Runtime.CompilerServices.ITuple")
+            || type.AllInterfaces.Any(i =>
+                i.IsGloballyQualified("global::System.Runtime.CompilerServices.ITuple"));
+    }
+
+    // Only a matching tuple row binds whole before omittable parameters. A nested tuple row
+    // has a different type and continues to spread, including an explicitly supplied optional.
+    private static bool CanBindWholeTupleWithOmissions(SymbolAnalysisContext context, ITypeSymbol rowType,
+        ImmutableArray<ITypeSymbol> parameterTypes)
+    {
+        if (context.Symbol is not IMethodSymbol method || parameterTypes.Length < 2
+            || !SymbolEqualityComparer.Default.Equals(rowType, parameterTypes[0])
+            || !TryGetTupleElementTypes(rowType, context.Compilation, out _))
+        {
+            return false;
+        }
+
+        // testParameterTypes and this parameter list both exclude engine-injected tokens.
+        var cancellationToken = context.Compilation.GetTypeByMetadataName("System.Threading.CancellationToken");
+        var dataParameters = method.Parameters
+            .Where(parameter => !SymbolEqualityComparer.Default.Equals(parameter.Type, cancellationToken)).ToArray();
+        return dataParameters.Skip(1).All(parameter => parameter.IsOptional || parameter.IsParams
+            || SymbolEqualityComparer.Default.Equals(parameter, dataParameters[^1])
+            && parameter.Type is IArrayTypeSymbol { IsSZArray: true });
     }
 
     private ImmutableArray<ITypeSymbol> UnwrapTypes(SymbolAnalysisContext context,
@@ -857,53 +1070,46 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
             return ImmutableArray.Create(type);
         }
 
-        // Unwrap Func<T> and TestDataRow<T> wrappers in any nesting order, so that Func<T>,
-        // TestDataRow<T>, Func<TestDataRow<T>>, and TestDataRow<Func<T>> all reduce to the inner T
-        // before the tuple check below. Looping handles either order without assuming which wraps which.
+        // Peel only the layers the runtime row reader removes: DataSourceHelpers.ToObjectArray invokes
+        // one outer Func<T>, then TestDataRowUnwrapper.UnwrapArray strips one TestDataRow<T> and invokes
+        // one Func<T> inside it. So Func<T>, TestDataRow<T>, Func<TestDataRow<T>>, TestDataRow<Func<T>>
+        // and Func<TestDataRow<Func<T>>> reduce to T, but anything nested deeper (e.g. Func<Func<T>>)
+        // reaches the test as a wrapper value and must be checked as such.
         var testDataRowTypeSymbol = context.Compilation.GetTypeByMetadataName("TUnit.Core.TestDataRow`1");
-        bool unwrappedLayer;
-        do
-        {
-            unwrappedLayer = false;
 
-            if (type is INamedTypeSymbol { IsGenericType: true, TypeArguments.Length: 1 } genericType
-                && genericType.ToDisplayString().StartsWith("System.Func<", StringComparison.Ordinal))
+        if (TryUnwrapFunc(type, out var funcResult))
+        {
+            isFunc = true;
+            type = funcResult;
+        }
+
+        if (testDataRowTypeSymbol != null
+            && type is INamedTypeSymbol { IsGenericType: true } testDataRowType
+            && SymbolEqualityComparer.Default.Equals(testDataRowType.OriginalDefinition, testDataRowTypeSymbol))
+        {
+            type = testDataRowType.TypeArguments[0];
+
+            if (TryUnwrapFunc(type, out var rowFuncResult))
             {
                 isFunc = true;
-                type = genericType.TypeArguments[0];
-                unwrappedLayer = true;
-            }
-
-            if (testDataRowTypeSymbol != null
-                && type is INamedTypeSymbol { IsGenericType: true } testDataRowType
-                && SymbolEqualityComparer.Default.Equals(testDataRowType.OriginalDefinition, testDataRowTypeSymbol))
-            {
-                type = testDataRowType.TypeArguments[0];
-                unwrappedLayer = true;
+                type = rowFuncResult;
             }
         }
-        while (unwrappedLayer);
 
-        if (type is INamedTypeSymbol namedType && namedType.IsTupleType)
+        // Decide whole-row binding before marking the row as spread. A nested tuple Item
+        // is not reconstructed: CanConvertReferenceTuple checks only the outer row here.
+        if (TryGetTupleElementTypes(type, context.Compilation, out var tupleElements))
         {
-            var tupleType = namedType;
-            if (testParameterTypes.Length == 1 && 
-                testParameterTypes[0] is INamedTypeSymbol paramTupleType && 
-                paramTupleType.IsTupleType &&
-                SymbolEqualityComparer.Default.Equals(tupleType, testParameterTypes[0]))
+            if (CanBindWholeTupleWithOmissions(context, type, testParameterTypes)
+                || (testParameterTypes.Length == 1
+                && (SymbolEqualityComparer.Default.Equals(type, testParameterTypes[0])
+                    || CanConvertReferenceTuple(type, testParameterTypes[0], context))))
             {
                 return ImmutableArray.Create(type);
             }
-            
+
             isTuples = true;
-            
-            if (testParameterTypes.Length == 1 && 
-                testParameterTypes[0] is INamedTypeSymbol { IsTupleType: true })
-            {
-                return ImmutableArray.CreateRange(tupleType.TupleElements.Select(e => e.Type));
-            }
-            
-            return ImmutableArray.CreateRange(tupleType.TupleElements.Select(e => e.Type));
+            return tupleElements;
         }
 
         if (testParameterTypes.Length == 1
@@ -923,6 +1129,152 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
         }
 
         return ImmutableArray.Create(type);
+    }
+
+    private static bool CanConvertReferenceTuple(ITypeSymbol? source, ITypeSymbol? target,
+        SymbolAnalysisContext context)
+    {
+        // Only test-method invocation reconstructs reference tuples. Constructor binding uses
+        // CastHelper directly and must retain the diagnostic for differing tuple types.
+        if (context.Symbol is not IMethodSymbol)
+        {
+            return false;
+        }
+
+        var compilation = context.Compilation;
+
+        // Reference tuples have no language-level element conversions. The runtime reconstructs
+        // them, so validate the logical elements, including the recursively flattened Rest.
+        // Nested reference-tuple Items still use CastHelper rather than reconstruction.
+        if (source is not INamedTypeSymbol sourceTuple
+            || target is not INamedTypeSymbol targetTuple
+            || !IsReferenceTuple(sourceTuple)
+            || !IsReferenceTuple(targetTuple)
+            || !TryGetTupleElementTypes(source, compilation, out var sourceElements)
+            || !TryGetTupleElementTypes(target, compilation, out var targetElements)
+            || sourceElements.Length != targetElements.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < sourceElements.Length; i++)
+        {
+            if (!CanConvertReferenceTupleElement(sourceElements[i], targetElements[i], compilation))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool CanConvertReferenceTupleElement(ITypeSymbol source, ITypeSymbol target,
+        Compilation compilation)
+    {
+        var conversion = compilation.ClassifyConversion(source, target);
+        if (!conversion.IsImplicit)
+        {
+            return false;
+        }
+
+        // CastHelper unwraps nullable targets, but cannot reconstruct their tuple elements.
+        var unwrappedSource = source is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullableSource
+            ? nullableSource.TypeArguments[0] : source;
+        var unwrappedTarget = target is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullableTarget
+            ? nullableTarget.TypeArguments[0] : target;
+        // CastHelper uses Convert.ChangeType for primitive targets, which rejects boxed
+        // char values for float/double (including nullable targets).
+        if (unwrappedSource.SpecialType == SpecialType.System_Char
+            && unwrappedTarget.SpecialType is SpecialType.System_Single or SpecialType.System_Double)
+        {
+            return false;
+        }
+
+        // Boxed native integers are not IConvertible and have no float/double/decimal operators.
+        // CastHelper therefore cannot execute these implicit C# numeric conversions.
+        if (unwrappedSource.SpecialType is SpecialType.System_IntPtr or SpecialType.System_UIntPtr
+            && unwrappedTarget.SpecialType is SpecialType.System_Single or SpecialType.System_Double or SpecialType.System_Decimal)
+        {
+            return false;
+        }
+
+        // Convert.ChangeType cannot produce native integers, and their operators require
+        // exact int/long or uint/ulong inputs rather than widening smaller integers first.
+        if (unwrappedTarget.SpecialType is SpecialType.System_IntPtr or SpecialType.System_UIntPtr
+            && unwrappedSource.SpecialType is SpecialType.System_Byte or SpecialType.System_SByte
+                or SpecialType.System_Int16 or SpecialType.System_UInt16 or SpecialType.System_Char)
+        {
+            return false;
+        }
+
+        if (!SymbolEqualityComparer.Default.Equals(target, unwrappedTarget)
+            && !conversion.IsUserDefined
+            && unwrappedTarget is INamedTypeSymbol { IsTupleType: true }
+            && !SymbolEqualityComparer.Default.Equals(unwrappedSource, unwrappedTarget))
+        {
+            return false;
+        }
+
+        // CastHelper and AOT registrations invoke exact operator pairs, without composing
+        // standard conversions before or after the user-defined operator.
+        if (conversion.IsUserDefined && conversion.MethodSymbol is { } method
+            && (!SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, unwrappedSource)
+                || !SymbolEqualityComparer.Default.Equals(method.ReturnType, unwrappedTarget)))
+        {
+            return false;
+        }
+
+        // Generated binding recursively reconstructs non-nullable value-tuple Items.
+        if (source is INamedTypeSymbol { IsTupleType: true } sourceTuple
+            && target is INamedTypeSymbol { IsTupleType: true } targetTuple)
+        {
+            for (var i = 0; i < sourceTuple.TupleElements.Length; i++)
+            {
+                if (!CanConvertReferenceTupleElement(sourceTuple.TupleElements[i].Type,
+                        targetTuple.TupleElements[i].Type, compilation))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsReferenceTuple(INamedTypeSymbol type)
+        => type.Arity is >= 1 and <= 8
+            && type.OriginalDefinition is { Name: "Tuple", ContainingType: null } definition
+            && definition.ContainingNamespace is { Name: "System", ContainingNamespace.IsGlobalNamespace: true };
+
+    private static bool TryGetTupleElementTypes(ITypeSymbol type, Compilation compilation,
+        out ImmutableArray<ITypeSymbol> elements)
+    {
+        if (type is INamedTypeSymbol { IsTupleType: true } valueTuple)
+        {
+            elements = ImmutableArray.CreateRange(valueTuple.TupleElements.Select(e => e.Type));
+            return true;
+        }
+
+        if (type is INamedTypeSymbol tuple && IsReferenceTuple(tuple))
+        {
+            // ITuple exposes Rest's elements as part of the same row for arities above seven.
+            if (tuple.Arity == 8)
+            {
+                if (TryGetTupleElementTypes(tuple.TypeArguments[7], compilation, out var rest))
+                {
+                    elements = ImmutableArray.CreateRange(tuple.TypeArguments.Take(7)).AddRange(rest);
+                    return true;
+                }
+            }
+            else
+            {
+                elements = tuple.TypeArguments;
+                return true;
+            }
+        }
+
+        elements = default;
+        return false;
     }
 
     private void CheckDataGenerator(SymbolAnalysisContext context,
@@ -1007,6 +1359,38 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
             // test parameter types (they could be used for other purposes in the implementation)
         }
 
+        // A class row infers the class's type arguments from its declared types, as both execution modes infer them,
+        // so the constructor parameter types are checked closed over that inference: [Arguments<string[]>] on
+        // C<T>(T[] values) infers T as string and matches (#7223).
+        if (context.Symbol is INamedTypeSymbol { IsGenericType: true } classSymbol
+            && typeArguments.Length == testDataTypes.Length
+            && TryCloseOverInferredClassTypeArguments(context.Compilation, classSymbol, typeArguments, testDataTypes) is { } closedTestDataTypes)
+        {
+            testDataTypes = closedTestDataTypes;
+        }
+
+        // Match parameters after closing the method over the same row inference as discovery.
+        // Open arrays and generic interfaces must be checked with the inferred type arguments.
+        if (context.Symbol is IMethodSymbol { IsGenericMethod: true } method
+            && testDataTypes.Any(t => t is IArrayTypeSymbol or INamedTypeSymbol && ReferencesMethodTypeParameter(t))
+            && TypedDataSourceInference.InferMethodTypeArguments(attribute.AttributeClass, method) is { } inferred)
+        {
+            // A typed row can wrap a function or TestDataRow whose tuple spreads into arguments.
+            // Generator-base sources retain their existing declared-type argument semantics.
+            var hasGeneratorBase = selfAndBaseTypes.Any(TypedDataSourceInference.IsTypedDataSourceBase);
+            if (!hasGeneratorBase && typedInterface?.TypeArguments is [var rowType]
+                && TypedDataSourceInference.GetRowArgumentTypes(rowType) is { } rowArguments)
+            {
+                typeArguments = rowArguments;
+            }
+
+            // Check constraints while the original method type parameters are still available.
+            CheckInferredTypeArgumentConstraints(context, attribute, typeArguments, testDataTypes);
+
+            testDataTypes = TypedRowParameterBinding.GetExpectedTypes(context.Compilation, method,
+                method.Construct(inferred), typeArguments);
+        }
+
         if (testDataTypes.Any(x => x.IsGenericDefinition()))
         {
             // Open parameter types are not checked for conversions, but a bare method type parameter is inferred
@@ -1048,6 +1432,155 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
         context.ReportDiagnostic(Diagnostic.Create(Rules.WrongArgumentTypeTestData,
                 attribute.GetLocation() ?? context.Symbol.Locations.FirstOrDefault(),
                 string.Join(", ", typeArguments), string.Join(", ", testDataTypes)));
+    }
+
+    /// <summary>
+    /// The constructor parameter types with the class's type parameters replaced by the types a class row infers for
+    /// them, matching each declared type against its parameter type (T takes the declared type, T[] its element type,
+    /// List&lt;T&gt; its type argument). Null when the parameter types mention no class type parameter, or when the
+    /// row leaves one uninferred or infers it inconsistently; the open types are then checked as before.
+    /// </summary>
+    private static ImmutableArray<ITypeSymbol>? TryCloseOverInferredClassTypeArguments(Compilation compilation,
+        INamedTypeSymbol classSymbol,
+        ImmutableArray<ITypeSymbol> declaredTypes,
+        ImmutableArray<ITypeSymbol> parameterTypes)
+    {
+        var classTypeParameters = classSymbol.TypeParameters;
+        if (!parameterTypes.Any(t => MentionsAnyTypeParameter(t, classTypeParameters)))
+        {
+            return null;
+        }
+
+        var inferred = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default);
+        for (var i = 0; i < parameterTypes.Length; i++)
+        {
+            if (!TryMatchTypeParameters(parameterTypes[i], declaredTypes[i], classTypeParameters, inferred))
+            {
+                return null;
+            }
+        }
+
+        var closed = ImmutableArray.CreateBuilder<ITypeSymbol>(parameterTypes.Length);
+        foreach (var parameterType in parameterTypes)
+        {
+            if (Substitute(compilation, parameterType, inferred) is not { } closedType)
+            {
+                return null;
+            }
+
+            closed.Add(closedType);
+        }
+
+        return closed.MoveToImmutable();
+    }
+
+    private static bool MentionsAnyTypeParameter(ITypeSymbol type, ImmutableArray<ITypeParameterSymbol> typeParameters) => type switch
+    {
+        ITypeParameterSymbol typeParameter => typeParameters.Contains(typeParameter, SymbolEqualityComparer.Default),
+        IArrayTypeSymbol array => MentionsAnyTypeParameter(array.ElementType, typeParameters),
+        INamedTypeSymbol named => named.TypeArguments.Any(t => MentionsAnyTypeParameter(t, typeParameters))
+                                  || named.ContainingType is { } containingType && MentionsAnyTypeParameter(containingType, typeParameters),
+        _ => false
+    };
+
+    // Records what each of the class's type parameters in parameterType takes when a value of declaredType binds to
+    // it. False when declaredType does not have parameterType's shape or contradicts an earlier inference.
+    private static bool TryMatchTypeParameters(ITypeSymbol parameterType, ITypeSymbol declaredType,
+        ImmutableArray<ITypeParameterSymbol> typeParameters, Dictionary<ITypeParameterSymbol, ITypeSymbol> inferred)
+    {
+        if (!MentionsAnyTypeParameter(parameterType, typeParameters))
+        {
+            return true;
+        }
+
+        switch (parameterType)
+        {
+            case ITypeParameterSymbol typeParameter:
+                if (inferred.TryGetValue(typeParameter, out var existing))
+                {
+                    return SymbolEqualityComparer.Default.Equals(existing, declaredType);
+                }
+
+                inferred[typeParameter] = declaredType;
+                return true;
+            case IArrayTypeSymbol parameterArray:
+                return declaredType is IArrayTypeSymbol declaredArray
+                       && declaredArray.Rank == parameterArray.Rank
+                       && TryMatchTypeParameters(parameterArray.ElementType, declaredArray.ElementType, typeParameters, inferred);
+            case INamedTypeSymbol parameterNamed:
+                if (declaredType is not INamedTypeSymbol { IsGenericType: true } declaredNamed
+                    || !SymbolEqualityComparer.Default.Equals(parameterNamed.OriginalDefinition, declaredNamed.OriginalDefinition))
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < parameterNamed.TypeArguments.Length; i++)
+                {
+                    if (!TryMatchTypeParameters(parameterNamed.TypeArguments[i], declaredNamed.TypeArguments[i], typeParameters, inferred))
+                    {
+                        return false;
+                    }
+                }
+
+                // Outer<T>.Inner<U> mentions T through its containing type
+                return parameterNamed.ContainingType is not { } parameterContaining
+                       || declaredNamed.ContainingType is not { } declaredContaining
+                       || TryMatchTypeParameters(parameterContaining, declaredContaining, typeParameters, inferred);
+            default:
+                return false;
+        }
+    }
+
+    private static ITypeSymbol? Substitute(Compilation compilation, ITypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> inferred)
+    {
+        switch (type)
+        {
+            case ITypeParameterSymbol typeParameter:
+                return inferred.TryGetValue(typeParameter, out var typeArgument) ? typeArgument : type;
+            case IArrayTypeSymbol array:
+                return Substitute(compilation, array.ElementType, inferred) is { } elementType
+                    ? compilation.CreateArrayTypeSymbol(elementType, array.Rank)
+                    : null;
+            case INamedTypeSymbol named:
+                // A type that mentions no inferred type parameter is kept whole, including a nested type such as
+                // Outer<int>.Inner<string>, whose containing type's arguments OriginalDefinition would drop
+                if (!MentionsAnyTypeParameter(named, inferred.Keys.ToImmutableArray()))
+                {
+                    return type;
+                }
+
+                var definition = named.OriginalDefinition;
+                if (named.ContainingType is { } containingType)
+                {
+                    if (Substitute(compilation, containingType, inferred) is not INamedTypeSymbol substitutedContaining
+                        || substitutedContaining.GetTypeMembers(named.Name, named.Arity).FirstOrDefault() is not { } member)
+                    {
+                        return null;
+                    }
+
+                    definition = member;
+                }
+
+                if (named.Arity == 0)
+                {
+                    return definition;
+                }
+
+                var typeArguments = new ITypeSymbol[named.TypeArguments.Length];
+                for (var i = 0; i < typeArguments.Length; i++)
+                {
+                    if (Substitute(compilation, named.TypeArguments[i], inferred) is not { } substituted)
+                    {
+                        return null;
+                    }
+
+                    typeArguments[i] = substituted;
+                }
+
+                return definition.Construct(typeArguments);
+            default:
+                return type;
+        }
     }
 
     private static void CheckInferredTypeArgumentConstraints(SymbolAnalysisContext context,
@@ -1191,6 +1724,19 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
         return false;
     }
 
+    private static bool TryUnwrapFunc(ITypeSymbol type, [NotNullWhen(true)] out ITypeSymbol? innerType)
+    {
+        if (type is INamedTypeSymbol { IsGenericType: true, TypeArguments.Length: 1 } genericType
+            && genericType.ToDisplayString().StartsWith("System.Func<", StringComparison.Ordinal))
+        {
+            innerType = genericType.TypeArguments[0];
+            return true;
+        }
+
+        innerType = null;
+        return false;
+    }
+
     private static bool IsIAsyncEnumerable(ITypeSymbol type, Compilation compilation, [NotNullWhen(true)] out ITypeSymbol? innerType)
     {
         innerType = null;
@@ -1315,7 +1861,7 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
     // Mirrors DefaultBinder.FindMostSpecificMethod: an overload wins when it is more specific for at least one
     // parameter and less specific for none. Overloads with the same parameter types (a member hidden with `new`)
     // are resolved by the binder in favour of the most derived declaration, so they never tie.
-    private static bool IsAtLeastAsSpecific(Compilation compilation, IMethodSymbol candidate, IMethodSymbol other, ITypeSymbol[] argumentTypes)
+    private static bool IsAtLeastAsSpecific(Compilation compilation, IMethodSymbol candidate, IMethodSymbol other, ITypeSymbol?[] argumentTypes)
     {
         var otherWins = false;
 
@@ -1345,7 +1891,7 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
     }
 
     // Mirrors DefaultBinder.FindMostSpecificType: 1 when the first type is more specific, 2 when the second is, 0 for a tie.
-    private static int FindMostSpecificType(Compilation compilation, ITypeSymbol first, ITypeSymbol second, ITypeSymbol argumentType)
+    private static int FindMostSpecificType(Compilation compilation, ITypeSymbol first, ITypeSymbol second, ITypeSymbol? argumentType)
     {
         if (SymbolEqualityComparer.Default.Equals(first, argumentType))
         {
@@ -1373,7 +1919,8 @@ public class TestDataAnalyzer : ConcurrentDiagnosticAnalyzer
         ITypeParameterSymbol typeParameter => typeParameter.TypeParameterKind == TypeParameterKind.Method,
         IArrayTypeSymbol array => ReferencesMethodTypeParameter(array.ElementType),
         IPointerTypeSymbol pointer => ReferencesMethodTypeParameter(pointer.PointedAtType),
-        INamedTypeSymbol named => named.TypeArguments.Any(ReferencesMethodTypeParameter),
+        INamedTypeSymbol named => named.TypeArguments.Any(ReferencesMethodTypeParameter)
+            || (named.ContainingType is { } containingType && ReferencesMethodTypeParameter(containingType)),
         _ => false,
     };
 

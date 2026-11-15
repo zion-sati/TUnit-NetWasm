@@ -25,6 +25,10 @@ A machine-readable JSON sidecar (`{AssemblyName}-{os}-{tfm}.tunit-report.json`) 
 
 Running many test projects and want **one combined report instead of one per project**? See [Aggregated Reports](/docs/guides/report-aggregation).
 
+### Overlapping Sessions
+
+The HTML report assumes test sessions in the same process do not overlap when collecting traces and writing output files. In MTP server mode, overlapping sessions keep their test results and unobserved task exceptions separate, but share an activity listener, the resolved reporting setting, and the output path. A report's trace view can include spans from another session, and the last report written replaces the previous file. Run sessions sequentially when you need isolated trace views. Sequential sessions also reuse the output path, so copy each report before starting the next session to retain a report file for each one. Alternatively, run sessions in separate processes with distinct output paths.
+
 ## Features
 
 - **Summary Dashboard** — Total, passed, failed, skipped, and cancelled counts with a visual pass-rate donut chart
@@ -166,7 +170,7 @@ After the workflow run completes:
 ## Distributed Tracing
 
 :::note
-Distributed tracing requires .NET 8 or later.
+Distributed tracing requires .NET 10 or later.
 :::
 
 The HTML report automatically captures trace spans from **all** instrumented .NET libraries — not just TUnit's own spans. TUnit collects both per-test traces (`"TUnit"`) and runner lifecycle traces (`"TUnit.Lifecycle"`). When your test code calls HttpClient, ASP.NET Core, EF Core, or any library that emits `System.Diagnostics.Activity` spans, those spans appear as children in the test's trace timeline with no extra configuration.
@@ -264,12 +268,12 @@ For test suites with 1,000+ tests, the report uses client-side rendering from em
 
 ### Trace Timeline Not Showing
 
-The trace timeline requires `System.Diagnostics.Activity` spans to be active during the test run. If your tests don't create activities, the trace section won't appear. TUnit's internal activities are captured automatically on .NET 8.0+.
+The trace timeline requires `System.Diagnostics.Activity` spans to be active during the test run. If your tests don't create activities, the trace section won't appear. TUnit's internal activities are captured automatically on .NET 10.0+.
 
 ### External Library Spans Not Appearing
 
 If spans from HttpClient, ASP.NET Core, or other libraries aren't showing in the trace timeline:
 
-- **Ensure .NET 8+** — distributed trace collection is not available on .NET Framework or .NET Standard targets
+- **Ensure .NET 10+** — distributed trace collection is not available on .NET Framework or .NET Standard targets
 - **Check the library is instrumented** — the library must use `System.Diagnostics.Activity` (most modern .NET libraries do)
 - **Verify async context flow** — the library call must happen within the test's async context (i.e., awaited from the test method or a hook). Fire-and-forget calls (`Task.Run` without await) may lose the `Activity.Current` context

@@ -15,9 +15,6 @@ public sealed record TestMethodSourceCode
     /// <summary>Block for the method's case in the class-level __Invoke switch, without the <c>case N:</c> label.</summary>
     public required string InvokeBodyCode { get; init; }
 
-    /// <summary>Closed-world cases with row-specific typed delegates.</summary>
-    public required string CatalogGeneratedCaseDataCode { get; init; }
-
     /// <summary>TestEntry data fields (MethodName, FilePath, etc.).</summary>
     public required string TestEntryDataFieldsCode { get; init; }
 

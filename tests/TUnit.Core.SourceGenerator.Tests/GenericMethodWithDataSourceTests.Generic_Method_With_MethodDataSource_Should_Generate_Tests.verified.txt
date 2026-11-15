@@ -174,7 +174,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "number", new gl
 {
     new global::TUnit.Core.MethodDataSourceAttribute("GetNumbers")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._4431.GenericClassWithMethodDataSource<global::TUnit.TestProject.Bugs._4431.TypeA>.GetNumbers()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._4431.GenericClassWithMethodDataSource<global::TUnit.TestProject.Bugs._4431.TypeA>.GetNumbers()),
     },
 },
             methodMetadata: __mm_0,
@@ -222,7 +222,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(int), "number", new gl
 {
     new global::TUnit.Core.MethodDataSourceAttribute("GetNumbers")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._4431.GenericClassWithMethodDataSource<global::TUnit.TestProject.Bugs._4431.TypeB>.GetNumbers()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._4431.GenericClassWithMethodDataSource<global::TUnit.TestProject.Bugs._4431.TypeB>.GetNumbers()),
     },
 },
             methodMetadata: __mm_0,
@@ -503,7 +503,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "input", new 
 {
     new global::TUnit.Core.MethodDataSourceAttribute("GetStrings")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._4431.NonGenericClassWithGenericMethodAndDataSource.GetStrings()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._4431.NonGenericClassWithGenericMethodAndDataSource.GetStrings()),
     },
 },
             methodMetadata: __mm_0,
@@ -523,7 +523,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(string), "input", new 
 {
     new global::TUnit.Core.MethodDataSourceAttribute("GetStrings")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._4431.NonGenericClassWithGenericMethodAndDataSource.GetStrings()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._4431.NonGenericClassWithGenericMethodAndDataSource.GetStrings()),
     },
 },
             methodMetadata: __mm_0,
@@ -1123,12 +1123,16 @@ internal static class TUnit_TestProject_Bugs__4431_GenericClassWithClassDataSour
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._4431.GenericClassWithClassDataSource<>).GetProperty("DataSource", typeof(global::TUnit.TestProject.Bugs._4431.TestDataSource)),
+                #endif
                 Type = typeof(global::TUnit.TestProject.Bugs._4431.TestDataSource),
                 Name = "DataSource",
                 IsStatic = false,
                 IsNullable = false,
-                Getter = o => ((dynamic)o).DataSource,
+                Getter = global::TUnit.Core.PropertyMetadataFactory.CreateGenericGetter(typeof(global::TUnit.TestProject.Bugs._4431.GenericClassWithClassDataSource<>), "DataSource"),
                 ClassMetadata = null!,
                 ContainingTypeMetadata = null!
             }
@@ -1249,12 +1253,16 @@ internal static class TUnit_TestProject_Bugs__4431_GenericClassGenericMethodWith
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<>).GetProperty("DataSource", typeof(global::TUnit.TestProject.Bugs._4431.TestDataSource)),
+                #endif
                 Type = typeof(global::TUnit.TestProject.Bugs._4431.TestDataSource),
                 Name = "DataSource",
                 IsStatic = false,
                 IsNullable = false,
-                Getter = o => ((dynamic)o).DataSource,
+                Getter = global::TUnit.Core.PropertyMetadataFactory.CreateGenericGetter(typeof(global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<>), "DataSource"),
                 ClassMetadata = null!,
                 ContainingTypeMetadata = null!
             }
@@ -1347,7 +1355,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "flag", new glo
 {
     new global::TUnit.Core.MethodDataSourceAttribute("GetBooleans")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<global::TUnit.TestProject.Bugs._4431.TypeA>.GetBooleans()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<global::TUnit.TestProject.Bugs._4431.TypeA>.GetBooleans()),
     },
 },
             methodMetadata: __mm_0,
@@ -1367,7 +1375,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "flag", new glo
 {
     new global::TUnit.Core.MethodDataSourceAttribute("GetBooleans")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<global::TUnit.TestProject.Bugs._4431.TypeA>.GetBooleans()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<global::TUnit.TestProject.Bugs._4431.TypeA>.GetBooleans()),
     },
 },
             methodMetadata: __mm_0,
@@ -1458,7 +1466,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "flag", new glo
 {
     new global::TUnit.Core.MethodDataSourceAttribute("GetBooleans")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<global::TUnit.TestProject.Bugs._4431.TypeB>.GetBooleans()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<global::TUnit.TestProject.Bugs._4431.TypeB>.GetBooleans()),
     },
 },
             methodMetadata: __mm_0,
@@ -1478,7 +1486,7 @@ global::TUnit.Core.ParameterMetadataFactory.Create(typeof(bool), "flag", new glo
 {
     new global::TUnit.Core.MethodDataSourceAttribute("GetBooleans")
     {
-        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(static () => global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<global::TUnit.TestProject.Bugs._4431.TypeB>.GetBooleans()),
+        Factory = static dataGeneratorMetadata => global::TUnit.Core.Helpers.DataSourceFactories.FromEnumerable(dataGeneratorMetadata, static () => global::TUnit.TestProject.Bugs._4431.GenericClassGenericMethodWithDataSources<global::TUnit.TestProject.Bugs._4431.TypeB>.GetBooleans()),
     },
 },
             methodMetadata: __mm_0,

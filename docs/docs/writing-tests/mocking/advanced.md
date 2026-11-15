@@ -225,7 +225,7 @@ Notes and limits:
   calls keep returning default values.
 - The `netstandard2.0` asset (used by .NET Framework test projects) does not include the
   runtime emitter — unconfigured calls return default values there too. Runtime stubs require
-  the `net8.0`+ assets.
+  the `net10.0`+ assets.
 - Opt out globally with `settings.Mocks.RuntimeAutoStubs = false;` in a
   `[Before(HookType.TestDiscovery)]` hook.
 
@@ -325,6 +325,12 @@ Create generic interface mocks with the extension method, such as `IRepository<i
 If the closed type is only known at runtime, for example `Mock.Of<IRepository<T>>()` inside generic helper code, TUnit.Mocks builds the type with `MakeGenericType`. Native AOT may not have compiled that instantiation, especially for value-type arguments. In that case mock creation throws a `NotSupportedException` that names the type. To fix it, create the mock with the closed type, such as `IRepository<int>.Mock()`. This works for any type argument, including private nested types. When every type argument is accessible from the assembly, `[assembly: GenerateMock(typeof(IRepository<int>))]` also works.
 
 The built-in `DefaultValueProvider` uses reflection to build defaults for `Task<T>`, `ValueTask<T>`, and collection types, so it is not AOT-safe. A custom `IDefaultValueProvider` that does not use reflection works under Native AOT.
+
+### Generic Methods on Generic Interfaces
+
+A generic method on a generic interface can be set up with explicit type arguments, such as `mock.Invoke<string>(Any())`, on both `IOutbox<int>.Mock()` and `Mock.Of<IOutbox<int>>()`. On `Mock<T>`, this works for closed types named in `Mock.Of<T>()`, `MockRepository.Of<T>()`, or `[assembly: GenerateMock(typeof(IOutbox<int>))]`.
+
+A few methods still need `IOutbox<int>.Mock()` for explicit type arguments: those with a constraint that names an interface type parameter, such as `TOther Select<TOther>() where TOther : T`, those that use an unconstrained interface type parameter as `T?`, and overloads whose setup signatures become identical after substituting the closed type arguments. Colliding closed copies are omitted so registering the mock still compiles. When C# can infer the type arguments from the call, as in `mock.RoundTrip(Arg.Any<Guid>())`, every form works.
 
 ## Reset
 

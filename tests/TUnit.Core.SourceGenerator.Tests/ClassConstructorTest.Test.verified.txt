@@ -22,7 +22,11 @@ internal static class TUnit_TestProject_ClassConstructorTest__TestSource
         {
             new global::TUnit.Core.PropertyMetadata
             {
+                #if NETWASM
+                ReflectionInfo = null!,
+                #else
                 ReflectionInfo = typeof(global::TUnit.TestProject.ClassConstructorTest).GetProperty("DummyReferenceTypeClass", typeof(global::TUnit.TestProject.DummyReferenceTypeClass)),
+                #endif
                 Type = typeof(global::TUnit.TestProject.DummyReferenceTypeClass),
                 Name = "DummyReferenceTypeClass",
                 IsStatic = false,

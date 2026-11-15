@@ -7,7 +7,11 @@ namespace TUnit.Core;
 public static partial class TUnitActivitySource
 {
     private static readonly string Version =
+#if NETWASM
+        NetWasmBuildInfo.Version;
+#else
         typeof(TUnitActivitySource).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+#endif
 
     internal const string SourceName = "TUnit";
     internal const string LifecycleSourceName = "TUnit.Lifecycle";
@@ -235,6 +239,29 @@ public static partial class TUnitActivitySource
         }
 
         return sb?.ToString();
+    }
+
+    /// <summary>
+    /// Returns the parent activity context for a data-source object's initialize or dispose span.
+    /// Session/keyed/assembly-scoped objects are parented under the assembly activity so they
+    /// appear as siblings of suite spans in both OTel backends and the HTML timeline.
+    /// The <c>tunit.trace.scope</c> tag carries the precise lifetime semantics.
+    /// </summary>
+    internal static ActivityContext GetSharedObjectParentContext(TestContext? testContext, SharedType? sharedType)
+    {
+        if (testContext is null)
+        {
+            return default;
+        }
+
+        return sharedType switch
+        {
+            SharedType.PerTestSession or SharedType.PerAssembly or SharedType.Keyed
+                => testContext.ClassContext.AssemblyContext.Activity?.Context ?? default,
+            SharedType.PerClass => testContext.ClassContext.Activity?.Context ?? default,
+            // Per-test objects and the test class instance go under the test case activity
+            _ => testContext.Activity?.Context ?? testContext.ClassContext.Activity?.Context ?? default
+        };
     }
 
     /// <summary>

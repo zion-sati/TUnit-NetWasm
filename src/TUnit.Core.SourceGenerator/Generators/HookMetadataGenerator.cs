@@ -1,3 +1,4 @@
+using TUnit.SourceGeneration;
 using System.Globalization;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
@@ -29,7 +30,11 @@ public class HookMetadataGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select(static (options, _) => SourceGenerationMode.Read(options).IsDesktop);
+            .Select((options, _) =>
+            {
+                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
+                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+            });
 
         var beforeHooks = context.SyntaxProvider
             .ForAttributeWithMetadataName(
@@ -222,7 +227,7 @@ public class HookMetadataGenerator : IIncrementalGenerator
         catch (Exception ex)
         {
             var descriptor = new DiagnosticDescriptor(
-                "THG001",
+                GeneratorDiagnosticIds.HookMetadataGenerationFailed,
                 "Hook metadata generation failed",
                 "Failed to generate hook metadata for {0} (at {1}:{2}): {3}",
                 "TUnit",
@@ -579,6 +584,7 @@ public class HookMetadataGenerator : IIncrementalGenerator
     {
         return input
             .Replace("global::", "")
+            .Replace("@", "_")
             .Replace(".", "_")
             .Replace("<", "_")
             .Replace(">", "_")

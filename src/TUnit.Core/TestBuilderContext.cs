@@ -28,6 +28,7 @@ public record TestBuilderContext
     private ConcurrentDictionary<string, object?>? _stateBag;
     private TestBuilderContext? _stateBagSource;
     private TestContextEvents? _events;
+    private TestBuilderContext? _eventsSource;
 
     /// <summary>
     /// Gets the state bag for storing arbitrary data during test building.
@@ -88,15 +89,35 @@ public record TestBuilderContext
 
     public TestContextEvents Events
     {
-        get => _events ??= new TestContextEvents();
-        set => _events = value;
+        // A sharing context resolves the source's container on every read rather than caching it, so a
+        // later assignment to the source's Events reaches this context too.
+        get => _events ?? _eventsSource?.Events ?? LazyInitializer.EnsureInitialized(ref _events)!;
+        set
+        {
+            _eventsSource = null;
+            _events = value;
+        }
     }
 
     /// <summary>
     /// The events container if something has created it, otherwise <c>null</c>. For read-only
     /// consumers that would otherwise allocate an empty container just to find no subscribers.
     /// </summary>
-    internal TestContextEvents? EventsIfCreated => _events;
+    internal TestContextEvents? EventsIfCreated => _events ?? _eventsSource?.EventsIfCreated;
+
+    /// <summary>
+    /// Makes this context use <paramref name="source"/>'s events without materializing them.
+    /// Equivalent to <c>Events = source.Events</c>, except the container is only created
+    /// (on the source) when either context first reads it. Data sources subscribe on the
+    /// builder's per-iteration context while their row is fetched; sharing its events lets those
+    /// subscriptions reach the test built from the row (#7205). Every read resolves through the
+    /// source, so a later assignment to the source's <see cref="Events"/> reaches this context too.
+    /// </summary>
+    internal void ShareEventsWith(TestBuilderContext source)
+    {
+        _events = null;
+        _eventsSource = source;
+    }
 
     /// <summary>
     /// Gets or sets the data source attribute that generated the test's method arguments, if any.
@@ -119,6 +140,30 @@ public record TestBuilderContext
     /// Cached and initialized attributes for the test
     /// </summary>
     internal Attribute[]? InitializedAttributes { get; set; }
+
+    // Child rows start with isolated state and no event subscriptions. Callers that build an
+    // executable view can explicitly share the state/events with their factory context instead.
+    internal TestBuilderContext CreateChild(IDataSourceAttribute? classDataSource, IDataSourceAttribute? dataSource = null, bool shareFactoryContext = false)
+    {
+        var child = new TestBuilderContext
+        {
+            TestMetadata = TestMetadata,
+            InitializedAttributes = InitializedAttributes,
+            ClassConstructor = ClassConstructor,
+            ClassDataSourceAttribute = classDataSource,
+            DataSourceAttribute = dataSource
+        };
+        if (shareFactoryContext)
+        {
+            child.ShareStateBagWith(this);
+            child.ShareEventsWith(this);
+        }
+        else
+        {
+            CopyStateBagTo(child);
+        }
+        return child;
+    }
 
     public void RegisterForInitialization(object? obj)
     {

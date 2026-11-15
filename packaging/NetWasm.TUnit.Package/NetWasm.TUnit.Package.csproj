@@ -1,5 +1,8 @@
 <Project Sdk="NetWasm.Sdk">
   <PropertyGroup>
+    <!-- The runner's sources call the request context and completion notifier a test host uses, which
+         Microsoft.Testing.Platform marks experimental. -->
+    <NoWarn>$(NoWarn);TPEXP</NoWarn>
     <TargetFramework></TargetFramework>
     <TargetFrameworks>net10.0;netwasm0.1</TargetFrameworks>
     <AssemblyName>NetWasm.TUnit.Runner</AssemblyName>
@@ -17,7 +20,7 @@
     <PackageIcon></PackageIcon>
     <IsPackable>true</IsPackable>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Description>NetWasm-targeted TUnit catalog runner and package integration.</Description>
+    <Description>Runs TUnit's engine on NetWasm and integrates TUnit test projects with dotnet test.</Description>
     <Deterministic>true</Deterministic>
     <!-- This release-only runner package does not ship symbols. Omitting its
          unused portable PDB also avoids Roslyn recording physical restored-
@@ -45,8 +48,7 @@
     <PackageReference Include="NetWasm.TUnit.Core" Version="[$(NetWasmTUnitPackageVersion)]" />
     <PackageReference Include="NetWasm.TUnit.Assertions" Version="[$(NetWasmTUnitPackageVersion)]" />
     <PackageReference Include="NetWasm.Testing.VSTest" Version="[$(NetWasmPackageVersion)]" />
-    <PackageReference Include="NetWasm.TUnit.Engine" Version="[$(NetWasmTUnitPackageVersion)]"
-                      Condition="'$(TargetFramework)' == 'net10.0'" />
+    <PackageReference Include="NetWasm.TUnit.Engine" Version="[$(NetWasmTUnitPackageVersion)]" />
     <ProjectReference Include="../NetWasm.TUnit.VSTest.Adapter/NetWasm.TUnit.VSTest.Adapter.csproj"
                       Condition="'$(TargetFramework)' == 'net10.0'"
                       ReferenceOutputAssembly="false"

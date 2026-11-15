@@ -19,6 +19,13 @@ public static class CompilationExtensions
             return true;
         }
 
+        if (argumentType is not null && parameterType is not null
+            && ContainsArray(parameterType) && ContainsTypeParameter(parameterType))
+        {
+            // Constraint and general inference validation remain separate (#7520).
+            return compilation.MatchesOpenArrayShape(argumentType, parameterType);
+        }
+
         if (parameterType?.IsGenericDefinition() == false)
         {
             if (argumentType is null)
@@ -49,6 +56,70 @@ public static class CompilationExtensions
         return compilation.HasImplicitConversion(argumentType?.OriginalDefinition, parameterType?.OriginalDefinition);
     }
 
+    // Nested generic arguments deliberately retain the existing inference behavior (#7520).
+    private static bool ContainsArray(ITypeSymbol type) => type switch
+    {
+        IArrayTypeSymbol => true,
+        INamedTypeSymbol { IsTupleType: true } tuple => tuple.TupleElements.Any(x => ContainsArray(x.Type)),
+        _ => false
+    };
+
+    private static bool MatchesOpenArrayShape(this Compilation compilation, ITypeSymbol argumentType,
+        ITypeSymbol parameterType, bool requiresIdentity = false)
+    {
+        if (ContainsTypeParameter(parameterType))
+        {
+            var conversion = compilation.ClassifyConversion(argumentType, parameterType);
+            if (conversion.IsIdentity || (!requiresIdentity && conversion.IsImplicit))
+            {
+                return true;
+            }
+
+            if (parameterType is IArrayTypeSymbol targetArray)
+            {
+                if (argumentType is not IArrayTypeSymbol sourceArray
+                    || sourceArray.Rank != targetArray.Rank || sourceArray.IsSZArray != targetArray.IsSZArray)
+                {
+                    return false;
+                }
+
+                return compilation.MatchesOpenArrayShape(sourceArray.ElementType, targetArray.ElementType, requiresIdentity: true);
+            }
+
+            if (parameterType is INamedTypeSymbol { IsTupleType: true } targetTuple)
+            {
+                if (argumentType is not INamedTypeSymbol { IsTupleType: true } sourceTuple
+                    || sourceTuple.TupleElements.Length != targetTuple.TupleElements.Length)
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < sourceTuple.TupleElements.Length; i++)
+                {
+                    if (!compilation.MatchesOpenArrayShape(sourceTuple.TupleElements[i].Type,
+                            targetTuple.TupleElements[i].Type, requiresIdentity))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            // Inferring nested generic arguments, constraints and shared bounds is deliberately out of scope.
+            return true;
+        }
+
+        // Value-type array elements (including tuples) are invariant. Their fields cannot
+        // use the numeric or reference conversions available to a standalone tuple.
+        if (requiresIdentity)
+        {
+            return compilation.ClassifyConversion(argumentType, parameterType).IsIdentity;
+        }
+
+        return compilation.HasImplicitConversionOrGenericParameter(argumentType, parameterType);
+    }
+
     /// <summary>
     /// Whether a data source value of <paramref name="argumentType"/> can bind to a test parameter of
     /// <paramref name="parameterType"/>. A bare type-parameter target accepts any argument type, because the
@@ -66,6 +137,36 @@ public static class CompilationExtensions
         ITypeSymbol? parameterType,
         IReadOnlyDictionary<ITypeParameterSymbol, ITypeSymbol>? inferredTypeArguments = null)
     {
+        // Discovery infers a nullable class parameter's underlying type from either T or T? data.
+        if (parameterType is INamedTypeSymbol
+            {
+                OriginalDefinition.SpecialType: SpecialType.System_Nullable_T,
+                TypeArguments: [ITypeParameterSymbol { DeclaringMethod: null } nullableTypeParameter]
+            }
+            && argumentType is not null)
+        {
+            // Explicit instantiations and constructor data supply T independently of the method row.
+            // CastHelper converts the method data to the resulting parameter type.
+            if (HasIndependentlySuppliedClassType(compilation, nullableTypeParameter))
+            {
+                return true;
+            }
+
+            var underlyingType = argumentType is INamedTypeSymbol
+                {
+                    OriginalDefinition.SpecialType: SpecialType.System_Nullable_T,
+                    TypeArguments: [var underlying]
+                } ? underlying : argumentType;
+            // Multiple occurrences can infer different types; the generator converts the earlier values
+            // to the final inferred type. Only reject constraints when inference is certain.
+            if (inferredTypeArguments is not null && !inferredTypeArguments.ContainsKey(nullableTypeParameter))
+            {
+                return true;
+            }
+
+            return compilation.CanSatisfyConstraints(underlyingType, nullableTypeParameter, inferredTypeArguments);
+        }
+
         if (parameterType is ITypeParameterSymbol typeParameter && argumentType is not null)
         {
             // With [GenerateGenericTest] the attribute supplies the type argument and the generated call converts
@@ -96,12 +197,14 @@ public static class CompilationExtensions
 
     /// <summary>
     /// Maps each type parameter to the data type it is inferred as, when that is certain: every test parameter
-    /// that mentions the type parameter is the bare type parameter, and all of them receive the same data type.
+    /// that mentions the type parameter is the bare type parameter (or a nullable class type parameter),
+    /// and all of them infer the same underlying data type. Class types supplied independently by attributes
+    /// or constructor data are excluded because method rows do not determine their type arguments.
     /// Otherwise the inference depends on which occurrence wins (the generator takes the last one and converts the
     /// other values to it), so the type parameter is left out.
     /// </summary>
     public static Dictionary<ITypeParameterSymbol, ITypeSymbol> InferTypeArguments(
-        IReadOnlyList<ITypeSymbol?> argumentTypes, IReadOnlyList<ITypeSymbol?> parameterTypes)
+        Compilation compilation, IReadOnlyList<ITypeSymbol?> argumentTypes, IReadOnlyList<ITypeSymbol?> parameterTypes)
     {
         var inferred = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default);
         var uncertain = new HashSet<ITypeParameterSymbol>(SymbolEqualityComparer.Default);
@@ -114,6 +217,22 @@ public static class CompilationExtensions
                 continue;
             }
 
+            var argumentType = i < argumentTypes.Count ? argumentTypes[i] : null;
+            var isNullableClassParameter = parameterType is INamedTypeSymbol
+            {
+                OriginalDefinition.SpecialType: SpecialType.System_Nullable_T,
+                TypeArguments: [ITypeParameterSymbol { DeclaringMethod: null }]
+            };
+            if (isNullableClassParameter)
+            {
+                parameterType = ((INamedTypeSymbol)parameterType).TypeArguments[0];
+                if (argumentType is INamedTypeSymbol
+                    { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T, TypeArguments: [var underlying] })
+                {
+                    argumentType = underlying;
+                }
+            }
+
             if (parameterType is not ITypeParameterSymbol typeParameter)
             {
                 // A type parameter nested in a constructed parameter type can also drive the inference.
@@ -121,14 +240,15 @@ public static class CompilationExtensions
                 continue;
             }
 
-            // Class type parameters are not inferred from the method's data row.
-            if (typeParameter.DeclaringMethod is null)
+            // Independently supplied class types must not contaminate peer method constraints.
+            // Bare class type parameters keep their existing deferred constraint validation.
+            if (typeParameter.DeclaringMethod is null
+                && (!isNullableClassParameter || HasIndependentlySuppliedClassType(compilation, typeParameter)))
             {
                 uncertain.Add(typeParameter);
                 continue;
             }
 
-            var argumentType = i < argumentTypes.Count ? argumentTypes[i] : null;
             if (argumentType is null
                 || (inferred.TryGetValue(typeParameter, out var existing)
                     && !SymbolEqualityComparer.Default.Equals(existing, argumentType)))
@@ -187,6 +307,61 @@ public static class CompilationExtensions
             && argumentType is not null and not ITypeParameterSymbol and not IErrorTypeSymbol
             && argumentType.TypeKind != TypeKind.Dynamic
             && !ExactTypeExtensions.IsExactType(argumentType);
+    }
+
+    private static bool HasIndependentlySuppliedClassType(Compilation compilation, ITypeParameterSymbol typeParameter)
+    {
+        return HasGenerateGenericTestAttribute(typeParameter)
+            || typeParameter.DeclaringType?.GetSelfAndBaseTypes()
+                .SelectMany(type => type.GetAttributes())
+                .Any(attribute => attribute.IsDataSourceAttribute(compilation)
+                    && !(attribute.AttributeClass?.Name == "ArgumentsAttribute"
+                        && ClassRowSuppliesNoTypeArguments(typeParameter.DeclaringType, attribute))) == true;
+    }
+
+    // Keep constructor-row precedence in step with TestMetadataGenerator.ClassRowSuppliesNoTypeArguments.
+    private static bool ClassRowSuppliesNoTypeArguments(INamedTypeSymbol classSymbol, AttributeData attribute)
+    {
+        int valueCount;
+        if (attribute.AttributeClass is { IsGenericType: true, TypeArguments.Length: 1 })
+        {
+            valueCount = 1;
+        }
+        else if (attribute.ConstructorArguments is [{ Kind: TypedConstantKind.Array } row])
+        {
+            valueCount = row.IsNull ? 1 : row.Values.Length;
+        }
+        else
+        {
+            return false;
+        }
+
+        var constructor = classSymbol.InstanceConstructors.FirstOrDefault(c => c.DeclaredAccessibility == Accessibility.Public
+                && c.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == "TUnit.Core.TestConstructorAttribute"))
+            ?? classSymbol.InstanceConstructors.FirstOrDefault(c => c.DeclaredAccessibility == Accessibility.Public);
+        if (constructor is null)
+        {
+            return false;
+        }
+
+        var boundCount = Math.Min(valueCount, constructor.Parameters.Length);
+        for (var i = 0; i < boundCount; i++)
+        {
+            if (ContainsClassParameter(constructor.Parameters[i].Type))
+            {
+                return false;
+            }
+        }
+
+        return boundCount != 0 || valueCount == 0;
+
+        bool ContainsClassParameter(ITypeSymbol type) => type switch
+        {
+            ITypeParameterSymbol parameter => classSymbol.TypeParameters.Contains(parameter, SymbolEqualityComparer.Default),
+            IArrayTypeSymbol array => ContainsClassParameter(array.ElementType),
+            INamedTypeSymbol named => named.TypeArguments.Any(ContainsClassParameter),
+            _ => false
+        };
     }
 
     /// <summary>

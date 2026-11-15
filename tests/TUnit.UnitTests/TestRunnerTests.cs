@@ -133,6 +133,7 @@ public class TestRunnerTests
         await runner.ExecuteTestAsync(dependent, cancellationToken);
 
         await Assert.That(dependent.State).IsEqualTo(TestState.Skipped);
+        await Assert.That(coordinator.GetCallCount(dependent)).IsEqualTo(1);
         await Assert.That(coordinator.GetCallCount(firstCycleTest)).IsEqualTo(0);
         await Assert.That(coordinator.GetCallCount(secondCycleTest)).IsEqualTo(0);
     }
@@ -149,26 +150,72 @@ public class TestRunnerTests
             .ThrowsExactly<OperationCanceledException>();
     }
 
-    private static TestRunner CreateRunner(out FakeTestCoordinator coordinator)
+    [Test, Timeout(5_000)]
+    public async Task DependencySkip_WaitsForExecutionLock(CancellationToken cancellationToken)
+    {
+        using var executionLock = new NotInParallelLock();
+        executionLock.Enable();
+        var runner = CreateRunner(out var coordinator, executionLock);
+        var dependency = CreateTest("failed-dependency");
+        dependency.State = TestState.Failed;
+        dependency.ExecutionTask = Task.CompletedTask;
+        var dependent = CreateTest("skipped-dependent", [dependency]);
+        dependent.Context.SkipReason = "Existing skip reason";
+
+        ValueTask execution;
+        using (await executionLock.EnterAsync(true, cancellationToken))
+        {
+            execution = runner.ExecuteTestAsync(dependent, cancellationToken);
+            await Assert.That(execution.IsCompleted).IsFalse();
+            await Assert.That(coordinator.GetCallCount(dependent)).IsEqualTo(0);
+        }
+
+        await execution;
+        await Assert.That(coordinator.GetCallCount(dependent)).IsEqualTo(1);
+        await Assert.That(dependent.State).IsEqualTo(TestState.Skipped);
+        await Assert.That(dependent.Context.SkipReason).IsEqualTo("Existing skip reason");
+    }
+
+    [Test]
+    [Arguments(null)]
+    [Arguments("")]
+    [Arguments("Existing skip reason")]
+    public async Task DependencySkip_PreservesOnlyNonEmptySkipReasons(string? existingReason)
+    {
+        var runner = CreateRunner(out var coordinator);
+        var dependency = CreateTest("failed-dependency");
+        dependency.State = TestState.Failed;
+        dependency.ExecutionTask = Task.CompletedTask;
+        var dependent = CreateTest("skipped-dependent", [dependency]);
+        dependent.Context.SkipReason = existingReason;
+
+        await runner.ExecuteTestAsync(dependent, CancellationToken.None);
+
+        await Assert.That(coordinator.GetCallCount(dependent)).IsEqualTo(1);
+        await Assert.That(dependent.State).IsEqualTo(TestState.Skipped);
+        await Assert.That(dependent.Context.SkipReason).IsEqualTo(
+            string.IsNullOrEmpty(existingReason) ? "Skipped due to failed dependencies" : existingReason);
+    }
+
+    private static TestRunner CreateRunner(out FakeTestCoordinator coordinator, NotInParallelLock? executionLock = null)
     {
         coordinator = new FakeTestCoordinator();
 
         return new TestRunner(
             coordinator,
-            new FakeMessageBus(),
             isFailFastEnabled: false,
             new CancellationTokenSource(),
             logger: null!,
-            new TestStateManager(),
             new ParallelLimitLockProvider(),
-            new NotInParallelLock());
+            executionLock ?? new NotInParallelLock());
     }
 
     internal static AbstractExecutableTest CreateTest(
         string testId,
-        AbstractExecutableTest[]? dependencies = null)
+        AbstractExecutableTest[]? dependencies = null,
+        TestDependency[]? dependencyMetadata = null)
     {
-        var metadata = CreateMetadata(testId);
+        var metadata = CreateMetadata(testId, dependencyMetadata);
         var beforeDiscoveryContext = new BeforeTestDiscoveryContext { TestFilter = null };
         var discoveryContext = new TestDiscoveryContext(beforeDiscoveryContext) { TestFilter = null };
         var sessionContext = new TestSessionContext(discoveryContext)
@@ -208,7 +255,7 @@ public class TestRunnerTests
         Metadata = TestDependency.FromMethodName(dependency.Metadata.TestMethodName)
     };
 
-    private static TestMetadata<TestRunnerTests> CreateMetadata(string testId)
+    private static TestMetadata<TestRunnerTests> CreateMetadata(string testId, TestDependency[]? dependencies)
     {
         var classMetadata = new ClassMetadata
         {
@@ -230,6 +277,7 @@ public class TestRunnerTests
             TestClassType = typeof(TestRunnerTests),
             TestMethodName = testId,
             TestName = testId,
+            Dependencies = dependencies ?? [],
             FilePath = "Unknown",
             LineNumber = 0,
             AttributeFactory = () => [],
@@ -300,14 +348,14 @@ public class TestRunnerTests
                 return CompleteAfterAsync(test, executionTask);
             }
 
-            test.SetResult(TestState.Passed);
+            test.SetResult(string.IsNullOrEmpty(test.Context.SkipReason) ? TestState.Passed : TestState.Skipped);
             return default;
         }
 
         private static async ValueTask CompleteAfterAsync(AbstractExecutableTest test, Task executionTask)
         {
             await executionTask.ConfigureAwait(false);
-            test.SetResult(TestState.Passed);
+            test.SetResult(string.IsNullOrEmpty(test.Context.SkipReason) ? TestState.Passed : TestState.Skipped);
         }
     }
 

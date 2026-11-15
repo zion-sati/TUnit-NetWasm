@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+# The packages carry net10.0 and netwasm0.1 assets only, and upstream's tests run for net10.0: build without
+# net11.0, which a .NET 10 SDK cannot target (Directory.Build.targets).
+export TUnitWithoutNet11=true
 
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PACKAGE_DIR="${1:-${REPOSITORY_ROOT}/artifacts/netwasm-packages}"
@@ -83,7 +86,7 @@ fi
 "${REPOSITORY_ROOT}/eng/netwasm-build-packages.sh" "${build_arguments[@]}"
 
 qualification_root="${test_root}/source"
-# A detached worktree, not an archive: the catalog generator tests locate
+# A detached worktree, not an archive: the source generator tests locate
 # the repository through Git (Sourcy.Git).
 git -C "${REPOSITORY_ROOT}" -c core.longpaths=true worktree add --quiet --detach "${qualification_root}" HEAD
 if [[ -n "${NETWASM_TUNIT_BUILD_SDK_VERSION:-}" ]]; then
@@ -169,7 +172,7 @@ dotnet run --project "${runner_tests}" \
   --no-launch-profile \
   --disable-build-servers \
   -p:NetWasmTUnitPackageVersion="${TEST_VERSION}" \
-  -- --minimum-expected-tests 52
+  -- --minimum-expected-tests 39
 
 desktop_package_tests="${qualification_root}/packaging/NetWasm.TUnit.Desktop.Package.Tests/NetWasm.TUnit.Desktop.Package.Tests.csproj"
 dotnet restore "${desktop_package_tests}" \
@@ -191,7 +194,7 @@ package_tests="NetWasm.TUnit.Package.Tests/NetWasm.TUnit.Package.Tests.csproj"
     -p:NetWasmTUnitPackageVersion="${TEST_VERSION}"
   dotnet test "${package_tests}" -c Release --no-restore --disable-build-servers --nologo |
     tee "${test_root}/package-run.log"
-  assert_vstest_pass_summary "${test_root}/package-run.log" 14
+  assert_vstest_pass_summary "${test_root}/package-run.log" 18
   dotnet test "${package_tests}" -c Release --no-build --no-restore --list-tests --nologo |
     tee "${test_root}/package-list.log"
   grep -E -q '^[[:space:]]+PackageOnlyConsumerRunsThroughStandardDotNetTest$' \
@@ -263,4 +266,42 @@ fi
   }
 )
 
-echo "NetWasm TUnit package, runner, VSTest and template tests passed."
+# A test suite that also targets desktop .NET, as a portable library's does, with warnings as errors: on
+# netwasm0.1 the packages must bring no .NET Standard asset (NU1701), so both frameworks restore, build and run.
+dual_consumer="${test_root}/DualTarget.Tests"
+mkdir -p "${dual_consumer}"
+cp "${template_consumer}/Tests.cs" "${dual_consumer}/Tests.cs"
+{
+  head -n 1 "${template_consumer}/Generated.Tests.csproj"
+  cat <<EOF
+  <PropertyGroup>
+    <TargetFrameworks>netwasm0.1;net10.0</TargetFrameworks>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NetWasm.TUnit" Version="[${TEST_VERSION}]" />
+  </ItemGroup>
+</Project>
+EOF
+} > "${dual_consumer}/DualTarget.Tests.csproj"
+(
+  cd "${dual_consumer}"
+  dotnet restore DualTarget.Tests.csproj --configfile "${nuget_config}" --disable-build-servers --nologo \
+    | tee "${test_root}/dual-restore.log"
+  if grep -q "NU1701" "${test_root}/dual-restore.log"; then
+    echo "A netwasm0.1 dependency of NetWasm.TUnit restored from a .NET Standard asset (NU1701)." >&2
+    exit 1
+  fi
+  # Each framework runs as its suites do: netwasm0.1 through dotnet test's VSTest adapter, and desktop .NET as
+  # the Microsoft.Testing.Platform application TUnit builds, since .NET 10's dotnet test has no VSTest mode for it.
+  dotnet test DualTarget.Tests.csproj -c Release -f netwasm0.1 --no-restore --disable-build-servers --nologo \
+    | tee "${test_root}/dual-netwasm.log"
+  assert_vstest_pass_summary "${test_root}/dual-netwasm.log" 1
+  dotnet run --project DualTarget.Tests.csproj -c Release -f net10.0 --no-restore --disable-build-servers \
+    | tee "${test_root}/dual-desktop.log"
+)
+
+echo "NetWasm TUnit package, runner, VSTest, template and dual-target tests passed."
