@@ -20,7 +20,7 @@
     <!-- The host drives TUnit's engine through Microsoft.Testing.Platform's public abstractions; the program the
          package compiles into each test project passes the engine's factory. -->
     <PackageReference Include="NetWasm.TUnit.Assertions" Version="[$(NetWasmTUnitPackageVersion)]" />
-    <PackageReference Include="Microsoft.Testing.Platform" Version="[2.5.2]">
+    <PackageReference Include="Microsoft.Testing.Platform" Version="[2.5.3]">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
   </ItemGroup>

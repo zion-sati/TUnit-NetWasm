@@ -53,13 +53,13 @@
       <ExcludeAssets>Build;BuildTransitive</ExcludeAssets>
     </PackageReference>
     <!-- NetWasm.App supplies System.Threading.Channels on netwasm0.1, and the engine builds no TRX report there. -->
-    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.5.2]" Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[2.5.3]" Condition="'$(TargetFramework)' == 'net10.0'">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Testing.Platform" Version="[2.5.2]">
+    <PackageReference Include="Microsoft.Testing.Platform" Version="[2.5.3]">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="[2.5.2]" Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="[2.5.3]" Condition="'$(TargetFramework)' == 'net10.0'">
       <ExcludeAssets>Build;Analyzers</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
