@@ -8,12 +8,12 @@ namespace TUnit.Assertions.Conditions;
 /// <summary>
 /// Asserts that a mutable dictionary contains the specified key.
 /// </summary>
-public class MutableDictionaryContainsKeyAssertion<TDictionary, TKey, TValue> : MutableDictionaryAssertionBase<TDictionary, TKey, TValue>
+public class MutableDictionaryContainsKeyAssertion<TDictionary, TKey, TValue> : MutableDictionaryConditionBase<TDictionary, TKey, TValue>
     where TDictionary : IDictionary<TKey, TValue>
     where TKey : notnull
 {
     private readonly TKey _expectedKey;
-    private readonly IEqualityComparer<TKey>? _comparer;
+    private IEqualityComparer<TKey>? _comparer;
 
     public MutableDictionaryContainsKeyAssertion(AssertionContext<TDictionary> context, TKey expectedKey, IEqualityComparer<TKey>? comparer = null)
         : base(context)
@@ -24,13 +24,24 @@ public class MutableDictionaryContainsKeyAssertion<TDictionary, TKey, TValue> : 
 
     public MutableDictionaryContainsKeyAssertion<TDictionary, TKey, TValue> Using(IEqualityComparer<TKey> comparer)
     {
-        return new MutableDictionaryContainsKeyAssertion<TDictionary, TKey, TValue>(Context, _expectedKey, comparer);
+        _comparer = comparer;
+        return this;
     }
 
     public MutableDictionaryContainsKeyAssertion<TDictionary, TKey, TValue> Using(Func<TKey?, TKey?, bool> equalityPredicate)
     {
-        return new MutableDictionaryContainsKeyAssertion<TDictionary, TKey, TValue>(
-            Context, _expectedKey, new FuncEqualityComparer<TKey>(equalityPredicate));
+        _comparer = new FuncEqualityComparer<TKey>(equalityPredicate);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a custom message explaining why this assertion should pass.
+    /// The chain keeps <c>And.Value</c> for the value stored at the asserted key.
+    /// </summary>
+    public new MutableDictionaryContainsKeyAssertion<TDictionary, TKey, TValue> Because(string message)
+    {
+        base.Because(message);
+        return this;
     }
 
     /// <summary>
@@ -85,7 +96,7 @@ public class MutableDictionaryContainsKeyAssertion<TDictionary, TKey, TValue> : 
 /// <summary>
 /// Asserts that a mutable dictionary does not contain the specified key.
 /// </summary>
-public class MutableDictionaryDoesNotContainKeyAssertion<TDictionary, TKey, TValue> : MutableDictionaryAssertionBase<TDictionary, TKey, TValue>
+public class MutableDictionaryDoesNotContainKeyAssertion<TDictionary, TKey, TValue> : MutableDictionaryConditionBase<TDictionary, TKey, TValue>
     where TDictionary : IDictionary<TKey, TValue>
     where TKey : notnull
 {
@@ -123,7 +134,7 @@ public class MutableDictionaryDoesNotContainKeyAssertion<TDictionary, TKey, TVal
 /// <summary>
 /// Asserts that a mutable dictionary contains the specified value.
 /// </summary>
-public class MutableDictionaryContainsValueAssertion<TDictionary, TKey, TValue> : MutableDictionaryAssertionBase<TDictionary, TKey, TValue>
+public class MutableDictionaryContainsValueAssertion<TDictionary, TKey, TValue> : MutableDictionaryConditionBase<TDictionary, TKey, TValue>
     where TDictionary : IDictionary<TKey, TValue>
     where TKey : notnull
 {
@@ -165,7 +176,7 @@ public class MutableDictionaryContainsValueAssertion<TDictionary, TKey, TValue> 
 /// <summary>
 /// Asserts that a mutable dictionary does not contain the specified value.
 /// </summary>
-public class MutableDictionaryDoesNotContainValueAssertion<TDictionary, TKey, TValue> : MutableDictionaryAssertionBase<TDictionary, TKey, TValue>
+public class MutableDictionaryDoesNotContainValueAssertion<TDictionary, TKey, TValue> : MutableDictionaryConditionBase<TDictionary, TKey, TValue>
     where TDictionary : IDictionary<TKey, TValue>
     where TKey : notnull
 {
@@ -207,7 +218,7 @@ public class MutableDictionaryDoesNotContainValueAssertion<TDictionary, TKey, TV
 /// <summary>
 /// Asserts that a mutable dictionary contains the specified key with the specified value.
 /// </summary>
-public class MutableDictionaryContainsKeyWithValueAssertion<TDictionary, TKey, TValue> : MutableDictionaryAssertionBase<TDictionary, TKey, TValue>
+public class MutableDictionaryContainsKeyWithValueAssertion<TDictionary, TKey, TValue> : MutableDictionaryConditionBase<TDictionary, TKey, TValue>
     where TDictionary : IDictionary<TKey, TValue>
     where TKey : notnull
 {
@@ -253,7 +264,7 @@ public class MutableDictionaryContainsKeyWithValueAssertion<TDictionary, TKey, T
 /// <summary>
 /// Asserts that all keys in a mutable dictionary satisfy the predicate.
 /// </summary>
-public class MutableDictionaryAllKeysAssertion<TDictionary, TKey, TValue> : MutableDictionaryAssertionBase<TDictionary, TKey, TValue>
+public class MutableDictionaryAllKeysAssertion<TDictionary, TKey, TValue> : MutableDictionaryConditionBase<TDictionary, TKey, TValue>
     where TDictionary : IDictionary<TKey, TValue>
     where TKey : notnull
 {
@@ -294,7 +305,7 @@ public class MutableDictionaryAllKeysAssertion<TDictionary, TKey, TValue> : Muta
 /// <summary>
 /// Asserts that all values in a mutable dictionary satisfy the predicate.
 /// </summary>
-public class MutableDictionaryAllValuesAssertion<TDictionary, TKey, TValue> : MutableDictionaryAssertionBase<TDictionary, TKey, TValue>
+public class MutableDictionaryAllValuesAssertion<TDictionary, TKey, TValue> : MutableDictionaryConditionBase<TDictionary, TKey, TValue>
     where TDictionary : IDictionary<TKey, TValue>
     where TKey : notnull
 {
@@ -335,7 +346,7 @@ public class MutableDictionaryAllValuesAssertion<TDictionary, TKey, TValue> : Mu
 /// <summary>
 /// Asserts that any key in a mutable dictionary satisfies the predicate.
 /// </summary>
-public class MutableDictionaryAnyKeyAssertion<TDictionary, TKey, TValue> : MutableDictionaryAssertionBase<TDictionary, TKey, TValue>
+public class MutableDictionaryAnyKeyAssertion<TDictionary, TKey, TValue> : MutableDictionaryConditionBase<TDictionary, TKey, TValue>
     where TDictionary : IDictionary<TKey, TValue>
     where TKey : notnull
 {
@@ -376,7 +387,7 @@ public class MutableDictionaryAnyKeyAssertion<TDictionary, TKey, TValue> : Mutab
 /// <summary>
 /// Asserts that any value in a mutable dictionary satisfies the predicate.
 /// </summary>
-public class MutableDictionaryAnyValueAssertion<TDictionary, TKey, TValue> : MutableDictionaryAssertionBase<TDictionary, TKey, TValue>
+public class MutableDictionaryAnyValueAssertion<TDictionary, TKey, TValue> : MutableDictionaryConditionBase<TDictionary, TKey, TValue>
     where TDictionary : IDictionary<TKey, TValue>
     where TKey : notnull
 {
