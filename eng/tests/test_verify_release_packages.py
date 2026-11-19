@@ -43,6 +43,7 @@ class VerifyReleasePackagesTests(unittest.TestCase):
         version: str = "0.1.0-rc.1",
         dependency_version: str = "[0.2.0]",
         repository_commit: str | None = None,
+        files: tuple[str, ...] = (),
     ) -> Path:
         repository_commit = repository_commit or "a" * 40
         path = self.root / f"{package_id}.{version}.nupkg"
@@ -64,6 +65,8 @@ class VerifyReleasePackagesTests(unittest.TestCase):
 """
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr(f"{package_id}.nuspec", nuspec)
+            for name in files:
+                archive.writestr(name, "")
         return path
 
     def test_accepts_exact_allowlisted_package(self) -> None:
@@ -73,6 +76,27 @@ class VerifyReleasePackagesTests(unittest.TestCase):
 
         self.assertEqual(["NetWasm.Example"], [package["id"] for package in packages])
         self.assertEqual("a" * 40, packages[0]["repositoryCommit"])
+
+    def test_rejects_desktop_build_assets_without_a_netwasm_group(self) -> None:
+        # A net10.0-netwasm consumer would receive the net10.0 build files.
+        for folder in ("build", "buildTransitive"):
+            with self.subTest(folder=folder):
+                for path in self.root.glob("*.nupkg"):
+                    path.unlink()
+                self.create_package(files=(f"{folder}/net10.0/NetWasm.Example.props",))
+
+                with self.assertRaisesRegex(ValueError, f"no {folder}/net10.0-netwasm1.0 group"):
+                    MODULE.validate_packages(self.root, self.manifest)
+
+    def test_accepts_desktop_build_assets_beside_a_netwasm_group(self) -> None:
+        self.create_package(files=(
+            "build/net10.0/NetWasm.Example.props",
+            "build/net10.0-netwasm1.0/_._",
+            "buildTransitive/net10.0/NetWasm.Example.props",
+            "buildTransitive/net10.0-netwasm1.0/_._",
+        ))
+
+        self.assertEqual(["NetWasm.Example"], [package["id"] for package in MODULE.validate_packages(self.root, self.manifest)])
 
     def test_rejects_unexpected_package(self) -> None:
         self.create_package(package_id="NetWasm.Unexpected")

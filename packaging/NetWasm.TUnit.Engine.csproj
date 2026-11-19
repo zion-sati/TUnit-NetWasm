@@ -65,8 +65,11 @@
   </ItemGroup>
 
   <!-- Package-owned files, emitted once from the outer evaluation. The build props are upstream's
-       Microsoft.Testing.Platform hooks, so they apply to net10.0 consumers only. -->
+       Microsoft.Testing.Platform hooks, so they apply to net10.0 consumers only: NuGet would give a net10.0-netwasm
+       consumer the net10.0 group too, so an empty net10.0-netwasm1.0 group stands in front of it. -->
   <ItemGroup Condition="'$(TargetFramework)' == ''">
+    <None Include="NetWasmTarget\_._" Pack="true"
+          PackagePath="build/net10.0-netwasm1.0/_._;buildTransitive/net10.0-netwasm1.0/_._" Visible="false" />
     <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
           PackagePath="build/net10.0/NetWasm.TUnit.Engine.props" Visible="false" />
     <None Include="..\src\TUnit.Engine\TUnit.Engine.props" Pack="true"
