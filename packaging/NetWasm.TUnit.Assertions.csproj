@@ -4,9 +4,7 @@
   <Import Project="..\src\TUnit.Assertions\TUnit.Assertions.props" />
 
   <PropertyGroup>
-    <TargetFrameworks>net10.0;netwasm0.1</TargetFrameworks>
-    <NetWasmTUnitPackageTargetFolder Condition="'$(TargetFramework)' == 'net10.0'">net10.0</NetWasmTUnitPackageTargetFolder>
-    <NetWasmTUnitPackageTargetFolder Condition="'$(TargetFramework)' == 'netwasm0.1'">NetWasm,Version=v0.1</NetWasmTUnitPackageTargetFolder>
+    <TargetFrameworks>net10.0;net10.0-netwasm</TargetFrameworks>
     <AssemblyName>TUnit.Assertions</AssemblyName>
     <RootNamespace>TUnit.Assertions</RootNamespace>
     <PackageId>NetWasm.TUnit.Assertions</PackageId>
@@ -34,7 +32,7 @@
     <None Include="..\LICENSE" Pack="true" PackagePath="LICENSE" Condition="'$(NetWasmSdkCustomProfileEnabled)' == 'true'" Visible="false" />
   </ItemGroup>
 
-  <!-- Both targets compile upstream's TUnit.Assertions; netwasm0.1 as the .NET 10 code it is. -->
+  <!-- Both targets compile upstream's TUnit.Assertions. -->
   <ItemGroup>
     <Compile Include="..\src\TUnit.Assertions\**\*.cs"
              Exclude="..\src\TUnit.Assertions\AssertConditions\Generic\EquatableAssertCondition.cs;..\src\TUnit.Assertions\obj\**\*;..\src\TUnit.Assertions\bin\**\*" />
@@ -50,7 +48,7 @@
 
   <Import Project="NetWasmUpstreamSources.props" />
 
-  <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-netwasm'">
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <SignAssembly>false</SignAssembly>
   </PropertyGroup>
@@ -58,14 +56,6 @@
   <!-- Explicit target folders are package-owned boundary files. Restrict
        them to the outer evaluation so they are emitted once per archive. -->
   <ItemGroup Condition="'$(TargetFramework)' == ''">
-    <None Include="NetWasmTarget\BuildDispatch\TUnit.Assertions.props" Pack="true"
-          PackagePath="build/NetWasm.TUnit.Assertions.props" Visible="false" />
-    <None Include="NetWasmTarget\BuildDispatch\TUnit.Assertions.targets" Pack="true"
-          PackagePath="build/NetWasm.TUnit.Assertions.targets" Visible="false" />
-    <None Include="NetWasmTarget\BuildDispatch\TUnit.Assertions.props" Pack="true"
-          PackagePath="buildTransitive/NetWasm.TUnit.Assertions.props" Visible="false" />
-    <None Include="NetWasmTarget\BuildDispatch\TUnit.Assertions.targets" Pack="true"
-          PackagePath="buildTransitive/NetWasm.TUnit.Assertions.targets" Visible="false" />
     <None Include="..\src\TUnit.Assertions\TUnit.Assertions.props" Pack="true"
           PackagePath="build/net10.0/NetWasm.TUnit.Assertions.props" Visible="false" />
     <None Include="..\src\TUnit.Assertions\TUnit.Assertions.targets" Pack="true"
@@ -75,17 +65,13 @@
     <None Include="..\src\TUnit.Assertions\TUnit.Assertions.targets" Pack="true"
           PackagePath="buildTransitive/net10.0/NetWasm.TUnit.Assertions.targets" Visible="false" />
     <None Include="NetWasmTarget\Build\TUnit.Assertions.props" Pack="true"
-          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Assertions.props" Visible="false"
-          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+          PackagePath="build/net10.0-netwasm1.0/NetWasm.TUnit.Assertions.props" Visible="false" />
     <None Include="NetWasmTarget\Build\TUnit.Assertions.targets" Pack="true"
-          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Assertions.targets" Visible="false"
-          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+          PackagePath="build/net10.0-netwasm1.0/NetWasm.TUnit.Assertions.targets" Visible="false" />
     <None Include="NetWasmTarget\Build\TUnit.Assertions.props" Pack="true"
-          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.Assertions.props" Visible="false"
-          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+          PackagePath="buildTransitive/net10.0-netwasm1.0/NetWasm.TUnit.Assertions.props" Visible="false" />
     <None Include="NetWasmTarget\Build\TUnit.Assertions.targets" Pack="true"
-          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.Assertions.targets" Visible="false"
-          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+          PackagePath="buildTransitive/net10.0-netwasm1.0/NetWasm.TUnit.Assertions.targets" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

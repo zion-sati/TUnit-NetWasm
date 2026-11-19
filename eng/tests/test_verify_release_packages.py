@@ -55,7 +55,7 @@ class VerifyReleasePackagesTests(unittest.TestCase):
     <description>Test package.</description>
     <repository type="git" url="https://github.com/zion-sati/Example" commit="{repository_commit}" />
     <dependencies>
-      <group targetFramework="NetWasm,Version=v0.1">
+      <group targetFramework="net10.0-netwasm1.0">
         <dependency id="NetWasm.Dependency" version="{dependency_version}" />
       </group>
     </dependencies>

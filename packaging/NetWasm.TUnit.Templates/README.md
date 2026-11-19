@@ -9,7 +9,7 @@ cd MyProject.Tests
 dotnet test
 ```
 
-The generated project uses `NetWasm.Sdk`, targets `netwasm0.1`, and references
+The generated project uses `NetWasm.Sdk`, targets `net10.0-netwasm`, and references
 only the aggregate `NetWasm.TUnit` package.
 
 See the [TUnit-NetWasm repository](https://github.com/zion-sati/TUnit-NetWasm)

@@ -4,7 +4,7 @@
     <IsTestProject>true</IsTestProject>
     <OutputType>Exe</OutputType>
     <NetWasmTUnitGenerateProgram Condition="'$(NetWasmTUnitGenerateProgram)' == ''">true</NetWasmTUnitGenerateProgram>
-    <NetWasmTUnitProgramSource>$(MSBuildThisFileDirectory)..\..\build\NetWasm,Version=v0.1\NetWasm.TUnit.Program.cs</NetWasmTUnitProgramSource>
+    <NetWasmTUnitProgramSource>$(MSBuildThisFileDirectory)..\..\build\net10.0-netwasm1.0\NetWasm.TUnit.Program.cs</NetWasmTUnitProgramSource>
     <StartupObject Condition="'$(NetWasmTUnitGenerateProgram)' == 'true'">NetWasm.TUnit.Generated.NetWasmTestProgram</StartupObject>
   </PropertyGroup>
 

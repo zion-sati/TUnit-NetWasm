@@ -5,7 +5,7 @@ using TUnit.Core;
 
 namespace NetWasm.TUnit.Conformance;
 
-// Compiled into the desktop and the netwasm0.1 package consumers.
+// Compiled into the desktop and the net10.0-netwasm package consumers.
 // TestContext.Current carries the running test's facts under upstream TUnit's
 // names, from its test hooks through its body and its awaits.
 [Arguments(7)]

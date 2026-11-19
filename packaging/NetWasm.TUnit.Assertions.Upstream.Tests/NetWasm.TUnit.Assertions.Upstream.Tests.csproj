@@ -1,10 +1,10 @@
 <Project Sdk="NetWasm.Sdk">
-  <!-- Upstream TUnit's own assertion tests (tests/TUnit.Assertions.Tests), compiled for netwasm0.1 against the
+  <!-- Upstream TUnit's own assertion tests (tests/TUnit.Assertions.Tests), compiled for net10.0-netwasm against the
        NetWasm.TUnit packages, as upstream compiles them for .NET. ThrowTests.cs is left out as upstream's project
        leaves it out, and AsyncMapTests.cs because it reads JSON through System.Net.Http.Json's reflection-based
        overload, which NetWasm does not have. -->
   <PropertyGroup>
-    <TargetFramework>netwasm0.1</TargetFramework>
+    <TargetFramework>net10.0-netwasm</TargetFramework>
     <TargetFrameworks></TargetFrameworks>
     <IsTestProject>true</IsTestProject>
     <Nullable>enable</Nullable>

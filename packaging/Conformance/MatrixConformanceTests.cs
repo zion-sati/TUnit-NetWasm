@@ -5,7 +5,7 @@ using TUnit.Core;
 
 namespace NetWasm.TUnit.Conformance;
 
-// Compiled into the desktop and the netwasm0.1 package consumers.
+// Compiled into the desktop and the net10.0-netwasm package consumers.
 // [MatrixDataSource] runs every combination of its parameters' [Matrix] values except the excluded ones: on NetWasm the
 // values and exclusions come from the generated metadata rather than reflection.
 public sealed class MatrixConformanceTests
