@@ -28,6 +28,13 @@
     <PackageReference Update="Polyfill" Version="11.2.0" />
   </ItemGroup>
 
+  <!-- net10.0-netwasm compiles against .NET 10's API, as net10.0 does, so it needs no polyfills. Polyfill's net10.0
+       content forwards types such as System.Reflection.NullabilityInfo, which NetWasm's framework does not
+       provide. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-netwasm'">
+    <PackageReference Remove="Polyfill" />
+  </ItemGroup>
+
   <PropertyGroup>
     <NetWasmTUnitPackTaskAssembly>$([System.IO.Path]::Combine('$(NuGetPackageRoot)', 'netwasm.sdk', '$(NetWasmSdkPackageVersion)', 'tools', 'net10.0', 'any', 'NetWasm.Sdk.Pack.dll'))</NetWasmTUnitPackTaskAssembly>
   </PropertyGroup>
