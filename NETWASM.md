@@ -47,9 +47,6 @@ behave as upstream's do. The VSTest adapter starts the program to list and run t
   `Categories` properties are not read; TUnit's own attributes are unaffected.
 - Test classes are treated as types of the test program's assembly (NetWasm has no
   `Type.Assembly`).
-- Test projects build at `NetWasmOptimization=O0` for now: an optimized build of
-  TUnit's engine exceeds WebAssembly's function size limit (NW1013). Pass
-  `-p:NetWasmOptimization=O0` to a Release build.
 - Assertions that need reflection throw `PlatformNotSupportedException`: structural
   equivalence (`IsEquivalentTo` on objects), equality between different types
   through conversion operators, `IsParsableInto` and `WhenParsedInto`, `Type`
