@@ -32,7 +32,7 @@ public sealed class TestApplicationTests
         XunitAssert.Equal(0, status);
         XunitAssert.IsType<DiscoverTestExecutionRequest>(XunitAssert.Single(framework.Requests));
         XunitAssert.True(framework.SessionClosed);
-        XunitAssert.Equal(2, XunitAssert.IsType<ProtocolVersionEvent>(sink.Events[0]).Version);
+        XunitAssert.Equal(3, XunitAssert.IsType<ProtocolVersionEvent>(sink.Events[0]).Version);
         XunitAssert.Equal(new CatalogEntryEvent("a", "a", "Space.Fixture.Adds", "/src/Fixture.cs", 12), sink.Events[1]);
         // A category is metadata with no value; a property has one. Their order is the property bag's.
         XunitAssert.Equivalent(
@@ -108,6 +108,45 @@ public sealed class TestApplicationTests
         XunitAssert.Equal(TestOutcome.TimedOut, outcomes["timeout"].Outcome);
         XunitAssert.Equal(TestOutcome.Unsupported, outcomes["wrapped"].Outcome);
         XunitAssert.Equal("inner", outcomes["wrapped"].Message);
+    }
+
+    // A completed test carries the innermost failure's stack trace (an engine wrapper's would point into the engine)
+    // and the output TUnit captured, for VSTest's ErrorStackTrace and result messages.
+    [Fact]
+    public async Task CompletedTestsCarryTheStackTraceAndCapturedOutput()
+    {
+        var inner = Thrown(new PlatformNotSupportedException("inner"));
+        var framework = new ScriptedTestFramework(_ =>
+        [
+            Node("wrapped", new FailedTestNodeStateProperty(
+                    new global::TUnit.Engine.Exceptions.TestFailedException(inner), "failed"),
+                new StandardOutputProperty("written"), new StandardErrorProperty("warned")),
+            Node("passed", PassedTestNodeStateProperty.CachedInstance),
+        ]);
+        var sink = new RecordingEventSink();
+
+        await TestApplication.RunAsync(["--run"], _ => framework, sink, TextWriter.Null, Cancellation);
+
+        var results = sink.Events.OfType<TestCompletedEvent>().ToDictionary(static e => e.Result.StableId, static e => e.Result);
+        XunitAssert.Equal(inner.StackTrace, results["wrapped"].StackTrace);
+        XunitAssert.Contains(nameof(Thrown), results["wrapped"].StackTrace);
+        XunitAssert.Equal("written", results["wrapped"].StandardOutput);
+        XunitAssert.Equal("warned", results["wrapped"].StandardError);
+        XunitAssert.Null(results["passed"].StackTrace);
+        XunitAssert.Null(results["passed"].StandardOutput);
+        XunitAssert.Null(results["passed"].StandardError);
+    }
+
+    private static Exception Thrown(Exception exception)
+    {
+        try
+        {
+            throw exception;
+        }
+        catch (Exception caught)
+        {
+            return caught;
+        }
     }
 
     [Fact]

@@ -25,6 +25,18 @@ internal sealed class TUnitTestResultMapper : ITUnitTestResultMapper
         {
             result.ErrorMessage = completed.Message;
         }
+        if (completed.StackTrace is not null)
+        {
+            result.ErrorStackTrace = completed.StackTrace;
+        }
+        if (completed.StandardOutput is not null)
+        {
+            result.Messages.Add(new TestResultMessage(TestResultMessage.StandardOutCategory, completed.StandardOutput));
+        }
+        if (completed.StandardError is not null)
+        {
+            result.Messages.Add(new TestResultMessage(TestResultMessage.StandardErrorCategory, completed.StandardError));
+        }
         return result;
     }
 }

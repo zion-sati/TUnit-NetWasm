@@ -24,4 +24,11 @@ internal sealed record TUnitCompletedCase(
     string StableId,
     string Outcome,
     TimeSpan Duration,
-    string? Message);
+    string? Message)
+{
+    public string? StackTrace { get; init; }
+
+    public string? StandardOutput { get; init; }
+
+    public string? StandardError { get; init; }
+}
