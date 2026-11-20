@@ -170,6 +170,7 @@ def inspect_package(
         if len(nuspecs) != 1:
             raise ValueError("Package archive must contain exactly one nuspec.")
         root = ElementTree.fromstring(archive.read(nuspecs[0]))
+        entries = archive.namelist()
 
     metadata = element(root, "metadata")
     package_id = text(metadata, "id")
@@ -182,6 +183,16 @@ def inspect_package(
         raise ValueError(f"{package_id} has unexpected version {version}.")
     if path.name != expected_file_name:
         raise ValueError(f"Unexpected package filename: {path.name}")
+
+    # NuGet gives a net10.0-netwasm project a package's net10.0 build files unless the package has its own
+    # net10.0-netwasm1.0 group, and the desktop ones (upstream's Microsoft.Testing.Platform hooks) break its build.
+    for folder in ("build", "buildTransitive"):
+        if any(name.startswith(f"{folder}/net10.0/") for name in entries) and not any(
+            name.startswith(f"{folder}/net10.0-netwasm1.0/") for name in entries
+        ):
+            raise ValueError(
+                f"{package_id} has {folder}/net10.0 assets but no {folder}/net10.0-netwasm1.0 group."
+            )
 
     repository = element(metadata, "repository")
     if repository.get("type") != "git":

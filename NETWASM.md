@@ -3,8 +3,9 @@
 [![NetWasm publication](https://img.shields.io/github/actions/workflow/status/zion-sati/TUnit-NetWasm/netwasm-release.yml?label=NetWasm%20publish&event=release)](https://github.com/zion-sati/TUnit-NetWasm/actions/workflows/netwasm-release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-This fork runs TUnit on `netwasm0.1`: upstream TUnit's source generator, engine and
-assertions, hosted for NetWasm, with a VSTest adapter for `dotnet test`.
+This fork runs TUnit on `net10.0-netwasm`: upstream TUnit's source generator, engine and
+assertions, hosted for NetWasm, with a VSTest adapter for `dotnet test`. Test projects on
+the deprecated `netwasm0.1` stay on NetWasm.TUnit 0.14.2.
 
 ## Prerequisites
 
@@ -21,8 +22,9 @@ cd MyProject.Tests
 dotnet test
 ```
 
-The generated project targets only `netwasm0.1` and has one package reference,
-`NetWasm.TUnit`. List or filter tests:
+The generated project targets only `net10.0-netwasm` and has one package reference,
+`NetWasm.TUnit`. A project it tests targets `net10.0-netwasm` too (a library can
+multi-target it beside `net10.0`). List or filter tests:
 
 ```bash
 dotnet test --list-tests
@@ -32,13 +34,13 @@ dotnet test --filter "Category=smoke"
 
 ## How tests run
 
-A `netwasm0.1` test project compiles TUnit's source-generated test metadata, and the
+A `net10.0-netwasm` test project compiles TUnit's source-generated test metadata, and the
 package's entry point runs TUnit's engine inside the test program, in place of
 Microsoft.Testing.Platform's test application. Discovery, data sources, attributes,
 hooks, retries, timeouts, parallel constraints and `TestContext.Current` therefore
 behave as upstream's do. The VSTest adapter starts the program to list and run tests.
 
-## Differences on `netwasm0.1`
+## Differences on `net10.0-netwasm`
 
 - TUnit's reflection mode is not available, nor are the reflection fallbacks of its
   source-generated mode. A custom data source attribute's `DisplayName`, `Skip` and
@@ -58,7 +60,7 @@ behave as upstream's do. The VSTest adapter starts the program to list and run t
   project sets `NetWasmManagedStackTrace=true`.
 
 `eng/netwasm-assertion-tests.sh` runs upstream's TUnit.Assertions tests on
-`netwasm0.1` and reports each failure class.
+`net10.0-netwasm` and reports each failure class.
 
 ## Packages
 
@@ -74,7 +76,7 @@ behave as upstream's do. The VSTest adapter starts the program to list and run t
 - `NetWasm.TUnit.Templates` supplies `dotnet new netwasm-tunit`.
 
 All five packages use one coordinated NetWasm release version. This release is
-based on upstream TUnit `v1.83.8`; that upstream version is source provenance
+based on upstream TUnit `v1.86.6`; that upstream version is source provenance
 and does not dictate the downstream package version.
 
 ## Maintainer releases

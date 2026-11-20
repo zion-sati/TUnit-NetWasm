@@ -6,7 +6,7 @@ using TUnit.Core;
 
 namespace NetWasm.TUnit.Conformance;
 
-// Compiled into the desktop and the netwasm0.1 package consumers.
+// Compiled into the desktop and the net10.0-netwasm package consumers.
 // A test project reads both clocks, as an application does: the runner's own need for the monotonic clock must not
 // take the wall clock away.
 public sealed class ClockConformanceTests

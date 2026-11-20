@@ -1,4 +1,4 @@
-// The NetWasm test program's entry point, which the package compiles into each netwasm0.1 test project. Upstream
+// The NetWasm test program's entry point, which the package compiles into each net10.0-netwasm test project. Upstream
 // generates its entry point through Microsoft.Testing.Platform and its analyzer reports any other Main (TUnit0034);
 // this one is the package's own.
 #pragma warning disable TUnit0034

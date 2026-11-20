@@ -6,7 +6,7 @@ using TUnit.Core.Interfaces;
 
 namespace NetWasm.TUnit.Conformance;
 
-// Compiled into the desktop and the netwasm0.1 package consumers. Method names
+// Compiled into the desktop and the net10.0-netwasm package consumers. Method names
 // sort opposite to Order, so running in name order fails these tests.
 public sealed class ParallelConstraintConformanceTests
 {

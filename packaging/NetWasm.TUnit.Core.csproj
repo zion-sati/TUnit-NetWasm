@@ -3,9 +3,7 @@
   <Import Project="..\src\TUnit.Core\TUnit.Core.props" />
 
   <PropertyGroup>
-    <TargetFrameworks>net10.0;netwasm0.1</TargetFrameworks>
-    <NetWasmTUnitPackageTargetFolder Condition="'$(TargetFramework)' == 'net10.0'">net10.0</NetWasmTUnitPackageTargetFolder>
-    <NetWasmTUnitPackageTargetFolder Condition="'$(TargetFramework)' == 'netwasm0.1'">NetWasm,Version=v0.1</NetWasmTUnitPackageTargetFolder>
+    <TargetFrameworks>net10.0;net10.0-netwasm</TargetFrameworks>
     <AssemblyName>TUnit.Core</AssemblyName>
     <RootNamespace>TUnit.Core</RootNamespace>
     <PackageId>NetWasm.TUnit.Core</PackageId>
@@ -33,16 +31,16 @@
     <None Include="..\LICENSE" Pack="true" PackagePath="LICENSE" Condition="'$(NetWasmSdkCustomProfileEnabled)' == 'true'" Visible="false" />
   </ItemGroup>
 
-  <!-- Both targets compile upstream's TUnit.Core; netwasm0.1 as the .NET 10 code it is. -->
+  <!-- Both targets compile upstream's TUnit.Core. -->
   <ItemGroup>
     <Compile Include="..\src\TUnit.Core\**\*.cs"
              Exclude="..\src\TUnit.Core\IClassDataSourceAttribute.cs;..\src\TUnit.Core\Interfaces\INestedClassDataSourceInitializer.cs;..\src\TUnit.Core\TUnit.Core.GeneratedNamespace.cs;..\src\TUnit.Core\obj\**\*;..\src\TUnit.Core\bin\**\*" />
   </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-netwasm'">
     <Compile Include="NetWasmTarget\TUnitCoreFriends.cs" />
   </ItemGroup>
   <Import Project="NetWasmUpstreamSources.props" />
-  <PropertyGroup Condition="'$(TargetFramework)' == 'netwasm0.1'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-netwasm'">
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <SignAssembly>false</SignAssembly>
     <!-- TUnit.Engine assigns some of TestContext's internal fields from its own assembly. -->
@@ -64,14 +62,6 @@
   <!-- Explicit target folders are package-owned boundary files. Restrict
        them to the outer evaluation so they are emitted once per archive. -->
   <ItemGroup Condition="'$(TargetFramework)' == ''">
-    <None Include="NetWasmTarget\BuildDispatch\TUnit.Core.props" Pack="true"
-          PackagePath="build/NetWasm.TUnit.Core.props" Visible="false" />
-    <None Include="NetWasmTarget\BuildDispatch\TUnit.Core.targets" Pack="true"
-          PackagePath="build/NetWasm.TUnit.Core.targets" Visible="false" />
-    <None Include="NetWasmTarget\BuildDispatch\TUnit.Core.props" Pack="true"
-          PackagePath="buildTransitive/NetWasm.TUnit.Core.props" Visible="false" />
-    <None Include="NetWasmTarget\BuildDispatch\TUnit.Core.targets" Pack="true"
-          PackagePath="buildTransitive/NetWasm.TUnit.Core.targets" Visible="false" />
     <None Include="..\src\TUnit.Core\TUnit.Core.props" Pack="true"
           PackagePath="build/net10.0/NetWasm.TUnit.Core.props" Visible="false" />
     <None Include="..\src\TUnit.Core\TUnit.Core.targets" Pack="true"
@@ -85,17 +75,13 @@
     <None Include="..\src\TUnit.Core\TUnit.Core.GeneratedNamespace.cs" Pack="true"
           PackagePath="buildTransitive/net10.0/TUnit.Core.GeneratedNamespace.cs" Visible="false" />
     <None Include="NetWasmTarget\Build\TUnit.Core.props" Pack="true"
-          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Core.props" Visible="false"
-          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+          PackagePath="build/net10.0-netwasm1.0/NetWasm.TUnit.Core.props" Visible="false" />
     <None Include="NetWasmTarget\Build\TUnit.Core.targets" Pack="true"
-          PackagePath="build/NetWasm,Version=v0.1/NetWasm.TUnit.Core.targets" Visible="false"
-          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+          PackagePath="build/net10.0-netwasm1.0/NetWasm.TUnit.Core.targets" Visible="false" />
     <None Include="NetWasmTarget\Build\TUnit.Core.props" Pack="true"
-          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.Core.props" Visible="false"
-          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+          PackagePath="buildTransitive/net10.0-netwasm1.0/NetWasm.TUnit.Core.props" Visible="false" />
     <None Include="NetWasmTarget\Build\TUnit.Core.targets" Pack="true"
-          PackagePath="buildTransitive/NetWasm,Version=v0.1/NetWasm.TUnit.Core.targets" Visible="false"
-          Condition="$([System.String]::Copy(';$(TargetFrameworks);').Contains(';netwasm0.1;'))" />
+          PackagePath="buildTransitive/net10.0-netwasm1.0/NetWasm.TUnit.Core.targets" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

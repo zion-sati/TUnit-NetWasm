@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs upstream's TUnit.Assertions tests on netwasm0.1 through the TUnit engine and reports each failure class.
+# Runs upstream's TUnit.Assertions tests on net10.0-netwasm through the TUnit engine and reports each failure class.
 #
 # Usage: eng/netwasm-assertion-tests.sh [package-dir]
 #   package-dir                       holds NetWasm.TUnit and NetWasm.App packages (default artifacts/netwasm-packages)
@@ -84,7 +84,7 @@ for index, bucket in enumerate(buckets):
     items = '\n'.join(f'    <Compile Include={quoteattr(str(path))} />' for path in shared + bucket)
     (project / f'Shard{index}.csproj').write_text(f'''<Project Sdk="NetWasm.Sdk">
   <PropertyGroup>
-    <TargetFramework>netwasm0.1</TargetFramework>
+    <TargetFramework>net10.0-netwasm</TargetFramework>
     <IsTestProject>true</IsTestProject>
     <Nullable>enable</Nullable>
     <LangVersion>preview</LangVersion>

@@ -572,7 +572,7 @@ public sealed class MethodAssertionGenerator : IIncrementalGenerator
                         innerNamed.TypeArguments.Length == 1)
                     {
                         var resultType = innerNamed.TypeArguments[0].ToDisplayString();
-                        return new ReturnTypeInfo(ReturnTypeKind.TaskAssertionResultOfT, resultType);
+                        return new ReturnTypeInfo(ReturnTypeKind.TaskAssertionResultOfT, resultType, innerNamed.TypeArguments[0].IsValueType);
                     }
                 }
             }
@@ -583,7 +583,7 @@ public sealed class MethodAssertionGenerator : IIncrementalGenerator
                 namedType.TypeArguments.Length == 1)
             {
                 var resultType = namedType.TypeArguments[0].ToDisplayString();
-                return new ReturnTypeInfo(ReturnTypeKind.AssertionResultOfT, resultType);
+                return new ReturnTypeInfo(ReturnTypeKind.AssertionResultOfT, resultType, namedType.TypeArguments[0].IsValueType);
             }
 
             // AssertionResult (non-generic)
@@ -731,7 +731,9 @@ public sealed class MethodAssertionGenerator : IIncrementalGenerator
         if (isTerminal)
         {
             var resultType = data.ReturnTypeInfo.ResultTypeFullName!;
-            sb.AppendLine($"    private {resultType}? _result;");
+            // A value type keeps its own type: T? on a value type is Nullable<T>, which the awaiter cannot return as T.
+            var nullableMarker = data.ReturnTypeInfo.ResultIsValueType ? "" : "?";
+            sb.AppendLine($"    private {resultType}{nullableMarker} _result;");
         }
 
         if (data.AdditionalParameters.Count > 0 || isTerminal)
@@ -846,6 +848,16 @@ public sealed class MethodAssertionGenerator : IIncrementalGenerator
         if (isTerminal)
         {
             var resultType = data.ReturnTypeInfo.ResultTypeFullName!;
+            sb.AppendLine();
+            sb.AppendLine("    /// <summary>");
+            sb.AppendLine("    /// Adds a custom message explaining why this assertion should pass.");
+            sb.AppendLine("    /// Awaiting it still returns the result value.");
+            sb.AppendLine("    /// </summary>");
+            sb.AppendLine($"    public new {className}{genericDeclaration} Because(string message)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        base.Because(message);");
+            sb.AppendLine("        return this;");
+            sb.AppendLine("    }");
             sb.AppendLine();
             sb.AppendLine($"    public new System.Runtime.CompilerServices.TaskAwaiter<{resultType}> GetAwaiter()");
             sb.AppendLine("    {");
@@ -1396,7 +1408,7 @@ public sealed class MethodAssertionGenerator : IIncrementalGenerator
         TaskAssertionResultOfT
     }
 
-    private readonly record struct ReturnTypeInfo(ReturnTypeKind Kind, string? ResultTypeFullName = null);
+    private readonly record struct ReturnTypeInfo(ReturnTypeKind Kind, string? ResultTypeFullName = null, bool ResultIsValueType = false);
 
     private record AssertionMethodData(
         MethodData Method,

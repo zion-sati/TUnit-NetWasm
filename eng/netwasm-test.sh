@@ -120,12 +120,18 @@ native_path() {
   fi
 }
 package_dir_xml="$(xml_escape "$(native_path "${PACKAGE_DIR}")")"
+# NETWASM_PACKAGE_SOURCE adds a directory of unpublished NetWasm candidate packages beside nuget.org.
+candidate_source_xml=""
+if [[ -n "${NETWASM_PACKAGE_SOURCE:-}" ]]; then
+  candidate_source_xml="    <add key=\"netwasm-candidate\" value=\"$(xml_escape "$(native_path "${NETWASM_PACKAGE_SOURCE}")")\" />"
+fi
 printf '%s\n' \
   '<?xml version="1.0" encoding="utf-8"?>' \
   '<configuration>' \
   '  <packageSources>' \
   '    <clear />' \
   "    <add key=\"current-build\" value=\"${package_dir_xml}\" />" \
+  ${candidate_source_xml:+"${candidate_source_xml}"} \
   '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />' \
   '  </packageSources>' \
   '</configuration>' > "${nuget_config}"
@@ -267,7 +273,8 @@ fi
 )
 
 # A test suite that also targets desktop .NET, as a portable library's does, with warnings as errors: on
-# netwasm0.1 the packages must bring no .NET Standard asset (NU1701), so both frameworks restore, build and run.
+# net10.0-netwasm no dependency may arrive through an asset fallback (NU1701), so both frameworks restore, build
+# and run.
 dual_consumer="${test_root}/DualTarget.Tests"
 mkdir -p "${dual_consumer}"
 cp "${template_consumer}/Tests.cs" "${dual_consumer}/Tests.cs"
@@ -275,7 +282,7 @@ cp "${template_consumer}/Tests.cs" "${dual_consumer}/Tests.cs"
   head -n 1 "${template_consumer}/Generated.Tests.csproj"
   cat <<EOF
   <PropertyGroup>
-    <TargetFrameworks>netwasm0.1;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0-netwasm;net10.0</TargetFrameworks>
     <IsTestProject>true</IsTestProject>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
@@ -292,12 +299,12 @@ EOF
   dotnet restore DualTarget.Tests.csproj --configfile "${nuget_config}" --disable-build-servers --nologo \
     | tee "${test_root}/dual-restore.log"
   if grep -q "NU1701" "${test_root}/dual-restore.log"; then
-    echo "A netwasm0.1 dependency of NetWasm.TUnit restored from a .NET Standard asset (NU1701)." >&2
+    echo "A net10.0-netwasm dependency of NetWasm.TUnit restored through an asset fallback (NU1701)." >&2
     exit 1
   fi
-  # Each framework runs as its suites do: netwasm0.1 through dotnet test's VSTest adapter, and desktop .NET as
+  # Each framework runs as its suites do: net10.0-netwasm through dotnet test's VSTest adapter, and desktop .NET as
   # the Microsoft.Testing.Platform application TUnit builds, since .NET 10's dotnet test has no VSTest mode for it.
-  dotnet test DualTarget.Tests.csproj -c Release -f netwasm0.1 --no-restore --disable-build-servers --nologo \
+  dotnet test DualTarget.Tests.csproj -c Release -f net10.0-netwasm --no-restore --disable-build-servers --nologo \
     | tee "${test_root}/dual-netwasm.log"
   assert_vstest_pass_summary "${test_root}/dual-netwasm.log" 1
   dotnet run --project DualTarget.Tests.csproj -c Release -f net10.0 --no-restore --disable-build-servers \

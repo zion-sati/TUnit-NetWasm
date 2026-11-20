@@ -51,12 +51,7 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var enabledProvider = context.AnalyzerConfigOptionsProvider
-            .Select((options, _) =>
-            {
-                options.GlobalOptions.TryGetValue("build_property.EnableTUnitSourceGeneration", out var value);
-                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
-            });
+        var enabledProvider = GenerationEnabled.CreateProvider(context);
 
         var generationStates = new ConditionalWeakTable<Compilation, GenerationState>();
 
@@ -3232,6 +3227,14 @@ public sealed class TestMetadataGenerator : IIncrementalGenerator
                 compilationContext.AttributeWriter.WriteAttribute(writer, attr);
                 writer.AppendLine(",");
             }
+        }
+        else if (compilationContext.GetRowMetadataReader(attrClass) is { } rowMetadataReader)
+        {
+            // The engine reads these properties by name; a typed read keeps working when the trimmer drops
+            // the getters that nothing else calls (#7782).
+            writer.Append("global::TUnit.Core.Helpers.DataSourceRowMetadataReaders.Register(");
+            compilationContext.AttributeWriter.WriteAttribute(writer, attr);
+            writer.AppendLine($", {rowMetadataReader}),");
         }
         else
         {

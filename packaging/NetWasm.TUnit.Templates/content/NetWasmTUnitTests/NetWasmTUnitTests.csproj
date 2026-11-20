@@ -1,6 +1,6 @@
-<Project Sdk="NetWasm.Sdk/0.14.2">
+<Project Sdk="NetWasm.Sdk/0.15.0">
   <PropertyGroup>
-    <TargetFramework>netwasm0.1</TargetFramework>
+    <TargetFramework>net10.0-netwasm</TargetFramework>
     <IsTestProject>true</IsTestProject>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
