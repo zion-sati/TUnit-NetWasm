@@ -10,12 +10,14 @@ internal sealed class TUnitExecutionApplication(
     ITUnitGuestClient guest,
     ITUnitTestCaseMapper testCases,
     ITUnitTestCaseFilter filter,
-    ITUnitTestResultMapper results) : ITestExecutionApplication
+    ITUnitTestResultMapper results,
+    ITUnitRunPlanner runs) : ITestExecutionApplication
 {
     private readonly ITUnitGuestClient _guest = guest ?? throw new ArgumentNullException(nameof(guest));
     private readonly ITUnitTestCaseMapper _testCases = testCases ?? throw new ArgumentNullException(nameof(testCases));
     private readonly ITUnitTestCaseFilter _filter = filter ?? throw new ArgumentNullException(nameof(filter));
     private readonly ITUnitTestResultMapper _results = results ?? throw new ArgumentNullException(nameof(results));
+    private readonly ITUnitRunPlanner _runs = runs ?? throw new ArgumentNullException(nameof(runs));
     private readonly CancellationTokenSource _cancellation = new();
 
     public void Run(IEnumerable<TestCase> tests, IFrameworkHandle frameworkHandle)
@@ -25,7 +27,7 @@ internal sealed class TUnitExecutionApplication(
 
         foreach (var sourceGroup in tests.GroupBy(static test => test.Source, StringComparer.Ordinal))
         {
-            RunSource(sourceGroup.Key, sourceGroup.ToArray(), frameworkHandle);
+            RunSource(sourceGroup.Key, sourceGroup.ToArray(), catalogCount: null, frameworkHandle);
         }
     }
 
@@ -51,7 +53,7 @@ internal sealed class TUnitExecutionApplication(
                 var tests = discoveryProtocol.Catalog
                     .Select(testCase => _testCases.Create(source, testCase))
                     .ToArray();
-                RunSource(source, _filter.Apply(tests, runContext), frameworkHandle);
+                RunSource(source, _filter.Apply(tests, runContext), tests.Length, frameworkHandle);
             }
             catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
             {
@@ -62,7 +64,7 @@ internal sealed class TUnitExecutionApplication(
             {
                 frameworkHandle.SendMessage(
                     TestMessageLevel.Error,
-                    $"TUnit execution failed for '{source}': {exception.Message}");
+                    $"TUnit execution failed for '{source}': {Describe(exception)}");
             }
         }
     }
@@ -72,6 +74,7 @@ internal sealed class TUnitExecutionApplication(
     private void RunSource(
         string source,
         IReadOnlyCollection<TestCase> tests,
+        int? catalogCount,
         IFrameworkHandle frameworkHandle)
     {
         if (tests.Count == 0)
@@ -82,52 +85,9 @@ internal sealed class TUnitExecutionApplication(
         try
         {
             var selectedById = tests.ToDictionary(_testCases.GetStableId, StringComparer.Ordinal);
-            var arguments = ImmutableArray.CreateBuilder<string>(selectedById.Count * 2);
-            foreach (var stableId in selectedById.Keys)
+            foreach (var plan in _runs.Plan([.. selectedById.Keys], catalogCount))
             {
-                arguments.Add("--id");
-                arguments.Add(stableId);
-            }
-
-            var run = _guest.RunAsync(source, arguments.ToImmutable(), _cancellation.Token)
-                .AsTask()
-                .GetAwaiter()
-                .GetResult();
-            ReportOutput(run, frameworkHandle);
-            var protocol = TUnitGuestRunValidator.ValidateExecution(run, selectedById.Count);
-
-            var started = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var stableId in protocol.StartedStableIds)
-            {
-                if (!selectedById.TryGetValue(stableId, out var testCase) || !started.Add(stableId))
-                {
-                    throw new InvalidDataException(
-                        $"TUnit guest emitted an invalid test-started record for '{stableId}'.");
-                }
-                frameworkHandle.RecordStart(testCase);
-            }
-
-            var completed = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var result in protocol.CompletedCases)
-            {
-                if (!selectedById.TryGetValue(result.StableId, out var testCase)
-                    || !completed.Add(result.StableId))
-                {
-                    throw new InvalidDataException(
-                        $"TUnit guest emitted an invalid test-completed record for '{result.StableId}'.");
-                }
-                if (started.Add(result.StableId))
-                {
-                    frameworkHandle.RecordStart(testCase);
-                }
-                var mapped = _results.Create(testCase, result);
-                frameworkHandle.RecordResult(mapped);
-                frameworkHandle.RecordEnd(testCase, mapped.Outcome);
-            }
-
-            if (completed.Count != selectedById.Count)
-            {
-                throw new InvalidDataException("TUnit guest did not complete every selected test.");
+                RunPlan(source, plan, selectedById, frameworkHandle);
             }
         }
         catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
@@ -138,8 +98,68 @@ internal sealed class TUnitExecutionApplication(
         {
             frameworkHandle.SendMessage(
                 TestMessageLevel.Error,
-                $"TUnit execution failed for '{source}': {exception.Message}");
+                $"TUnit execution failed for '{source}': {Describe(exception)}");
         }
+    }
+
+    private void RunPlan(
+        string source,
+        TUnitGuestRunPlan plan,
+        Dictionary<string, TestCase> selectedById,
+        IFrameworkHandle frameworkHandle)
+    {
+        var run = _guest.RunAsync(source, plan.Arguments, _cancellation.Token)
+            .AsTask()
+            .GetAwaiter()
+            .GetResult();
+        ReportOutput(run, frameworkHandle);
+        var protocol = TUnitGuestRunValidator.ValidateExecution(run, plan.StableIds.Length);
+        var planned = plan.StableIds.ToHashSet(StringComparer.Ordinal);
+
+        var started = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var stableId in protocol.StartedStableIds)
+        {
+            if (!planned.Contains(stableId) || !started.Add(stableId))
+            {
+                throw new InvalidDataException(
+                    $"TUnit guest emitted an invalid test-started record for '{stableId}'.");
+            }
+            frameworkHandle.RecordStart(selectedById[stableId]);
+        }
+
+        var completed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var result in protocol.CompletedCases)
+        {
+            if (!planned.Contains(result.StableId) || !completed.Add(result.StableId))
+            {
+                throw new InvalidDataException(
+                    $"TUnit guest emitted an invalid test-completed record for '{result.StableId}'.");
+            }
+            var testCase = selectedById[result.StableId];
+            if (started.Add(result.StableId))
+            {
+                frameworkHandle.RecordStart(testCase);
+            }
+            var mapped = _results.Create(testCase, result);
+            frameworkHandle.RecordResult(mapped);
+            frameworkHandle.RecordEnd(testCase, mapped.Outcome);
+        }
+
+        if (completed.Count != plan.StableIds.Length)
+        {
+            throw new InvalidDataException("TUnit guest did not complete every selected test.");
+        }
+    }
+
+    // The failure and its causes, so a host that cannot start says why (an argument list too long, say).
+    private static string Describe(Exception exception)
+    {
+        var messages = new List<string>();
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            messages.Add(current.Message);
+        }
+        return string.Join(" ", messages);
     }
 
     private static void ReportOutput(TUnitGuestRun run, IFrameworkHandle frameworkHandle)

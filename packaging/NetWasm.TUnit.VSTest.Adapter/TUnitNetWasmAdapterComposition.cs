@@ -21,7 +21,8 @@ internal static class TUnitNetWasmAdapterComposition
             CreateGuestClient(),
             testCases,
             new TUnitTestCaseFilter(),
-            new TUnitTestResultMapper());
+            new TUnitTestResultMapper(),
+            new TUnitRunPlanner(TUnitRunPlanner.PlatformArgumentBudget));
     }
 
     private static ITUnitGuestClient CreateGuestClient() =>
