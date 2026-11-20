@@ -5,7 +5,7 @@
 
 This fork runs TUnit on `net10.0-netwasm`: upstream TUnit's source generator, engine and
 assertions, hosted for NetWasm, with a VSTest adapter for `dotnet test`. Test projects on
-the deprecated `netwasm0.1` stay on NetWasm.TUnit 0.4.
+the deprecated `netwasm0.1` stay on NetWasm.TUnit 0.14.2.
 
 ## Prerequisites
 
@@ -76,7 +76,7 @@ behave as upstream's do. The VSTest adapter starts the program to list and run t
 - `NetWasm.TUnit.Templates` supplies `dotnet new netwasm-tunit`.
 
 All five packages use one coordinated NetWasm release version. This release is
-based on upstream TUnit `v1.83.8`; that upstream version is source provenance
+based on upstream TUnit `v1.86.6`; that upstream version is source provenance
 and does not dictate the downstream package version.
 
 ## Maintainer releases
