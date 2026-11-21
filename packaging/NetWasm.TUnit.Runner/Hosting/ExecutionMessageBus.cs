@@ -50,6 +50,9 @@ public sealed class ExecutionMessageBus(
         var result = new TestCaseResult(uid, node.DisplayName, outcome, message)
         {
             Duration = node.Properties.SingleOrDefault<TimingProperty>()?.GlobalTiming.Duration ?? TimeSpan.Zero,
+            StackTrace = FailureException(state) is { } exception ? EngineExceptions.Unwrap(exception).StackTrace : null,
+            StandardOutput = node.Properties.SingleOrDefault<StandardOutputProperty>()?.StandardOutput,
+            StandardError = node.Properties.SingleOrDefault<StandardErrorProperty>()?.StandardError,
         };
         _completed.Add(uid, result);
         sink.Write(new TestCompletedEvent(result));
@@ -78,6 +81,14 @@ public sealed class ExecutionMessageBus(
                 return (TestOutcome.UnexpectedFailure, state.Explanation);
         }
     }
+
+    private static Exception? FailureException(TestNodeStateProperty state) => state switch
+    {
+        FailedTestNodeStateProperty failed => failed.Exception,
+        ErrorTestNodeStateProperty error => error.Exception,
+        TimeoutTestNodeStateProperty timeout => timeout.Exception,
+        _ => null,
+    };
 
     private (TestOutcome, string?) FromException(Exception exception)
     {
