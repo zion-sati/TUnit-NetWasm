@@ -319,20 +319,32 @@ trx_consumer="${test_root}/Trx.Tests"
 trx_results="${test_root}/trx"
 mkdir -p "${trx_consumer}" "${trx_results}"
 cp "${dual_consumer}/Tests.cs" "${trx_consumer}/Tests.cs"
-sed 's|<TreatWarningsAsErrors>true</TreatWarningsAsErrors>|&<NetWasmManagedStackTrace>true</NetWasmManagedStackTrace>|' \
-  "${dual_consumer}/DualTarget.Tests.csproj" > "${trx_consumer}/Trx.Tests.csproj"
+# Desktop .NET's Microsoft.Testing.Platform application writes TRX through Microsoft's extension, at the version
+# the repository pins.
+trx_report_version="$(sed -n 's|.*<PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="\([^"]*\)".*|\1|p' \
+  "${REPOSITORY_ROOT}/Directory.Packages.props")"
+[[ -n "${trx_report_version}" ]] || { echo "Directory.Packages.props pins no Microsoft.Testing.Extensions.TrxReport." >&2; exit 1; }
+TRX_REPORT_ITEMS="  <ItemGroup Condition=\"'\$(TargetFramework)' == 'net10.0'\">
+    <PackageReference Include=\"Microsoft.Testing.Extensions.TrxReport\" Version=\"${trx_report_version}\" />
+  </ItemGroup>" \
+  awk '/<\/Project>/ { print ENVIRON["TRX_REPORT_ITEMS"] } { print }' "${dual_consumer}/DualTarget.Tests.csproj" |
+  sed 's|<TreatWarningsAsErrors>true</TreatWarningsAsErrors>|&<NetWasmManagedStackTrace>true</NetWasmManagedStackTrace>|' \
+  > "${trx_consumer}/Trx.Tests.csproj"
 cat > "${trx_consumer}/Outcomes.cs" <<'CSEOF'
 namespace Trx.Tests;
 
 public class Outcomes
 {
+    // Computed at run time: TUnit's analyzer rejects an assertion on a constant (TUnitAssertions0005).
+    private static int Sum(int left, int right) => left + right;
+
     [global::TUnit.Core.Test]
     public async global::System.Threading.Tasks.Task Passes() =>
-        await global::TUnit.Assertions.Assert.That(1 + 1).IsEqualTo(2);
+        await global::TUnit.Assertions.Assert.That(Sum(1, 1)).IsEqualTo(2);
 
     [global::TUnit.Core.Test]
     public async global::System.Threading.Tasks.Task Fails() =>
-        await global::TUnit.Assertions.Assert.That(1 + 1).IsEqualTo(3);
+        await global::TUnit.Assertions.Assert.That(Sum(1, 1)).IsEqualTo(3);
 
     [global::TUnit.Core.Test, global::TUnit.Core.Skip("not on this run")]
     public void IsSkipped()
