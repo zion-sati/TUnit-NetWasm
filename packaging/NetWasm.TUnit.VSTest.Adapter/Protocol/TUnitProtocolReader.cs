@@ -7,7 +7,7 @@ namespace NetWasm.TUnit.VSTest.Adapter.Protocol;
 internal sealed class TUnitProtocolReader : ITUnitProtocolReader
 {
     private const string Prefix = "NWTUNIT|";
-    private const int SupportedVersion = 2;
+    private const int SupportedVersion = 3;
 
     public TUnitProtocolSession Read(string output)
     {
@@ -92,12 +92,17 @@ internal sealed class TUnitProtocolReader : ITUnitProtocolReader
                     started.Add(RequireValue(fields[1], "started stable ID"));
                     break;
                 case "test-completed":
-                    RequireArity(fields, 5);
+                    RequireArity(fields, 8);
                     completed.Add(new TUnitCompletedCase(
                         RequireValue(fields[1], "completed stable ID"),
                         RequireValue(fields[2], "test outcome"),
                         TimeSpan.FromMilliseconds(ParseDouble(fields[3], "test duration")),
-                        fields[4].Length == 0 ? null : fields[4]));
+                        Optional(fields[4]))
+                    {
+                        StackTrace = Optional(fields[5]),
+                        StandardOutput = Optional(fields[6]),
+                        StandardError = Optional(fields[7]),
+                    });
                     break;
                 case "host-result":
                     RequireArity(fields, 3);
@@ -264,4 +269,6 @@ internal sealed class TUnitProtocolReader : ITUnitProtocolReader
     }
 
     private sealed record ProtocolLine(string Content, string Delimiter);
+
+    private static string? Optional(string field) => field.Length == 0 ? null : field;
 }

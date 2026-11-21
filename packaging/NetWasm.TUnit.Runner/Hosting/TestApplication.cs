@@ -16,7 +16,8 @@ namespace NetWasm.TUnit.Runner.Hosting;
 /// </summary>
 public static class TestApplication
 {
-    private const int ProtocolVersion = 2;
+    // 3: test-completed records carry the stack trace and the test's standard output and error.
+    private const int ProtocolVersion = 3;
 
     public static async Task<int> RunAsync(
         string[] args,

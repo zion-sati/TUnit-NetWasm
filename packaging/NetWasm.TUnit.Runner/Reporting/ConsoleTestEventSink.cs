@@ -33,7 +33,10 @@ public sealed class ConsoleTestEventSink : ITestEventSink
                     completed.Result.StableId,
                     Format(completed.Result.Outcome),
                     Format(completed.Result.Duration),
-                    completed.Result.Message);
+                    completed.Result.Message,
+                    completed.Result.StackTrace,
+                    completed.Result.StandardOutput,
+                    completed.Result.StandardError);
                 break;
             case RunCompletedEvent completed:
                 WriteRecord(

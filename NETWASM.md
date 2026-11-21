@@ -32,6 +32,18 @@ dotnet test --filter "FullyQualifiedName=MyProject.Tests.Tests.AnswerIsFortyTwo"
 dotnet test --filter "Category=smoke"
 ```
 
+## Reports
+
+`dotnet test --logger trx` writes a TRX report as on desktop, and so does
+`dotnet test -- --report-trx` (with `--report-trx-filename` to name it), the
+form upstream TUnit takes. A failure carries its message, stack trace and the
+test's output into the report and the console; in Release builds the stack
+trace needs `<NetWasmManagedStackTrace>true</NetWasmManagedStackTrace>`. Each
+case of a parameterized test is its own test in the report. A project that also
+targets desktop .NET writes the desktop run's report through
+`Microsoft.Testing.Extensions.TrxReport`, which NetWasm.TUnit does not bring in
+as upstream's `TUnit` package does; add a reference to it for that framework.
+
 ## How tests run
 
 A `net10.0-netwasm` test project compiles TUnit's source-generated test metadata, and the

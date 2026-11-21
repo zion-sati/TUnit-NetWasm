@@ -22,10 +22,12 @@ public sealed class ConsoleTestEventSinkTests
                 "line 1\nline 2")
             {
                 Duration = TimeSpan.FromMilliseconds(1.25),
+                StackTrace = "at A()\nat B()",
+                StandardOutput = "out|",
             }));
 
         XunitAssert.Equal(
-            "NWTUNIT|test-completed|case%7C1|assertion-failed|1.250|line 1%0Aline 2\n",
+            "NWTUNIT|test-completed|case%7C1|assertion-failed|1.250|line 1%0Aline 2|at A()%0Aat B()|out%7C|\n",
             writer.ToString());
     }
 
@@ -67,13 +69,13 @@ public sealed class ConsoleTestEventSinkTests
         using var writer = CreateWriter();
         var sink = new ConsoleTestEventSink(writer.WriteLine);
 
-        sink.Write(new ProtocolVersionEvent(2));
+        sink.Write(new ProtocolVersionEvent(3));
         sink.Write(new CatalogEntryEvent("case", "Display", "Tests.Case", "Tests.cs", 42));
         sink.Write(new CatalogTraitEvent("case", "TestCategory", "fast"));
         sink.Write(new HostResultEvent(0, "completed"));
 
         XunitAssert.Equal(
-            "NWTUNIT|protocol-version|2\n"
+            "NWTUNIT|protocol-version|3\n"
             + "NWTUNIT|catalog|case|Display|Tests.Case|Tests.cs|42\n"
             + "NWTUNIT|trait|case|TestCategory|fast\n"
             + "NWTUNIT|host-result|0|completed\n",

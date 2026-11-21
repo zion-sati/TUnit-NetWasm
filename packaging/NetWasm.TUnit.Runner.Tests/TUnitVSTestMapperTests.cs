@@ -33,6 +33,24 @@ public sealed class TUnitVSTestMapperTests
         XunitAssert.Equal("fast", trait.Value);
     }
 
+    [Fact]
+    public void TheCasesOfAParameterizedTestAreDistinctTestCases()
+    {
+        var mapper = new TUnitTestCaseMapper();
+        TestCase Map(string source, string stableId, string displayName) =>
+            mapper.Create(source, new TUnitCatalogCase(stableId, displayName, "Tests.Outcomes.TakesArguments", "Tests.cs", 7, []));
+
+        var first = Map("/artifacts/Tests.dll", "Tests.Outcomes.TakesArguments(1)", "TakesArguments(1)");
+        var second = Map("/artifacts/Tests.dll", "Tests.Outcomes.TakesArguments(2)", "TakesArguments(2)");
+        var firstAgain = Map("/artifacts/Tests.dll", "Tests.Outcomes.TakesArguments(1)", "TakesArguments(1)");
+        var otherSource = Map("/artifacts/Other.dll", "Tests.Outcomes.TakesArguments(1)", "TakesArguments(1)");
+
+        XunitAssert.Equal(first.FullyQualifiedName, second.FullyQualifiedName);
+        XunitAssert.NotEqual(first.Id, second.Id);
+        XunitAssert.Equal(first.Id, firstAgain.Id);
+        XunitAssert.NotEqual(first.Id, otherSource.Id);
+    }
+
     [Theory]
     [InlineData("passed", TestOutcome.Passed)]
     [InlineData("assertion-failed", TestOutcome.Failed)]
@@ -54,6 +72,50 @@ public sealed class TUnitVSTestMapperTests
         XunitAssert.Equal(expected, result.Outcome);
         XunitAssert.Equal(TimeSpan.FromMilliseconds(2.5), result.Duration);
         XunitAssert.Equal("message", result.ErrorMessage);
+    }
+
+    // The stack trace and the test's output reach VSTest, so the console, TRX and IDEs show them as on desktop.
+    [Fact]
+    public void ResultMapperCarriesTheStackTraceAndOutput()
+    {
+        var testCase = new TestCase("Tests.Case", new Uri("executor://NetWasm/TUnit/v2"), "Tests.dll");
+
+        var result = new TUnitTestResultMapper().Create(
+            testCase,
+            new TUnitCompletedCase("stable-id", "assertion-failed", TimeSpan.Zero, "message")
+            {
+                StackTrace = "at Tests.Case()",
+                StandardOutput = "written",
+                StandardError = "warned",
+            });
+
+        XunitAssert.Equal("at Tests.Case()", result.ErrorStackTrace);
+        XunitAssert.Collection(
+            result.Messages,
+            message =>
+            {
+                XunitAssert.Equal(TestResultMessage.StandardOutCategory, message.Category);
+                XunitAssert.Equal("written", message.Text);
+            },
+            message =>
+            {
+                XunitAssert.Equal(TestResultMessage.StandardErrorCategory, message.Category);
+                XunitAssert.Equal("warned", message.Text);
+            });
+    }
+
+    [Fact]
+    public void ResultMapperLeavesAbsentDetailsOut()
+    {
+        var testCase = new TestCase("Tests.Case", new Uri("executor://NetWasm/TUnit/v2"), "Tests.dll");
+
+        var result = new TUnitTestResultMapper().Create(
+            testCase,
+            new TUnitCompletedCase("stable-id", "passed", TimeSpan.Zero, null));
+
+        XunitAssert.Null(result.ErrorMessage);
+        XunitAssert.Null(result.ErrorStackTrace);
+        XunitAssert.Empty(result.Messages);
     }
 
     [Fact]

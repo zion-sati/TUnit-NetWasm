@@ -311,4 +311,68 @@ EOF
     | tee "${test_root}/dual-desktop.log"
 )
 
-echo "NetWasm TUnit package, runner, VSTest, template and dual-target tests passed."
+# TRX reports: the dual-target suite with a passing, a failing, a skipped and a parameterized test writes one from
+# net10.0-netwasm through dotnet test's VSTest adapter (Microsoft.Testing.Platform's report-trx options, which NetWasm
+# maps to VSTest's TRX logger) and one from desktop .NET's Microsoft.Testing.Platform application; both name the same
+# tests with the same outcomes, and each failure carries its message and stack trace.
+trx_consumer="${test_root}/Trx.Tests"
+trx_results="${test_root}/trx"
+mkdir -p "${trx_consumer}" "${trx_results}"
+cp "${dual_consumer}/Tests.cs" "${trx_consumer}/Tests.cs"
+# Desktop .NET's Microsoft.Testing.Platform application writes TRX through Microsoft's extension, at the version
+# the repository pins.
+trx_report_version="$(sed -n 's|.*<PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="\([^"]*\)".*|\1|p' \
+  "${REPOSITORY_ROOT}/Directory.Packages.props")"
+[[ -n "${trx_report_version}" ]] || { echo "Directory.Packages.props pins no Microsoft.Testing.Extensions.TrxReport." >&2; exit 1; }
+TRX_REPORT_ITEMS="  <ItemGroup Condition=\"'\$(TargetFramework)' == 'net10.0'\">
+    <PackageReference Include=\"Microsoft.Testing.Extensions.TrxReport\" Version=\"${trx_report_version}\" />
+  </ItemGroup>" \
+  awk '/<\/Project>/ { print ENVIRON["TRX_REPORT_ITEMS"] } { print }' "${dual_consumer}/DualTarget.Tests.csproj" |
+  sed 's|<TreatWarningsAsErrors>true</TreatWarningsAsErrors>|&<NetWasmManagedStackTrace>true</NetWasmManagedStackTrace>|' \
+  > "${trx_consumer}/Trx.Tests.csproj"
+cat > "${trx_consumer}/Outcomes.cs" <<'CSEOF'
+namespace Trx.Tests;
+
+public class Outcomes
+{
+    // Computed at run time: TUnit's analyzer rejects an assertion on a constant (TUnitAssertions0005).
+    private static int Sum(int left, int right) => left + right;
+
+    [global::TUnit.Core.Test]
+    public async global::System.Threading.Tasks.Task Passes() =>
+        await global::TUnit.Assertions.Assert.That(Sum(1, 1)).IsEqualTo(2);
+
+    [global::TUnit.Core.Test]
+    public async global::System.Threading.Tasks.Task Fails() =>
+        await global::TUnit.Assertions.Assert.That(Sum(1, 1)).IsEqualTo(3);
+
+    [global::TUnit.Core.Test, global::TUnit.Core.Skip("not on this run")]
+    public void IsSkipped()
+    {
+    }
+
+    [global::TUnit.Core.Test, global::TUnit.Core.Arguments(1), global::TUnit.Core.Arguments(2)]
+    public async global::System.Threading.Tasks.Task TakesArguments(int value) =>
+        await global::TUnit.Assertions.Assert.That(value).IsPositive();
+}
+CSEOF
+(
+  cd "${trx_consumer}"
+  dotnet restore Trx.Tests.csproj --configfile "${nuget_config}" --disable-build-servers --nologo
+  # The failing test fails both runs; the reports are what is compared.
+  if dotnet test Trx.Tests.csproj -c Release -f net10.0-netwasm --no-restore --disable-build-servers --nologo \
+      --results-directory "${trx_results}" -- --report-trx --report-trx-filename netwasm.trx \
+      | tee "${test_root}/trx-netwasm.log"; then
+    echo "The TRX suite's failing test passed on net10.0-netwasm." >&2
+    exit 1
+  fi
+  if dotnet run --project Trx.Tests.csproj -c Release -f net10.0 --no-restore --disable-build-servers \
+      -- --report-trx --report-trx-filename desktop.trx --results-directory "${trx_results}" \
+      | tee "${test_root}/trx-desktop.log"; then
+    echo "The TRX suite's failing test passed on desktop .NET." >&2
+    exit 1
+  fi
+)
+python3 "${qualification_root}/eng/compare-trx.py" "${trx_results}/netwasm.trx" "${trx_results}/desktop.trx"
+
+echo "NetWasm TUnit package, runner, VSTest, template, dual-target and TRX tests passed."
