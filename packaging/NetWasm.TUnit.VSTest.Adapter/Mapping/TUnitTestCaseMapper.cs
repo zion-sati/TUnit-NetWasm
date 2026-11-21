@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using NetWasm.TUnit.VSTest.Adapter.Protocol;
 
@@ -20,6 +22,7 @@ internal sealed class TUnitTestCaseMapper : ITUnitTestCaseMapper
 
         var result = new TestCase(testCase.FullyQualifiedName, ExecutorUri, source)
         {
+            Id = CreateId(source, testCase.StableId),
             DisplayName = testCase.DisplayName,
             CodeFilePath = testCase.FilePath,
             LineNumber = testCase.LineNumber,
@@ -31,6 +34,12 @@ internal sealed class TUnitTestCaseMapper : ITUnitTestCaseMapper
         }
         return result;
     }
+
+    // VSTest derives a test case's Id from its fully qualified name, which every case of a parameterized test shares,
+    // so a TRX report or an IDE would file the cases' results under one test. TUnit's stable ID tells the cases apart;
+    // the Id is derived from it and the source, the same in discovery and execution.
+    private static Guid CreateId(string source, string stableId) =>
+        new(SHA256.HashData(Encoding.UTF8.GetBytes($"{source}\n{stableId}")).AsSpan(0, 16));
 
     public string GetStableId(TestCase testCase)
     {

@@ -33,6 +33,24 @@ public sealed class TUnitVSTestMapperTests
         XunitAssert.Equal("fast", trait.Value);
     }
 
+    [Fact]
+    public void TheCasesOfAParameterizedTestAreDistinctTestCases()
+    {
+        var mapper = new TUnitTestCaseMapper();
+        TestCase Map(string source, string stableId, string displayName) =>
+            mapper.Create(source, new TUnitCatalogCase(stableId, displayName, "Tests.Outcomes.TakesArguments", "Tests.cs", 7, []));
+
+        var first = Map("/artifacts/Tests.dll", "Tests.Outcomes.TakesArguments(1)", "TakesArguments(1)");
+        var second = Map("/artifacts/Tests.dll", "Tests.Outcomes.TakesArguments(2)", "TakesArguments(2)");
+        var firstAgain = Map("/artifacts/Tests.dll", "Tests.Outcomes.TakesArguments(1)", "TakesArguments(1)");
+        var otherSource = Map("/artifacts/Other.dll", "Tests.Outcomes.TakesArguments(1)", "TakesArguments(1)");
+
+        XunitAssert.Equal(first.FullyQualifiedName, second.FullyQualifiedName);
+        XunitAssert.NotEqual(first.Id, second.Id);
+        XunitAssert.Equal(first.Id, firstAgain.Id);
+        XunitAssert.NotEqual(first.Id, otherSource.Id);
+    }
+
     [Theory]
     [InlineData("passed", TestOutcome.Passed)]
     [InlineData("assertion-failed", TestOutcome.Failed)]
